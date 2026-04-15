@@ -19,7 +19,7 @@ fragmenty tekstu (podwójne nawiasy klamrowe):
   {{data_zaladunku}}    — jutro względem dnia generowania, format dd.mm.rrrr
 
   {{@lista_plomb_xml}}  — lista plomb (ZALECANE): w osobnym akapicie TYLKO ten znacznik
-                        (docxtemplater zastępuje cały akapit). Wiersze: lp., data L (mm-dd),
+                        (docxtemplater zastępuje cały akapit). Wiersze: lp., tabulator, data L (mm-dd),
                         tabulator, numer plomby — czcionka 14 pt. Reszta dokumentu: 10 pt (preprocess szablonu).
 
   {{lista_plomb}}       — ten sam tekst co lista powyżej, zwykły placeholder (10 pt jak reszta).
