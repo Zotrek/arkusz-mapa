@@ -644,6 +644,11 @@ export async function executePhase5(
       Object.assign(cacheEntries, overrides);
       logger?.info?.('Phase 5: applied %d address overrides from %s', overrideCount, ADDRESS_OVERRIDES_FILENAME);
     }
+    logger?.info?.(
+      'Phase 5: cache file ready — %d entries in memory from %s (GitHub Actions: sprawdź krok „Przywróć cache” jeśli 0 przy drugim runie)',
+      Object.keys(cacheEntries).length,
+      options.cacheFilePath,
+    );
   }
 
   const groupedEntries = Array.from(groupedByAddress.entries());

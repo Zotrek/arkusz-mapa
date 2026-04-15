@@ -13,6 +13,9 @@
 # Nie dodawaj drugiego workflowu Pages (np. szablon „Jekyll”) — ten sam concurrency
 # „pages” i zły artefakt dają 404 lub nadpisują tę stronę.
 #
+# Dwa joby: „build” BEZ środowiska github-pages (token może zapisywać actions/cache).
+# „deploy” TYLKO z environment github-pages — inaczej cache między runami często nie działa.
+#
 # Każde uruchomienie zastępuje całą witrynę Pages (tylko mapy z tego biegu).
 name: arkusz-mapa — Pages
 
@@ -30,17 +33,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - uses: actions/checkout@v4
 
-      # Cache geokodowania między runami (actions/cache). Plik poza site/, żeby nie trafiał na Pages.
+      # Cache geokodowania — musi być w jobie bez environment github-pages (ograniczenia tokenu).
       - name: Przywróć cache adresów (faza 5)
+        id: cache-phase5
         uses: actions/cache@v4
         with:
           path: .cache/phase5-cache.json
@@ -48,7 +48,16 @@ jobs:
           restore-keys: |
             phase5-geocode-
 
-      # cache: npm — patrz komentarz w arkusz-mapa-ci.yml (klucz z locka, npm ci = zgodność z repo).
+      - name: Raport cache (diagnostyka)
+        run: |
+          echo "actions/cache cache-hit=${{ steps.cache-phase5.outputs.cache-hit }}"
+          if [ -f .cache/phase5-cache.json ]; then
+            echo "phase5-cache.json: bytes=$(wc -c < .cache/phase5-cache.json)"
+          else
+            echo "Brak pliku .cache/phase5-cache.json przed generate."
+          fi
+
+      # cache: npm — patrz komentarz w arkusz-mapa-ci.yml
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -93,6 +102,13 @@ jobs:
         with:
           path: site
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Publikacja na GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
