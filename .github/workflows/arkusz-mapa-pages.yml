@@ -10,6 +10,8 @@
 #   docs/podwyko lista.ods
 #
 # GitHub: Settings → Pages → Source: „GitHub Actions”.
+# Nie dodawaj drugiego workflowu Pages (np. szablon „Jekyll”) — ten sam concurrency
+# „pages” i zły artefakt dają 404 lub nadpisują tę stronę.
 #
 # Każde uruchomienie zastępuje całą witrynę Pages (tylko mapy z tego biegu).
 name: arkusz-mapa — Pages
