@@ -1,0 +1,29 @@
+# Zależności i artefakty buildu
+node_modules/
+dist/
+
+# Wyniki lokalne (mapy HTML — CI/Pages generują osobno)
+output/
+
+# Lokalny katalog strony Pages (test workflow / indeks)
+site/
+
+# Konfiguracja z sekretami (w repo tylko .env.example)
+.env
+.env.*
+!.env.example
+
+# Klucze Google / CI — nigdy w repozytorium
+.ci-credentials.json
+service-account.json
+credentials.json
+*-service-account.json
+*-credentials.json
+
+# Logi i śmieci OS
+*.log
+.DS_Store
+Thumbs.db
+
+# TypeScript incremental (jeśli włączysz w tsconfig)
+*.tsbuildinfo

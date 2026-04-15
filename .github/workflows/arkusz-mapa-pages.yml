@@ -1,0 +1,84 @@
+# Ręcznie: Actions → „arkusz-mapa — Pages” → Run workflow.
+# Katalog główny repozytorium = ten pakiet (arkusz-mapa).
+#
+# Wymagane sekrety:
+#   GOOGLE_SHEETS_ID              — ID arkusza z URL Google Sheets
+#   GOOGLE_SERVICE_ACCOUNT_JSON   — cały plik JSON klucza Service Account
+#
+# W repo muszą być (domyślnie):
+#   docs/pusty.docx
+#   docs/podwyko lista.ods
+#
+# GitHub: Settings → Pages → Source: „GitHub Actions”.
+#
+# Każde uruchomienie zastępuje całą witrynę Pages (tylko mapy z tego biegu).
+name: arkusz-mapa — Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Zapis klucza Service Account
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::Brak sekretu GOOGLE_SERVICE_ACCOUNT_JSON"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > .ci-credentials.json
+
+      - name: Generuj mapę (Google Sheets → HTML)
+        env:
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.ci-credentials.json
+          OUTPUT_DIR: ${{ github.workspace }}/site/maps
+        run: |
+          if [ -z "$GOOGLE_SHEETS_ID" ]; then
+            echo "::error::Brak sekretu GOOGLE_SHEETS_ID"
+            exit 1
+          fi
+          mkdir -p "$OUTPUT_DIR"
+          npm run generate
+
+      - name: Strona indeksu (lista map)
+        run: node scripts/build-pages-index.mjs
+
+      - name: Konfiguracja Pages
+        uses: actions/configure-pages@v5
+
+      - name: Pakiet statyczny
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Publikacja na GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

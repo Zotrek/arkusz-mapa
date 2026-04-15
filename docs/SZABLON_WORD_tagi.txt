@@ -1,0 +1,72 @@
+Szablon Word (pusty.docx) — znaczniki dla mapy
+
+==============================================
+
+
+
+Mapa wypełnia dokument tylko tam, gdzie w pliku .docx są DOKŁADNIE takie
+
+fragmenty tekstu (podwójne nawiasy klamrowe):
+
+
+
+  {{miejsce_zaladunku}}   — podmiot handlowy (kolumna A) + adres, jedna linia
+
+  {{przewoznik}}        — treść z kolumny „Dane” (B) dla wybranej nazwy z listy
+
+  {{miejsce_dostawy}}   — jak przewoźnik: kolumna B dla wybranej nazwy
+
+  {{data_zaladunku}}    — jutro względem dnia generowania, format dd.mm.rrrr
+
+  {{@lista_plomb_xml}}  — lista plomb (ZALECANE): w osobnym akapicie TYLKO ten znacznik
+                        (docxtemplater zastępuje cały akapit). Wiersze: lp., data L (mm-dd),
+                        numer plomby — czcionka 14 pt. Reszta dokumentu: 10 pt (preprocess szablonu).
+
+  {{lista_plomb}}       — ten sam tekst co lista powyżej, zwykły placeholder (10 pt jak reszta).
+                        Gdy używasz {{@lista_plomb_xml}}, ten znacznik możesz usunąć z szablonu.
+
+  {{rodzaj_zbiorki}}    — z kolumny zbiórki w arkuszu: „ręczna”, „automatyczna”
+                        lub „ręczna i automatyczna” (gdy w grupie są oba tryby)
+
+
+
+Lista podwykonawców (podwyko lista.ods / .xlsx)
+
+-----------------------------------------------
+
+  • Kolumna A — nazwa widoczna w liście rozwijanej na mapie
+
+  • Kolumna B — „Dane”: pełna treść trafiająca do wygenerowanego Worda
+
+  • Jeśli komórka w B jest pusta, do dokumentu wpada ta sama treść co z A
+
+
+
+Jak wstawić w Word / LibreOffice
+
+--------------------------------
+
+1. Wpisz CAŁY znacznik naraz (np. wklej z tego pliku), bez klikania w środek
+
+   i bez dopisywania części na raty — inaczej Word rozbije XML i znacznik
+
+   może przestać działać.
+
+2. Najpewniej: osobny akapit tylko ze znacznikiem, albo znacznik zaraz po
+
+   etykiecie w tej samej linii, np.:
+
+   Miejsce załadunku: {{miejsce_zaladunku}}
+
+3. NIE używaj pojedynczych nawiasów {tylko_jeden} — mapa oczekuje {{ }}.
+
+
+
+Nazwa pobieranego pliku .docx
+---------------------------
+  „Nazwa przewoźnika” (z kolumny A listy) + spacja + data załadunku dd.mm.rr
+  + spacja + adres punktu z mapy (jak w pinezce), znaki niedozwolone w nazwie
+  pliku są zamieniane na spacje; długość nazwy jest ograniczona.
+
+Po zmianie szablonu uruchom ponownie: npm run generate
+
