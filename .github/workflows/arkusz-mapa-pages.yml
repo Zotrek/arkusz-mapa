@@ -23,6 +23,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: pages
@@ -37,6 +38,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Cache geokodowania między runami (actions/cache). Plik poza site/, żeby nie trafiał na Pages.
+      - name: Przywróć cache adresów (faza 5)
+        uses: actions/cache@v4
+        with:
+          path: .cache/phase5-cache.json
+          key: phase5-geocode-${{ github.run_id }}
+          restore-keys: |
+            phase5-geocode-
 
       # cache: npm — patrz komentarz w arkusz-mapa-ci.yml (klucz z locka, npm ci = zgodność z repo).
       - uses: actions/setup-node@v4
@@ -63,6 +73,7 @@ jobs:
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.ci-credentials.json
           OUTPUT_DIR: ${{ github.workspace }}/site/maps
+          PHASE5_CACHE_PATH: ${{ github.workspace }}/.cache/phase5-cache.json
         run: |
           if [ -z "$GOOGLE_SHEETS_ID" ]; then
             echo "::error::Brak sekretu GOOGLE_SHEETS_ID"

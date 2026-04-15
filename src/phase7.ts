@@ -2,8 +2,7 @@
  * Faza 7: orkiestracja pełnego pipeline + obsługa CLI.
  */
 
-import { join } from 'node:path';
-import { getConfig, GEOJSON_WOJEWODZTWA_URL } from './config.js';
+import { getConfig, getPhase5CacheFilePath, GEOJSON_WOJEWODZTWA_URL } from './config.js';
 import { createSheetsClient, loadSourceRows } from './sheets.js';
 import { executePhase3 } from './phase3.js';
 import { executePhase4 } from './phase4.js';
@@ -73,7 +72,7 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   const phase3 = deps.executePhase3(source.rows);
   deps.logger.info('Executing phase 5 (geocoding)');
   const phase5 = await deps.executePhase5(phase3.groupedByAddress, {
-    cacheFilePath: join(config.outputDir, 'phase5-cache.json'),
+    cacheFilePath: getPhase5CacheFilePath(config.outputDir),
     batchSize: 20,
     requestTimeoutMs: 5000,
     rateLimitMs: 1100,

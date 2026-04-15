@@ -80,3 +80,17 @@ export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoP
     process.env.PODWYKOLISTA_ODS_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'podwyko lista.xlsx');
   return { templatePath, podwykoPath };
 }
+
+/**
+ * Plik JSON z cache wyników geokodowania (faza 5).
+ * Domyślnie: `OUTPUT_DIR/phase5-cache.json` (obok wygenerowanej mapy).
+ * Nadpisanie: `PHASE5_CACHE_PATH` — np. w GitHub Actions ścieżka poza `site/maps`,
+ * żeby cache nie był publikowany na Pages wraz z artefaktem strony.
+ */
+export function getPhase5CacheFilePath(outputDir: string): string {
+  const fromEnv = process.env.PHASE5_CACHE_PATH?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  return join(outputDir, 'phase5-cache.json');
+}

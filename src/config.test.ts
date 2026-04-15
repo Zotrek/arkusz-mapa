@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   getConfig,
   getOptionalWordMapAssetPaths,
+  getPhase5CacheFilePath,
   COL_KOD_POCZTOWY,
   COL_MIASTO,
   COL_ULICA,
@@ -150,6 +151,28 @@ describe('config', () => {
         templatePath: '/custom/t.docx',
         podwykoPath: '/custom/l.ods',
       });
+    });
+  });
+
+  describe('getPhase5CacheFilePath', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+      delete process.env.PHASE5_CACHE_PATH;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('should default to phase5-cache_json_under_output_dir', () => {
+      expect(getPhase5CacheFilePath('/tmp/out')).toMatch(/[/\\]tmp[/\\]out[/\\]phase5-cache\.json$/);
+    });
+
+    it('should respect PHASE5_CACHE_PATH when set', () => {
+      process.env.PHASE5_CACHE_PATH = '/data/geo-cache.json';
+      expect(getPhase5CacheFilePath('/tmp/out')).toBe('/data/geo-cache.json');
     });
   });
 });

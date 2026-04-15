@@ -8,6 +8,9 @@ output/
 # Lokalny katalog strony Pages (test workflow / indeks)
 site/
 
+# Opcjonalny cache geokodowania (np. PHASE5_CACHE_PATH=.cache/phase5-cache.json)
+.cache/
+
 # Konfiguracja z sekretami (w repo tylko .env.example)
 .env
 .env.*
