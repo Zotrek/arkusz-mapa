@@ -645,7 +645,7 @@ export async function executePhase5(
       logger?.info?.('Phase 5: applied %d address overrides from %s', overrideCount, ADDRESS_OVERRIDES_FILENAME);
     }
     logger?.info?.(
-      'Phase 5: cache file ready — %d entries in memory from %s (GitHub Actions: sprawdź krok „Przywróć cache” jeśli 0 przy drugim runie)',
+      'Phase 5: cache file ready — %d entries in memory from %s (CI: Actions cache + opcjonalnie data/phase5-cache.json w repo)',
       Object.keys(cacheEntries).length,
       options.cacheFilePath,
     );

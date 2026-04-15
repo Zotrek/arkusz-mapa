@@ -9,6 +9,9 @@
 #   docs/pusty.docx
 #   docs/podwyko lista.xlsx
 #
+# Opcjonalnie — stały cache adresów (żeby nie geokodować od zera na CI):
+#   data/phase5-cache.json  (skopiuj lokalny OUTPUT_DIR/phase5-cache.json, patrz data/README.txt)
+#
 # GitHub: Settings → Pages → Source: „GitHub Actions”.
 # Nie dodawaj drugiego workflowu Pages (np. szablon „Jekyll”) — ten sam concurrency
 # „pages” i zły artefakt dają 404 lub nadpisują tę stronę.
@@ -38,21 +41,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Cache geokodowania — musi być w jobie bez environment github-pages (ograniczenia tokenu).
+      # Cały katalog .cache/ — pojedynczy plik w path bywał niestabilny przy save/restore.
       - name: Przywróć cache adresów (faza 5)
         id: cache-phase5
         uses: actions/cache@v4
         with:
-          path: .cache/phase5-cache.json
-          key: phase5-geocode-${{ github.run_id }}
+          path: .cache
+          key: phase5-geocode-v2-${{ github.run_id }}
           restore-keys: |
-            phase5-geocode-
+            phase5-geocode-v2-
+
+      # Gdy Actions cache nic nie dał — użyj pliku z commita (Twój już zapisany cache).
+      - name: Seed cache z repozytorium (gdy brak pliku z Actions)
+        run: |
+          mkdir -p .cache
+          if [ -f .cache/phase5-cache.json ] && [ -s .cache/phase5-cache.json ]; then
+            echo "Jest .cache/phase5-cache.json z Actions ($(wc -c < .cache/phase5-cache.json) b)."
+          elif [ -f data/phase5-cache.json ] && [ -s data/phase5-cache.json ]; then
+            cp data/phase5-cache.json .cache/phase5-cache.json
+            echo "Załadowano data/phase5-cache.json ($(wc -c < .cache/phase5-cache.json) b) — geokodowanie z tego pliku."
+          else
+            echo "::warning::Brak cache: ani Actions, ani data/phase5-cache.json — faza 5 zacznie od zera."
+          fi
 
       - name: Raport cache (diagnostyka)
         run: |
           echo "actions/cache cache-hit=${{ steps.cache-phase5.outputs.cache-hit }}"
           if [ -f .cache/phase5-cache.json ]; then
             echo "phase5-cache.json: bytes=$(wc -c < .cache/phase5-cache.json)"
+            node -e "
+              const fs = require('fs');
+              const p = '.cache/phase5-cache.json';
+              const j = JSON.parse(fs.readFileSync(p,'utf8'));
+              const n = j.entries && typeof j.entries === 'object' ? Object.keys(j.entries).length : 0;
+              console.log('JSON version=', j.version, 'entries=', n);
+            " || echo "(niepoprawny JSON — faza 5 wczyta 0 wpisów)"
           else
             echo "Brak pliku .cache/phase5-cache.json przed generate."
           fi
