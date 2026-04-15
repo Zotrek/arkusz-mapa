@@ -140,7 +140,7 @@ describe('config', () => {
       delete process.env.PODWYKOLISTA_ODS_PATH;
       const paths = getOptionalWordMapAssetPaths();
       expect(paths.templatePath).toMatch(/[/\\]docs[/\\]pusty\.docx$/);
-      expect(paths.podwykoPath).toMatch(/[/\\]docs[/\\]podwyko lista\.ods$/);
+      expect(paths.podwykoPath).toMatch(/[/\\]docs[/\\]podwyko lista\.xlsx$/);
     });
 
     it('should respect WORD_TEMPLATE_PATH and PODWYKOLISTA_ODS_PATH when set', () => {

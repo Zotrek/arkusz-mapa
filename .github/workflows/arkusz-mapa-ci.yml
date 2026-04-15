@@ -31,6 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # cache: npm — przywraca cache npm z GitHub (klucz m.in. z package-lock.json).
+      # Przy tym samym locku to „stary” cache jest OK: npm ci i tak instaluje wersje z locka.
+      # Wyłączenie: usuń cache/cache-dependency-path. Wyczyszczenie: Actions → Caches → usuń wpis.
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:

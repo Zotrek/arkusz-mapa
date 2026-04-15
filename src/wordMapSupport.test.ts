@@ -58,7 +58,7 @@ describe('wordMapSupport', () => {
       makeSheetRow({ numerPlomby: '7001', dataZamknieciaWorka: '15.04.2026' }),
       makeSheetRow({ numerPlomby: '7002', dataZamknieciaWorka: '2026-01-07' }),
     ]);
-    expect(s).toBe('1. 04-15 7001\n2. 01-07 7002');
+    expect(s).toBe('1. 04-15\t7001\n2. 01-07\t7002');
   });
 
   it('test_formatDataZamknieciaWorkaAsMmDd_when_iso_or_polish_or_serial_should_parse', () => {
@@ -83,7 +83,7 @@ describe('wordMapSupport', () => {
     const xml = buildListaPlombOoxml([
       makeSheetRow({ numerPlomby: 'A&B', dataZamknieciaWorka: '15.04.2026' }),
     ]);
-    expect(xml).toContain('1. 04-15 A&amp;B');
+    expect(xml).toContain('1. 04-15\tA&amp;B');
     expect(xml).toContain(`<w:sz w:val="${DOCX_LISTA_PLOMB_FONT_SIZE_PT * 2}"/>`);
   });
 

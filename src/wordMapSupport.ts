@@ -12,7 +12,7 @@ const HEADER_HINT = /^(przew|miejsce|nazwa|podwykon|lista|lp\.?|nr\.?|#)/iu;
 
 /** Treść szablonu Word (poza listą w {{@lista_plomb_xml}}): pt → połówki w preprocessie OOXML. */
 export const DOCX_BODY_FONT_SIZE_PT = 10;
-/** Wiersz listy plomb (lp. + data mm-dd + numer) wstawiany przez {{@lista_plomb_xml}} (pt). */
+/** Wiersz listy plomb (lp. + data mm-dd + tab + numer) wstawiany przez {{@lista_plomb_xml}} (pt). */
 export const DOCX_LISTA_PLOMB_FONT_SIZE_PT = 14;
 
 /**
@@ -90,7 +90,7 @@ export function buildListaPlombLines(rows: SheetRow[]): string[] {
     }
     i += 1;
     const mmdd = formatDataZamknieciaWorkaAsMmDd(r.dataZamknieciaWorka);
-    lines.push(mmdd.length > 0 ? `${i}. ${mmdd} ${n}` : `${i}. ${n}`);
+    lines.push(mmdd.length > 0 ? `${i}. ${mmdd}\t${n}` : `${i}. ${n}`);
   }
   return lines;
 }

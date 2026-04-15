@@ -7,7 +7,7 @@
 #
 # W repo muszą być (domyślnie):
 #   docs/pusty.docx
-#   docs/podwyko lista.ods
+#   docs/podwyko lista.xlsx
 #
 # GitHub: Settings → Pages → Source: „GitHub Actions”.
 # Nie dodawaj drugiego workflowu Pages (np. szablon „Jekyll”) — ten sam concurrency
@@ -38,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # cache: npm — patrz komentarz w arkusz-mapa-ci.yml (klucz z locka, npm ci = zgodność z repo).
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

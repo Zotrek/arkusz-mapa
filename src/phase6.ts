@@ -263,7 +263,7 @@ ${wordModal}  <script>
       if (options.length === 0) {
         var o0 = document.createElement('option');
         o0.value = '';
-        o0.textContent = '(Brak listy — dodaj docs/podwyko lista.ods przy generowaniu mapy)';
+        o0.textContent = '(Brak listy — dodaj docs/podwyko lista.xlsx lub ustaw PODWYKOLISTA_ODS_PATH)';
         sel.appendChild(o0);
         return;
       }
@@ -511,7 +511,7 @@ export interface ExecutePhase6Input {
   geoJsonUrl: string;
   /** Jawne osadzenie szablonu/listy (testy) albo wyłączenie przez { templateBase64: '' }. */
   wordMapEmbed?: WordMapHtmlEmbed;
-  /** Nadpisuje domyślne ścieżki docs/pusty.docx i docs/podwyko lista.ods */
+  /** Nadpisuje domyślne ścieżki docs/pusty.docx i docs/podwyko lista.xlsx */
   wordMapPaths?: { templatePath: string; podwykoPath: string };
   now?: () => Date;
   mkdirFn?: (path: string, options: { recursive: true }) => Promise<unknown>;

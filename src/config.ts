@@ -69,15 +69,14 @@ export function getConfig(): AppConfig {
 }
 
 /**
- * Ścieżki do szablonu Word i listy podwykonawców (ODS/XLSX) przy generowaniu mapy.
- * Domyślnie: `arkusz-mapa/docs/pusty.docx` oraz `arkusz-mapa/docs/podwyko lista.ods`
- * (np. na tym komputerze: …/srodowisko_pracy/arkusz-mapa/docs/…).
- * Nadpisanie: WORD_TEMPLATE_PATH, PODWYKOLISTA_ODS_PATH.
+ * Ścieżki do szablonu Word i listy podwykonawców (XLSX lub ODS) przy generowaniu mapy.
+ * Domyślnie: `docs/pusty.docx` oraz `docs/podwyko lista.xlsx`.
+ * Nadpisanie: WORD_TEMPLATE_PATH, PODWYKOLISTA_ODS_PATH (nazwa historyczna — działa też dla .xlsx).
  */
 export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoPath: string } {
   const templatePath =
     process.env.WORD_TEMPLATE_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'pusty.docx');
   const podwykoPath =
-    process.env.PODWYKOLISTA_ODS_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'podwyko lista.ods');
+    process.env.PODWYKOLISTA_ODS_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'podwyko lista.xlsx');
   return { templatePath, podwykoPath };
 }
