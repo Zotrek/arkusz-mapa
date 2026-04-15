@@ -4,7 +4,7 @@
  * Wymagania:
  *   REQ-6.1: szablon Leaflet + granice województw (GeoJSON)
  *   REQ-6.2: dane geokodowane wstrzyknięte do mapy (adres, count, lat, lng, woj)
- *   REQ-6.3: nazwa pliku mapa_YYYY-MM-DD_HH-mm-ss.html
+ *   REQ-6.3: nazwa pliku mapa_YYYY-MM-DD_HH-mm-ss.html (czas w strefie Europe/Warsaw)
  *   REQ-6.4: zapis pliku do OUTPUT_DIR
  */
 
@@ -53,17 +53,20 @@ function sampleUncertainGeocoded(): GeocodedAddress[] {
 
 describe('phase6', () => {
   describe('filename helpers', () => {
-    it('test_formatTimestampForFileName_when_date_given_should_return_expected_format', () => {
+    it('test_formatTimestampForFileName_when_winter_utc_should_use_europe_warsaw_cet', () => {
       const date = new Date('2026-02-25T17:05:06Z');
-      const formatted = formatTimestampForFileName(date);
-      expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/);
+      expect(formatTimestampForFileName(date)).toBe('2026-02-25_18-05-06');
+    });
+
+    it('test_formatTimestampForFileName_when_summer_utc_should_use_europe_warsaw_cest', () => {
+      const date = new Date('2026-07-25T17:05:06Z');
+      expect(formatTimestampForFileName(date)).toBe('2026-07-25_19-05-06');
     });
 
     it('test_buildMapFileName_when_date_given_should_start_with_mapa_and_end_with_html', () => {
       const date = new Date('2026-02-25T17:05:06Z');
       const filename = buildMapFileName(date);
-      expect(filename.startsWith('mapa_')).toBe(true);
-      expect(filename.endsWith('.html')).toBe(true);
+      expect(filename).toBe('mapa_2026-02-25_18-05-06.html');
     });
   });
 

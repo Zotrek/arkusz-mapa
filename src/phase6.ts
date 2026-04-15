@@ -19,14 +19,33 @@ import {
 /** Kolor pinezki dla 15+ wystąpień (wyróżnienie dużych zbiórek). */
 const COLOR_15_PLUS = '#fd7e14';
 
-function pad2(value: number): string {
-  return String(value).padStart(2, '0');
+/** Strefa czasowa dla nazwy pliku mapy (czas polski: CET / CEST, nie strefa runnera). */
+const MAP_FILENAME_TIME_ZONE = 'Europe/Warsaw';
+
+function partValue(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
+  return parts.find((p) => p.type === type)?.value ?? '00';
 }
 
+/**
+ * Znacznik czasu w nazwie pliku: kalendarz i zegar w {@link MAP_FILENAME_TIME_ZONE}
+ * (np. GitHub Actions = UTC — i tak dostajesz godzinę polską).
+ */
 export function formatTimestampForFileName(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}_${pad2(
-    date.getHours(),
-  )}-${pad2(date.getMinutes())}-${pad2(date.getSeconds())}`;
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: MAP_FILENAME_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(date);
+  return `${partValue(parts, 'year')}-${partValue(parts, 'month')}-${partValue(parts, 'day')}_${partValue(
+    parts,
+    'hour',
+  )}-${partValue(parts, 'minute')}-${partValue(parts, 'second')}`;
 }
 
 export function buildMapFileName(date: Date): string {

@@ -10,7 +10,7 @@ Skrypt uruchamiany lokalnie, który realizuje pipeline:
    - `Duplikaty plomb`
    - `Błędne adresy`
 6. Wygenerowanie mapy HTML:
-   - `mapa_YYYY-MM-DD_HH-mm-ss.html`
+   - `mapa_YYYY-MM-DD_HH-mm-ss.html` (czas w strefie **Europe/Warsaw** — CET / CEST)
 
 ## Wymagania
 
