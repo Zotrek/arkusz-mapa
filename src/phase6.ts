@@ -228,7 +228,13 @@ ${wordHeadScripts}  <style>
     .map-legend .legend-section:last-child { margin-bottom: 0; }
     .map-search-panel { background: #fff; padding: 10px 12px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.35); min-width: 220px; max-width: min(420px, calc(100vw - 48px)); }
     .map-search-label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
-    .map-search-input { width: 100%; padding: 8px 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    .map-search-input-row { display: flex; align-items: center; gap: 8px; }
+    .map-search-input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    .map-zoom-inline { display: flex; flex-direction: row; flex-shrink: 0; }
+    .map-zoom-inline button { width: 32px; height: 32px; padding: 0; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 18px; line-height: 1; color: #333; display: flex; align-items: center; justify-content: center; }
+    .map-zoom-inline button:hover { background: #f4f4f4; }
+    .map-zoom-inline button:first-child { border-radius: 4px 0 0 4px; border-right: none; }
+    .map-zoom-inline button:last-child { border-radius: 0 4px 4px 0; }
     .map-search-status { margin-top: 6px; font-size: 11px; color: #555; min-height: 1.2em; }
 ${docStyles}  </style>
 </head>
@@ -242,7 +248,7 @@ ${wordModal}  <script>
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
 
-    const map = L.map('map').setView([52.1, 19.4], 6);
+    const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
     var attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
     var layerCarto = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
       subdomains: 'abcd',
@@ -561,10 +567,19 @@ ${wordModal}  <script>
       var wrap = L.DomUtil.create('div', 'map-search-panel');
       wrap.innerHTML =
         '<label class="map-search-label" for="map-address-search">Szukaj adresu</label>' +
+        '<div class="map-search-input-row">' +
         '<input type="search" id="map-address-search" class="map-search-input" placeholder="Fragment ulicy, miejscowości…" autocomplete="off" spellcheck="false" />' +
+        '<div class="map-zoom-inline" role="toolbar" aria-label="Powiększenie mapy">' +
+        '<button type="button" id="map-zoom-out" title="Pomniejsz" aria-label="Pomniejsz">−</button>' +
+        '<button type="button" id="map-zoom-in" title="Powiększ" aria-label="Powiększ">+</button>' +
+        '</div></div>' +
         '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>';
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
+      var zIn = wrap.querySelector('#map-zoom-in');
+      var zOut = wrap.querySelector('#map-zoom-out');
+      if (zIn) zIn.onclick = function() { map.zoomIn(); };
+      if (zOut) zOut.onclick = function() { map.zoomOut(); };
       return wrap;
     };
     searchControl.addTo(map);
