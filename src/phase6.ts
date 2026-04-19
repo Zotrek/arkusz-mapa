@@ -261,7 +261,7 @@ ${wordModal}  <script>
 
     function pinIcon(kolor, highlight) {
       var shadow = highlight
-        ? '0 0 0 3px #ffc107, 0 1px 4px rgba(0,0,0,0.45)'
+        ? '0 0 0 3px #ea3aed, 0 1px 4px rgba(0,0,0,0.45)'
         : '0 1px 4px rgba(0,0,0,0.4)';
       return L.divIcon({
         className: 'pin-woj',
