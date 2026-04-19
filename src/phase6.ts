@@ -92,6 +92,46 @@ const LEGEND_QUALITY: Record<MapPoint['confidence'], { label: string; color: str
   uncertain: { label: 'Wynik niepewny', color: '#D40418' },
 };
 
+/**
+ * Normalizacja tekstu do porównań w wyszukiwarce mapy (małe litery, polskie znaki → ASCII, pozostałe diakrytyki przez NFD).
+ * Wygenerowany skrypt HTML musi stosować tę samą logikę co {@link normalizeForAddressSearchMap} w szablonie.
+ */
+export function normalizeForAddressSearch(text: string): string {
+  let s = text.normalize('NFD').replace(/\p{M}/gu, '');
+  s = s
+    .replace(/ł/g, 'l')
+    .replace(/Ł/g, 'l')
+    .replace(/ą/g, 'a')
+    .replace(/Ą/g, 'a')
+    .replace(/ć/g, 'c')
+    .replace(/Ć/g, 'c')
+    .replace(/ę/g, 'e')
+    .replace(/Ę/g, 'e')
+    .replace(/ń/g, 'n')
+    .replace(/Ń/g, 'n')
+    .replace(/ó/g, 'o')
+    .replace(/Ó/g, 'o')
+    .replace(/ś/g, 's')
+    .replace(/Ś/g, 's')
+    .replace(/ź/g, 'z')
+    .replace(/Ź/g, 'z')
+    .replace(/ż/g, 'z')
+    .replace(/Ż/g, 'z');
+  return s
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Czy fragment zapytania występuje w adresie (po {@link normalizeForAddressSearch}). Pusty query = dopasuj wszystko. */
+export function addressMatchesSearch(adres: string, query: string): boolean {
+  const q = normalizeForAddressSearch(query);
+  if (!q) {
+    return true;
+  }
+  return normalizeForAddressSearch(adres).includes(q);
+}
+
 /** Palety: ciemny (10–14), średni (4–9), jasny (1–3). Dla 15+ używany COLOR_15_PLUS (pomarańczowy). */
 const PALETTE_OK = ['#97F0C7', '#5CC494', '#198754'] as const; // jasny, średni, ciemny
 const PALETTE_UNCERTAIN = ['#D1A5A9', '#CC606A', '#D40418'] as const;
@@ -186,6 +226,10 @@ ${wordHeadScripts}  <style>
     .map-legend .legend-swatch { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.2); flex-shrink: 0; }
     .map-legend .legend-section { margin-bottom: 10px; }
     .map-legend .legend-section:last-child { margin-bottom: 0; }
+    .map-search-panel { background: #fff; padding: 10px 12px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.35); min-width: 220px; max-width: min(420px, calc(100vw - 48px)); }
+    .map-search-label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
+    .map-search-input { width: 100%; padding: 8px 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    .map-search-status { margin-top: 6px; font-size: 11px; color: #555; min-height: 1.2em; }
 ${docStyles}  </style>
 </head>
 <body>
@@ -215,14 +259,48 @@ ${wordModal}  <script>
       map.addLayer(layerTileServerS);
     });
 
-    function pinIcon(kolor) {
+    function pinIcon(kolor, highlight) {
+      var shadow = highlight
+        ? '0 0 0 3px #ffc107, 0 1px 4px rgba(0,0,0,0.45)'
+        : '0 1px 4px rgba(0,0,0,0.4)';
       return L.divIcon({
         className: 'pin-woj',
-        html: '<span style="display:block;width:24px;height:24px;border-radius:50%;background:' + kolor + ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></span>',
+        html: '<span style="display:block;width:24px;height:24px;border-radius:50%;background:' + kolor + ';border:2px solid #fff;box-shadow:' + shadow + '"></span>',
         iconSize: [24, 24],
         iconAnchor: [12, 12],
         popupAnchor: [0, -12]
       });
+    }
+    function normalizeForAddressSearchMap(text) {
+      var s = String(text).normalize('NFD').replace(/\\p{M}/gu, '');
+      s = s
+        .replace(/ł/g, 'l')
+        .replace(/Ł/g, 'l')
+        .replace(/ą/g, 'a')
+        .replace(/Ą/g, 'a')
+        .replace(/ć/g, 'c')
+        .replace(/Ć/g, 'c')
+        .replace(/ę/g, 'e')
+        .replace(/Ę/g, 'e')
+        .replace(/ń/g, 'n')
+        .replace(/Ń/g, 'n')
+        .replace(/ó/g, 'o')
+        .replace(/Ó/g, 'o')
+        .replace(/ś/g, 's')
+        .replace(/Ś/g, 's')
+        .replace(/ź/g, 'z')
+        .replace(/Ź/g, 'z')
+        .replace(/ż/g, 'z')
+        .replace(/Ż/g, 'z');
+      return s
+        .toLowerCase()
+        .replace(/\\s+/g, ' ')
+        .trim();
+    }
+    function addressMatchesSearchMap(adres, query) {
+      var q = normalizeForAddressSearchMap(query);
+      if (!q) return true;
+      return normalizeForAddressSearchMap(adres).indexOf(q) !== -1;
     }
 
     function hexToRgb(hex) {
@@ -422,6 +500,7 @@ ${wordModal}  <script>
         console.warn('Nie załadowano granic województw.');
       });
 
+    var markerEntries = [];
     adresy.forEach(function(p, pointIdx) {
       var kolor = kolorPinezki(p.confidence, p.count);
       const confidenceLabel =
@@ -445,9 +524,10 @@ ${wordModal}  <script>
         '<div class="popup-woj">' + p.woj + '</div>' +
         confidenceLabel +
         genDocBtn;
-      var marker = L.marker([p.lat, p.lng], { icon: pinIcon(kolor) })
+      var marker = L.marker([p.lat, p.lng], { icon: pinIcon(kolor, false) })
         .addTo(map)
         .bindPopup(popupContent);
+      markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
       if (wordDocEnabled) {
         marker.on('popupopen', function() {
           var el = marker.getPopup().getElement();
@@ -465,6 +545,49 @@ ${wordModal}  <script>
     if (adresy.length > 0) {
       map.fitBounds(adresy.map(function(p) { return [p.lat, p.lng]; }), { padding: [40, 40] });
     }
+
+    var searchControl = L.control({ position: 'topleft' });
+    searchControl.onAdd = function() {
+      var wrap = L.DomUtil.create('div', 'map-search-panel');
+      wrap.innerHTML =
+        '<label class="map-search-label" for="map-address-search">Szukaj adresu</label>' +
+        '<input type="search" id="map-address-search" class="map-search-input" placeholder="Fragment ulicy, miejscowości…" autocomplete="off" spellcheck="false" />' +
+        '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>';
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.disableScrollPropagation(wrap);
+      return wrap;
+    };
+    searchControl.addTo(map);
+
+    function applyAddressSearch() {
+      var inputEl = document.getElementById('map-address-search');
+      var statusEl = document.getElementById('map-search-status');
+      var raw = inputEl ? inputEl.value : '';
+      var hasFilter = String(raw).trim().length > 0;
+      var matchCount = 0;
+      markerEntries.forEach(function(entry) {
+        var match = addressMatchesSearchMap(entry.p.adres, raw);
+        if (hasFilter && match) matchCount++;
+        entry.marker.setOpacity(hasFilter && !match ? 0.3 : 1);
+        entry.marker.setZIndexOffset(hasFilter && match ? 800 : 0);
+        entry.marker.setIcon(pinIcon(entry.kolor, hasFilter && match));
+      });
+      if (statusEl) {
+        if (!hasFilter) {
+          statusEl.textContent = '';
+        } else if (matchCount === 0) {
+          statusEl.textContent = 'Brak dopasowań';
+        } else {
+          statusEl.textContent = 'Znaleziono: ' + matchCount;
+        }
+      }
+    }
+    var searchInputEl = document.getElementById('map-address-search');
+    if (searchInputEl) {
+      searchInputEl.addEventListener('input', applyAddressSearch);
+      searchInputEl.addEventListener('search', applyAddressSearch);
+    }
+    applyAddressSearch();
 
     var legend = L.control({ position: 'bottomright' });
     legend.onAdd = function() {

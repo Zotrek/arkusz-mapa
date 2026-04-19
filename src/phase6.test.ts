@@ -15,6 +15,8 @@ import {
   buildMapFileName,
   buildMapHtml,
   executePhase6,
+  normalizeForAddressSearch,
+  addressMatchesSearch,
 } from './phase6';
 
 function sampleGeocoded(): GeocodedAddress[] {
@@ -52,6 +54,27 @@ function sampleUncertainGeocoded(): GeocodedAddress[] {
 }
 
 describe('phase6', () => {
+  describe('address search helpers', () => {
+    it('test_normalizeForAddressSearch_when_diacritics_should_fold_and_lower', () => {
+      expect(normalizeForAddressSearch('Łódź')).toBe('lodz');
+      expect(normalizeForAddressSearch('  WaWa  ')).toBe('wawa');
+    });
+
+    it('test_addressMatchesSearch_when_partial_city_should_match', () => {
+      expect(addressMatchesSearch('62-320 Miłosław os. Władysława Łokietka 18', 'miloslaw')).toBe(true);
+      expect(addressMatchesSearch('62-320 Miłosław os. Władysława Łokietka 18', 'lokietka')).toBe(true);
+    });
+
+    it('test_addressMatchesSearch_when_empty_query_should_match_all', () => {
+      expect(addressMatchesSearch('ul. Test 1', '   ')).toBe(true);
+      expect(addressMatchesSearch('ul. Test 1', '')).toBe(true);
+    });
+
+    it('test_addressMatchesSearch_when_no_substring_should_be_false', () => {
+      expect(addressMatchesSearch('62-320 Miłosław', 'Warszawa')).toBe(false);
+    });
+  });
+
   describe('filename helpers', () => {
     it('test_formatTimestampForFileName_when_winter_utc_should_use_europe_warsaw_cet', () => {
       const date = new Date('2026-02-25T17:05:06Z');
@@ -77,6 +100,9 @@ describe('phase6', () => {
       expect(html).toContain('https://example.com/woj.json');
       expect(html).toContain('const adresy =');
       expect(html).toContain('Liczba wystąpień');
+      expect(html).toContain('map-address-search');
+      expect(html).toContain('applyAddressSearch');
+      expect(html).toContain('addressMatchesSearchMap');
     });
 
     it('test_buildMapHtml_when_geocoded_data_given_should_embed_addresses_and_counts', () => {
