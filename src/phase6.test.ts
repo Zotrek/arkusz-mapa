@@ -103,6 +103,8 @@ describe('phase6', () => {
       expect(html).toContain('map-address-search');
       expect(html).toContain('applyAddressSearch');
       expect(html).toContain('addressMatchesSearchMap');
+      expect(html).toContain('wojBoundsByKey');
+      expect(html).toContain('scheduleSearchViewport');
     });
 
     it('test_buildMapHtml_when_geocoded_data_given_should_embed_addresses_and_counts', () => {

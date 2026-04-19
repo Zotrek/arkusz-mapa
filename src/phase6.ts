@@ -489,10 +489,18 @@ ${wordModal}  <script>
       };
     }
 
+    var wojBoundsByKey = {};
     fetch(${JSON.stringify(geoJsonUrl)})
       .then(function(res) { return res.json(); })
       .then(function(geojson) {
         L.geoJSON(geojson, {
+          onEachFeature: function(feature, layer) {
+            var p = feature.properties;
+            var n = p && p.name;
+            if (typeof n !== 'string' || !n.trim()) return;
+            var k = normalizeForAddressSearchMap(n);
+            if (k) wojBoundsByKey[k] = layer.getBounds();
+          },
           style: { color: '#c00', weight: 3, fill: false }
         }).addTo(map);
       })
@@ -542,8 +550,10 @@ ${wordModal}  <script>
       }
     });
 
+    var allPointsBounds = null;
     if (adresy.length > 0) {
-      map.fitBounds(adresy.map(function(p) { return [p.lat, p.lng]; }), { padding: [40, 40] });
+      allPointsBounds = L.latLngBounds(adresy.map(function(p) { return [p.lat, p.lng]; }));
+      map.fitBounds(allPointsBounds, { padding: [40, 40] });
     }
 
     var searchControl = L.control({ position: 'topleft' });
@@ -558,6 +568,53 @@ ${wordModal}  <script>
       return wrap;
     };
     searchControl.addTo(map);
+
+    var searchViewTimer = null;
+    var skipInitialSearchViewport = true;
+    function scheduleSearchViewport(hasFilter, raw, matchCount) {
+      clearTimeout(searchViewTimer);
+      if (skipInitialSearchViewport && !hasFilter) {
+        return;
+      }
+      if (!hasFilter) {
+        if (allPointsBounds && allPointsBounds.isValid()) {
+          map.fitBounds(allPointsBounds, { padding: [40, 40] });
+        }
+        return;
+      }
+      if (matchCount === 0) {
+        return;
+      }
+      searchViewTimer = setTimeout(function() {
+        var inputEl = document.getElementById('map-address-search');
+        var r = inputEl ? inputEl.value : '';
+        if (String(r).trim().length === 0) return;
+        var matched = markerEntries.filter(function(e) {
+          return addressMatchesSearchMap(e.p.adres, r);
+        });
+        if (matched.length === 0) return;
+        var woje = {};
+        matched.forEach(function(e) {
+          var w = String(e.p.woj || '').trim();
+          if (w.length > 0) {
+            woje[normalizeForAddressSearchMap(w)] = true;
+          }
+        });
+        var wojKeys = Object.keys(woje);
+        var pad = [52, 52];
+        if (wojKeys.length === 1) {
+          var polyBounds = wojBoundsByKey[wojKeys[0]];
+          if (polyBounds && polyBounds.isValid && polyBounds.isValid()) {
+            map.fitBounds(polyBounds, { padding: pad });
+            return;
+          }
+        }
+        var pointBounds = L.latLngBounds(matched.map(function(e) { return [e.p.lat, e.p.lng]; }));
+        if (pointBounds.isValid()) {
+          map.fitBounds(pointBounds, { padding: pad, maxZoom: 18 });
+        }
+      }, 300);
+    }
 
     function applyAddressSearch() {
       var inputEl = document.getElementById('map-address-search');
@@ -581,6 +638,8 @@ ${wordModal}  <script>
           statusEl.textContent = 'Znaleziono: ' + matchCount;
         }
       }
+      scheduleSearchViewport(hasFilter, raw, matchCount);
+      skipInitialSearchViewport = false;
     }
     var searchInputEl = document.getElementById('map-address-search');
     if (searchInputEl) {
