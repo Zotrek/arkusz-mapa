@@ -174,6 +174,10 @@ export function buildMapHtml(
       <select id="doc-sel-przewoznik"></select>
       <label for="doc-sel-miejsce">Miejsce dostawy</label>
       <select id="doc-sel-miejsce"></select>
+      <label for="doc-inp-data-zaladunku">Data załadunku</label>
+      <input type="date" id="doc-inp-data-zaladunku" />
+      <label for="doc-inp-numer-zlecenia">Numer dokumentu (zlecenie transportowe)</label>
+      <input type="text" id="doc-inp-numer-zlecenia" maxlength="120" placeholder="np. 1460/2026" autocomplete="off" spellcheck="false" />
       <div class="doc-modal-actions">
         <button type="button" id="doc-btn-cancel">Anuluj</button>
         <button type="button" id="doc-btn-ok">Pobierz .docx</button>
@@ -191,7 +195,7 @@ export function buildMapHtml(
     .doc-modal-panel { background: #fff; padding: 20px 22px; border-radius: 10px; max-width: 420px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
     .doc-modal-panel h3 { margin: 0 0 14px 0; font-size: 16px; }
     .doc-modal-panel label { display: block; font-size: 13px; margin: 10px 0 4px; color: #333; }
-    .doc-modal-panel select { width: 100%; padding: 8px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
+    .doc-modal-panel select, .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"] { width: 100%; padding: 8px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
     .doc-modal-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .doc-modal-actions button { padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; border: 1px solid #ccc; background: #f8f9fa; }
     #doc-btn-ok { background: #198754; border-color: #198754; color: #fff; }
@@ -381,6 +385,14 @@ ${wordModal}  <script>
         sel.appendChild(o);
       });
     }
+    function defaultDateZaladunkuYmd() {
+      var d = new Date();
+      d.setDate(d.getDate() + 1);
+      var y = d.getFullYear();
+      var mo = String(d.getMonth() + 1).padStart(2, '0');
+      var day = String(d.getDate()).padStart(2, '0');
+      return y + '-' + mo + '-' + day;
+    }
     function openDocModal(pointIdx) {
       if (!wordDocEnabled) return;
       window.__currentDocPointIdx = pointIdx;
@@ -389,6 +401,10 @@ ${wordModal}  <script>
       var sm = document.getElementById('doc-sel-miejsce');
       fillSelect(sp, PODWYKOLISTA);
       fillSelect(sm, PODWYKOLISTA);
+      var dateEl = document.getElementById('doc-inp-data-zaladunku');
+      if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
+      var numEl = document.getElementById('doc-inp-numer-zlecenia');
+      if (numEl) numEl.value = '';
       m.style.display = 'flex';
       m.setAttribute('aria-hidden', 'false');
     }
@@ -457,14 +473,29 @@ ${wordModal}  <script>
           linebreaks: true,
           delimiters: { start: '{{', end: '}}' },
         });
-        var tmr = new Date();
-        tmr.setDate(tmr.getDate() + 1);
-        var dd = String(tmr.getDate()).padStart(2, '0');
-        var mm = String(tmr.getMonth() + 1).padStart(2, '0');
-        var yyyy = String(tmr.getFullYear());
+        var dateEl = document.getElementById('doc-inp-data-zaladunku');
+        var ymd = dateEl ? String(dateEl.value).trim() : '';
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(ymd)) {
+          alert('Wybierz datę załadunku (kalendarz).');
+          return;
+        }
+        var pe = ymd.split('-');
+        var y = parseInt(pe[0], 10);
+        var mo = parseInt(pe[1], 10) - 1;
+        var d = parseInt(pe[2], 10);
+        var chk = new Date(y, mo, d);
+        if (chk.getFullYear() !== y || chk.getMonth() !== mo || chk.getDate() !== d) {
+          alert('Nieprawidłowa data załadunku.');
+          return;
+        }
+        var dd = String(d).padStart(2, '0');
+        var mm = String(mo + 1).padStart(2, '0');
+        var yyyy = String(y);
         var rr = yyyy.slice(-2);
         var dz = dd + '.' + mm + '.' + yyyy;
         var dzPlik = dd + '.' + mm + '.' + rr;
+        var numEl = document.getElementById('doc-inp-numer-zlecenia');
+        var numerZlecenia = numEl ? String(numEl.value).trim() : '';
         doc.render({
           miejsce_zaladunku: p.doc.miejsce_zaladunku,
           lista_plomb: p.doc.lista_plomb,
@@ -472,6 +503,7 @@ ${wordModal}  <script>
           przewoznik: pr,
           miejsce_dostawy: md,
           data_zaladunku: dz,
+          numer_zlecenia_transportowego: numerZlecenia,
           rodzaj_zbiorki: p.rodzaj_zbiorki ? (' ' + p.rodzaj_zbiorki) : ''
         });
         var out = doc.getZip().generate({
@@ -483,7 +515,7 @@ ${wordModal}  <script>
         closeDocModal();
       } catch (err) {
         console.error(err);
-        alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, …) i spróbuj ponownie.');
+        alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.');
       }
     }
 

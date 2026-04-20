@@ -189,6 +189,10 @@ describe('phase6', () => {
       expect(html).toContain('pełne dane');
       expect(html).toContain('buildDocxDownloadName');
       expect(html).toContain('dzPlik');
+      expect(html).toContain('id="doc-inp-data-zaladunku"');
+      expect(html).toContain('id="doc-inp-numer-zlecenia"');
+      expect(html).toContain('numer_zlecenia_transportowego');
+      expect(html).toContain('defaultDateZaladunkuYmd');
     });
   });
 

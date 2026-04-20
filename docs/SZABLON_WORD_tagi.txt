@@ -16,7 +16,10 @@ fragmenty tekstu (podwójne nawiasy klamrowe):
 
   {{miejsce_dostawy}}   — jak przewoźnik: kolumna B dla wybranej nazwy
 
-  {{data_zaladunku}}    — jutro względem dnia generowania, format dd.mm.rrrr
+  {{data_zaladunku}}    — data załadunku z mapy (pole daty w oknie), format dd.mm.rrrr
+
+  {{numer_zlecenia_transportowego}} — numer z pola „Numer dokumentu” w oknie generowania;
+                        w szablonie np. w jednej linii: Zlecenie transportowe nr: {{numer_zlecenia_transportowego}}
 
   {{@lista_plomb_xml}}  — lista plomb (ZALECANE): w osobnym akapicie TYLKO ten znacznik
                         (docxtemplater zastępuje cały akapit). Wiersze: lp., tabulator, data L (mm-dd),
