@@ -202,49 +202,118 @@ export interface PodwykoOption {
   dane: string;
 }
 
+/** Wiersz przed nadaniem unikalnej etykiety w select (powtórzenia nazwy → „Nazwa (2)”, …). */
+interface PodwykoRawRow {
+  baseLabel: string;
+  dane: string;
+}
+
+const SHORT_LABEL_MAX = 100;
+
 /**
- * Pierwszy arkusz ODS/XLSX: kolumna A = nazwa (lista rozwijana), kolumna B = dane (w pliku .docx).
- * Gdy brak kolumny B, do dokumentu trafia ta sama treść co nazwa.
+ * Gdy wiersz ma wypełnione tylko „Dane” (B), krótka etykieta do listy rozwijanej.
  */
-export function extractPodwykoOptionsFromMatrix(rows: string[][]): PodwykoOption[] {
+function shortLabelFromDane(dane: string): string {
+  const oneLine = dane.replace(/\s+/g, ' ').trim();
+  if (oneLine.length <= SHORT_LABEL_MAX) {
+    return oneLine;
+  }
+  return `${oneLine.slice(0, SHORT_LABEL_MAX - 1).trimEnd()}…`;
+}
+
+function detectHeaderRowIndex(rows: string[][]): number {
+  if (rows.length === 0) {
+    return 0;
+  }
+  const firstCell = rowCell(rows[0] as unknown[], 0);
+  if (firstCell && HEADER_HINT.test(firstCell)) {
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Zbiera niepuste wiersze z jednej macierzy arkusza (A/B). Bez numeracji duplikatów nazw —
+ * użyj {@link finalizePodwykoOptions}.
+ */
+export function collectPodwykoRawRowsFromMatrix(rows: string[][]): PodwykoRawRow[] {
   if (rows.length === 0) {
     return [];
   }
-  let start = 0;
-  const firstCell = rowCell(rows[0] as unknown[], 0);
-  if (firstCell && HEADER_HINT.test(firstCell)) {
-    start = 1;
-  }
-  const seen = new Set<string>();
-  const out: PodwykoOption[] = [];
+  const start = detectHeaderRowIndex(rows);
+  const seenExactRow = new Set<string>();
+  const raw: PodwykoRawRow[] = [];
   for (let i = start; i < rows.length; i += 1) {
     const row = rows[i] as unknown[];
-    const label = rowCell(row, 0);
-    if (label.length === 0 || seen.has(label)) {
+    const colA = rowCell(row, 0);
+    const colB = rowCell(row, 1);
+    if (colA.length === 0 && colB.length === 0) {
       continue;
     }
-    seen.add(label);
-    const daneCell = rowCell(row, 1);
-    const dane = daneCell.length > 0 ? daneCell : label;
-    out.push({ label, dane });
+    const rowKey = `${colA}\0${colB}`;
+    if (seenExactRow.has(rowKey)) {
+      continue;
+    }
+    seenExactRow.add(rowKey);
+    const dane = colB.length > 0 ? colB : colA;
+    const baseLabel = colA.length > 0 ? colA : shortLabelFromDane(colB);
+    if (baseLabel.length === 0) {
+      continue;
+    }
+    raw.push({ baseLabel, dane });
+  }
+  return raw;
+}
+
+/**
+ * Nadaje etykiety w UI: ta sama nazwa w kolumnie A w wielu wierszach → drugi wpis „Nazwa (2)” itd.
+ */
+export function finalizePodwykoOptions(raw: PodwykoRawRow[]): PodwykoOption[] {
+  const occ = new Map<string, number>();
+  const out: PodwykoOption[] = [];
+  for (const r of raw) {
+    const n = (occ.get(r.baseLabel) ?? 0) + 1;
+    occ.set(r.baseLabel, n);
+    const label = n === 1 ? r.baseLabel : `${r.baseLabel} (${n})`;
+    out.push({ label, dane: r.dane });
   }
   return out;
+}
+
+/**
+ * Każdy arkusz ODS/XLSX: kolumna A = nazwa (lista rozwijana), kolumna B = dane (w pliku .docx).
+ * Gdy brak kolumny B, do dokumentu trafia ta sama treść co nazwa.
+ * Pusty A + wypełnione B → wybór po skróconej treści B. Powtórzenia tej samej nazwy w A → osobne pozycje w liście.
+ */
+export function extractPodwykoOptionsFromMatrix(rows: string[][]): PodwykoOption[] {
+  return finalizePodwykoOptions(collectPodwykoRawRowsFromMatrix(rows));
 }
 
 export async function loadPodwykoOptionsFromSpreadsheet(filePath: string): Promise<PodwykoOption[]> {
   const buf = await readFile(filePath);
   const workbook = XLSX.read(buf, { type: 'buffer' });
-  const name = workbook.SheetNames[0];
-  if (!name) {
-    return [];
+  const merged: PodwykoRawRow[] = [];
+  const seenAcrossSheets = new Set<string>();
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) {
+      continue;
+    }
+    const matrix = XLSX.utils.sheet_to_json<string[]>(sheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+    }) as string[][];
+    for (const r of collectPodwykoRawRowsFromMatrix(matrix)) {
+      const k = `${r.baseLabel}\0${r.dane}`;
+      if (seenAcrossSheets.has(k)) {
+        continue;
+      }
+      seenAcrossSheets.add(k);
+      merged.push(r);
+    }
   }
-  const sheet = workbook.Sheets[name];
-  const matrix = XLSX.utils.sheet_to_json<string[]>(sheet, {
-    header: 1,
-    defval: '',
-    raw: false,
-  }) as string[][];
-  return extractPodwykoOptionsFromMatrix(matrix);
+  return finalizePodwykoOptions(merged);
 }
 
 export async function readFileAsBase64(filePath: string): Promise<string> {

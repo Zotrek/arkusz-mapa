@@ -104,17 +104,44 @@ describe('wordMapSupport', () => {
     expect(formatRodzajZbiorkiForDoc('Ręczna / Maszyna')).toBe('ręczna i automatyczna');
   });
 
-  it('test_extractPodwykoOptionsFromMatrix_should_skip_header_dedupe_and_map_dane', () => {
+  it('test_extractPodwykoOptionsFromMatrix_should_skip_header_map_dane_and_number_duplicate_labels', () => {
     const opts = extractPodwykoOptionsFromMatrix([
       ['Nazwa', 'Dane'],
       ['Janex', 'Janex Sp. z o.o., ul. Test 1'],
       ['Trans', 'TRANS-POL NIP 123'],
-      ['Trans', 'ignored duplicate'],
+      ['Trans', 'TRANS inny oddział NIP 999'],
     ]);
     expect(opts).toEqual([
       { label: 'Janex', dane: 'Janex Sp. z o.o., ul. Test 1' },
       { label: 'Trans', dane: 'TRANS-POL NIP 123' },
+      { label: 'Trans (2)', dane: 'TRANS inny oddział NIP 999' },
     ]);
+  });
+
+  it('test_extractPodwykoOptionsFromMatrix_should_skip_identical_row_twice', () => {
+    const opts = extractPodwykoOptionsFromMatrix([
+      ['Nazwa', 'Dane'],
+      ['X', 'Dane X'],
+      ['X', 'Dane X'],
+    ]);
+    expect(opts).toEqual([{ label: 'X', dane: 'Dane X' }]);
+  });
+
+  it('test_extractPodwykoOptionsFromMatrix_when_only_column_B_should_use_shortened_dane_as_label', () => {
+    const opts = extractPodwykoOptionsFromMatrix([
+      ['Nazwa', 'Dane'],
+      ['', 'Firma ABC Sp. z o.o. ul. Test 1'],
+    ]);
+    expect(opts).toEqual([{ label: 'Firma ABC Sp. z o.o. ul. Test 1', dane: 'Firma ABC Sp. z o.o. ul. Test 1' }]);
+  });
+
+  it('test_extractPodwykoOptionsFromMatrix_when_only_B_very_long_should_truncate_label_with_ellipsis', () => {
+    const long = `${'x'.repeat(120)}end`;
+    const opts = extractPodwykoOptionsFromMatrix([['Nazwa', 'Dane'], ['', long]]);
+    expect(opts).toHaveLength(1);
+    expect(opts[0].dane).toBe(long);
+    expect(opts[0].label.length).toBeLessThanOrEqual(100);
+    expect(opts[0].label.endsWith('…')).toBe(true);
   });
 
   it('test_extractPodwykoOptionsFromMatrix_when_brak_kolumny_B_should_use_label_as_dane', () => {
