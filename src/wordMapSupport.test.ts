@@ -16,8 +16,10 @@ import {
   normalizeOdpadKaucjonowyDescriptionRuns,
   stripTrailingSpaceBeforeCloseWtAfterRodzajColonLabels,
   forceFontSizeHalfPointsOnAllWordRuns,
+  normalizeUwagiBrakKpoNoticeParagraph,
   DOCX_BODY_FONT_SIZE_PT,
   DOCX_LISTA_PLOMB_FONT_SIZE_PT,
+  DOCX_UWAGI_NOTICE_FONT_SIZE_PT,
 } from './wordMapSupport.js';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
@@ -199,6 +201,22 @@ describe('wordMapSupport', () => {
       false,
     );
     expect(shouldMergeAdjacentWtRuns('o kodzie', ' 15 01 06 ')).toBe(false);
+  });
+
+  it('test_normalizeUwagiBrakKpoNoticeParagraph_after_body_font_should_force_9pt_non_bold', () => {
+    const xml =
+      '<w:p><w:pPr><w:pStyle w:val="Normal"/><w:rPr><w:b/><w:bCs/></w:rPr></w:pPr>' +
+      '<w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t>Uwagi:</w:t></w:r>' +
+      '<w:r><w:rPr></w:rPr><w:t xml:space="preserve"> Brak KPO. Odpad</w:t></w:r></w:p>';
+    const half10 = DOCX_BODY_FONT_SIZE_PT * 2;
+    let out = forceFontSizeHalfPointsOnAllWordRuns(xml, half10);
+    expect(out).toContain(`<w:sz w:val="${half10}"/>`);
+    out = normalizeUwagiBrakKpoNoticeParagraph(out);
+    expect(out).toContain(`<w:sz w:val="${DOCX_UWAGI_NOTICE_FONT_SIZE_PT * 2}"/>`);
+    expect(out).toContain('<w:b w:val="0"/>');
+    expect(out).toContain('<w:bCs w:val="0"/>');
+    expect(out).toMatch(/<w:pPr>[\s\S]*<w:rPr>\s*<\/w:rPr>/);
+    expect(out).not.toContain('<w:pPr><w:pStyle w:val="Normal"/><w:rPr><w:b/></w:rPr></w:pPr>');
   });
 
   it('test_forceFontSizeHalfPointsOnAllWordRuns_should_set_sz_and_add_rPr_on_bare_runs', () => {

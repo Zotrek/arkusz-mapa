@@ -14,6 +14,8 @@ const HEADER_HINT = /^(przew|miejsce|nazwa|podwykon|lista|lp\.?|nr\.?|#)/iu;
 export const DOCX_BODY_FONT_SIZE_PT = 10;
 /** Wiersz listy plomb (lp. + tab + data mm-dd + tab + numer) wstawiany przez {{@lista_plomb_xml}} (pt). */
 export const DOCX_LISTA_PLOMB_FONT_SIZE_PT = 14;
+/** Akapit „Uwagi: … Brak KPO …” w szablonie Word — poniżej rozmiar niż {@link DOCX_BODY_FONT_SIZE_PT}. */
+export const DOCX_UWAGI_NOTICE_FONT_SIZE_PT = 9;
 
 /**
  * Miejsce załadunku: podmiot handlowy (kolumna A) + adres w jednej linii (bez sklepu, bez dopisków).
@@ -503,6 +505,58 @@ export function normalizeOdpadKaucjonowyDescriptionRuns(xml: string): string {
     .join('');
 }
 
+const UWAGI_BRAK_KPO_SNIPPET = 'Brak KPO';
+
+/**
+ * Akapit z „Uwagi:” i tekstem o braku KPO — bez pogrubienia (także domyślnego z `w:pPr`), czcionka 9 pt.
+ * Wywoływane po {@link forceFontSizeHalfPointsOnAllWordRuns}, żeby nadpisać 10 pt treści głównej.
+ */
+export function normalizeUwagiBrakKpoNoticeParagraph(xml: string): string {
+  if (!xml.includes(UWAGI_BRAK_KPO_SNIPPET) || !xml.includes('Uwagi:')) {
+    return xml;
+  }
+  const hp = String(DOCX_UWAGI_NOTICE_FONT_SIZE_PT * 2);
+  const rprUwagi =
+    `<w:rPr><w:b w:val="0"/><w:bCs w:val="0"/><w:i w:val="0"/><w:iCs w:val="0"/><w:smallCaps w:val="0"/><w:caps w:val="0"/><w:sz w:val="${hp}"/><w:szCs w:val="${hp}"/></w:rPr>`;
+  const parts = xml.split(/(?=<w:p\b)/);
+  return parts
+    .map((part) => {
+      if (!part.startsWith('<w:p') || !part.includes(UWAGI_BRAK_KPO_SNIPPET) || !part.includes('Uwagi:')) {
+        return part;
+      }
+      let p = part;
+      p = p.replace(/<w:pPr>([\s\S]*?)<\/w:pPr>/, (full, inner) => {
+        const cleaned = String(inner).replace(/<w:rPr>[\s\S]*?<\/w:rPr>/, (rprBlock) => {
+          if (
+            !/<w:b\b/.test(rprBlock) &&
+            !/<w:bCs\b/.test(rprBlock) &&
+            !/<w:i\b/.test(rprBlock) &&
+            !/<w:iCs\b/.test(rprBlock)
+          ) {
+            return rprBlock;
+          }
+          return '<w:rPr></w:rPr>';
+        });
+        return `<w:pPr>${cleaned}</w:pPr>`;
+      });
+      const closePPr = '</w:pPr>';
+      const i = p.indexOf(closePPr);
+      if (i === -1) {
+        return p;
+      }
+      const head = p.slice(0, i + closePPr.length);
+      let tail = p.slice(i + closePPr.length);
+      tail = tail.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/g, rprUwagi);
+      tail = tail.replace(
+        /<w:r(\s[^>]*)?>(\s*)(?!<w:rPr\b)(?=<w:(?:t|br|drawing|tab|fldChar|instrText|delText|pict|noBreakHyphen)\b)/gi,
+        (_m, g1: string | undefined, g2: string) => `<w:r${g1 ?? ''}>${g2}${rprUwagi}`,
+      );
+      p = head + tail;
+      return p;
+    })
+    .join('');
+}
+
 /**
  * Ustawia rozmiar czcionki we wszystkich `w:rPr` oraz dodaje `w:rPr` runom go pozbawionym
  * (document / nagłówki / stopki / style — spójnie z preprocessorem szablonu).
@@ -535,6 +589,7 @@ function preprocessDocxPartXml(xml: string): string {
   text = stripTrailingSpaceBeforeCloseWtAfterRodzajColonLabels(text);
   text = normalizeOdpadKaucjonowyDescriptionRuns(text);
   text = forceFontSizeHalfPointsOnAllWordRuns(text, DOCX_BODY_FONT_SIZE_PT * 2);
+  text = normalizeUwagiBrakKpoNoticeParagraph(text);
   return text;
 }
 
