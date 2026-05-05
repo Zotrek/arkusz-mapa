@@ -81,11 +81,74 @@ export function formatDataZamknieciaWorkaAsMmDd(raw: string): string {
   return '';
 }
 
+/**
+ * Klucz sortowania listy plomb w Wordzie: pełna data z kolumny L (nowsze = większa wartość).
+ * Brak / nieparsowalna data → najniższy priorytet (na końcu przy sortowaniu malejącym).
+ */
+export function parseDataZamknieciaWorkaToSortMs(raw: string): number {
+  const s = raw.trim();
+  if (s.length === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\b|T)/);
+  if (iso) {
+    const y = Number.parseInt(iso[1], 10);
+    const month = Number.parseInt(iso[2], 10);
+    const day = Number.parseInt(iso[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return Date.UTC(y, month - 1, day);
+    }
+  }
+
+  const dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})\b/);
+  if (dmy) {
+    const day = Number.parseInt(dmy[1], 10);
+    const month = Number.parseInt(dmy[2], 10);
+    let y = Number.parseInt(dmy[3], 10);
+    if (y < 100) {
+      y = y >= 70 ? 1900 + y : 2000 + y;
+    }
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return Date.UTC(y, month - 1, day);
+    }
+  }
+
+  if (/^\d{5,6}$/.test(s)) {
+    const serial = Number.parseInt(s, 10);
+    if (serial >= 20000 && serial <= 80000) {
+      const ms = (serial - 25569) * 86400000;
+      const d = new Date(ms);
+      if (!Number.isNaN(d.getTime())) {
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      }
+    }
+  }
+
+  const parsed = Date.parse(s);
+  if (!Number.isNaN(parsed)) {
+    const d = new Date(parsed);
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  return Number.NEGATIVE_INFINITY;
+}
+
+/** Kolejność w dokumencie Word: najnowsza data zamknięcia worka na górze. */
+export function sortRowsForListaPlomb(rows: SheetRow[]): SheetRow[] {
+  return [...rows].sort((a, b) => {
+    const tb = parseDataZamknieciaWorkaToSortMs(b.dataZamknieciaWorka);
+    const ta = parseDataZamknieciaWorkaToSortMs(a.dataZamknieciaWorka);
+    return tb - ta;
+  });
+}
+
 /** Kolejne wiersze listy plomb (tekst jak w Wordzie / OCR), bez join `\n`. */
 export function buildListaPlombLines(rows: SheetRow[]): string[] {
+  const ordered = sortRowsForListaPlomb(rows);
   const lines: string[] = [];
   let i = 0;
-  for (const r of rows) {
+  for (const r of ordered) {
     const n = r.numerPlomby.trim();
     if (n.length === 0) {
       continue;
@@ -179,13 +242,14 @@ export interface MapPointDocPayload {
 }
 
 export function buildMapPointDocPayload(rows: SheetRow[]): MapPointDocPayload {
-  const plomby = rows
+  const ordered = sortRowsForListaPlomb(rows);
+  const plomby = ordered
     .map((r) => r.numerPlomby.trim())
     .filter((n) => n.length > 0);
   return {
     miejsce_zaladunku: buildMiejsceZaladunkuText(rows),
-    lista_plomb: buildListaPlombNumbered(rows),
-    lista_plomb_xml: buildListaPlombOoxml(rows),
+    lista_plomb: buildListaPlombNumbered(ordered),
+    lista_plomb_xml: buildListaPlombOoxml(ordered),
     plomby,
   };
 }

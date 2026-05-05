@@ -7,6 +7,7 @@ import {
   buildMiejsceZaladunkuText,
   escapeXmlForWordText,
   formatDataZamknieciaWorkaAsMmDd,
+  parseDataZamknieciaWorkaToSortMs,
   formatRodzajZbiorkiForDoc,
   extractPodwykoOptionsFromMatrix,
   mergeAdjacentXmlTextRuns,
@@ -63,12 +64,42 @@ describe('wordMapSupport', () => {
     expect(s).toBe('1.\t04-15\t7001\n2.\t01-07\t7002');
   });
 
+  it('test_buildListaPlombNumbered_when_dates_differ_should_order_newest_first', () => {
+    const s = buildListaPlombNumbered([
+      makeSheetRow({ numerPlomby: 'stara', dataZamknieciaWorka: '2026-01-10' }),
+      makeSheetRow({ numerPlomby: 'najnowsza', dataZamknieciaWorka: '2026-05-20' }),
+      makeSheetRow({ numerPlomby: 'srodkowa', dataZamknieciaWorka: '2026-03-01' }),
+    ]);
+    expect(s).toBe(
+      '1.\t05-20\tnajnowsza\n2.\t03-01\tsrodkowa\n3.\t01-10\tstara',
+    );
+  });
+
+  it('test_buildListaPlombNumbered_when_missing_date_should_put_after_dated_rows', () => {
+    const s = buildListaPlombNumbered([
+      makeSheetRow({ numerPlomby: 'bez_daty', dataZamknieciaWorka: '' }),
+      makeSheetRow({ numerPlomby: 'z_data', dataZamknieciaWorka: '2026-02-01' }),
+    ]);
+    expect(s).toBe('1.\t02-01\tz_data\n2.\tbez_daty');
+  });
+
   it('test_formatDataZamknieciaWorkaAsMmDd_when_iso_or_polish_or_serial_should_parse', () => {
     expect(formatDataZamknieciaWorkaAsMmDd('2026-04-15')).toBe('04-15');
     expect(formatDataZamknieciaWorkaAsMmDd('15.04.2026')).toBe('04-15');
     expect(formatDataZamknieciaWorkaAsMmDd('45761')).toBe('04-14');
     expect(formatDataZamknieciaWorkaAsMmDd('')).toBe('');
     expect(formatDataZamknieciaWorkaAsMmDd('   ')).toBe('');
+  });
+
+  it('test_parseDataZamknieciaWorkaToSortMs_when_empty_should_be_negative_infinity', () => {
+    expect(parseDataZamknieciaWorkaToSortMs('')).toBe(Number.NEGATIVE_INFINITY);
+  });
+
+  it('test_parseDataZamknieciaWorkaToSortMs_when_iso_should_match_calendar_day_utc', () => {
+    expect(parseDataZamknieciaWorkaToSortMs('2026-01-07')).toBe(Date.UTC(2026, 0, 7));
+    expect(parseDataZamknieciaWorkaToSortMs('2026-04-15')).toBeGreaterThan(
+      parseDataZamknieciaWorkaToSortMs('2026-01-07'),
+    );
   });
 
   it('test_buildMapPointDocPayload_should_match_miejsce_and_lista', () => {
@@ -79,6 +110,15 @@ describe('wordMapSupport', () => {
     expect(p.lista_plomb_xml).toContain('1.\tX');
     expect(p.miejsce_zaladunku).toBe('PH Sp. 62-320 Miłosław Leśna 1');
     expect(p.plomby).toEqual(['X']);
+  });
+
+  it('test_buildMapPointDocPayload_plomby_order_should_follow_date_sort_newest_first', () => {
+    const p = buildMapPointDocPayload([
+      makeSheetRow({ numerPlomby: 'A', dataZamknieciaWorka: '2026-01-01' }),
+      makeSheetRow({ numerPlomby: 'B', dataZamknieciaWorka: '2026-12-31' }),
+    ]);
+    expect(p.plomby).toEqual(['B', 'A']);
+    expect(p.lista_plomb).toBe('1.\t12-31\tB\n2.\t01-01\tA');
   });
 
   it('test_buildListaPlombOoxml_should_escape_xml_and_use_14pt_half_points', () => {
