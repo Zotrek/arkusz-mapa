@@ -7,6 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getOptionalWordMapAssetPaths } from './config.js';
 import type { GeocodedAddress } from './phase5.js';
+import type { SheetRow } from './sheets.js';
 import {
   buildMapPointDocPayload,
   formatRodzajZbiorkiForDoc,
@@ -64,26 +65,14 @@ type MapPoint = {
   lng: number;
   woj: string;
   confidence: 'ok' | 'ok_no_postcode' | 'uncertain' | 'city_only';
+  /** Unikalne etykiety z kolumn A (podmiot) i B (sklep) — wyszukiwarka mapy. */
+  searchLabels: string[];
   /** Zbiórka: Ręczna / Maszyna (z kolumny L) */
   zbiorka?: string;
   /** Do {{rodzaj_zbiorki}} w Word: ręczna | automatyczna | ręczna i automatyczna */
   rodzaj_zbiorki: string;
   doc: MapPointDocPayload;
 };
-
-function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): MapPoint {
-  return {
-    adres: item.address,
-    count: item.count,
-    lat: item.lat,
-    lng: item.lng,
-    woj: item.wojewodztwo || 'Nieznane',
-    confidence,
-    zbiorka: item.zbiorka,
-    rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
-    doc: buildMapPointDocPayload(item.rows),
-  };
-}
 
 const LEGEND_QUALITY: Record<MapPoint['confidence'], { label: string; color: string }> = {
   ok: { label: 'Adres OK', color: '#198754' },
@@ -94,7 +83,7 @@ const LEGEND_QUALITY: Record<MapPoint['confidence'], { label: string; color: str
 
 /**
  * Normalizacja tekstu do porównań w wyszukiwarce mapy (małe litery, polskie znaki → ASCII, pozostałe diakrytyki przez NFD).
- * Wygenerowany skrypt HTML musi stosować tę samą logikę co {@link normalizeForAddressSearchMap} w szablonie.
+ * Wygenerowany skrypt HTML musi stosować tę samą logikę co `normalizeForAddressSearchMap` w szablonie.
  */
 export function normalizeForAddressSearch(text: string): string {
   let s = text.normalize('NFD').replace(/\p{M}/gu, '');
@@ -130,6 +119,62 @@ export function addressMatchesSearch(adres: string, query: string): boolean {
     return true;
   }
   return normalizeForAddressSearch(adres).includes(q);
+}
+
+/**
+ * Wyszukiwarka mapy: dopasowanie do adresu punktu albo do kolumn A/B (podmiot, sklep).
+ * Pusty query = wszystkie punkty.
+ */
+export function mapPointMatchesSearch(adres: string, searchLabels: string[], query: string): boolean {
+  const q = normalizeForAddressSearch(query);
+  if (!q) {
+    return true;
+  }
+  if (normalizeForAddressSearch(adres).includes(q)) {
+    return true;
+  }
+  for (const label of searchLabels) {
+    if (normalizeForAddressSearch(label).includes(q)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Wartości A/B z wierszy punktu (deduplikacja po {@link normalizeForAddressSearch}). */
+function uniqueSearchLabelsFromRows(rows: SheetRow[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    for (const raw of [r.podmiotHandlowy, r.sklep]) {
+      const t = String(raw ?? '').trim();
+      if (t.length === 0) {
+        continue;
+      }
+      const key = normalizeForAddressSearch(t);
+      if (key.length === 0 || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): MapPoint {
+  return {
+    adres: item.address,
+    count: item.count,
+    lat: item.lat,
+    lng: item.lng,
+    woj: item.wojewodztwo || 'Nieznane',
+    confidence,
+    searchLabels: uniqueSearchLabelsFromRows(item.rows),
+    zbiorka: item.zbiorka,
+    rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
+    doc: buildMapPointDocPayload(item.rows),
+  };
 }
 
 /** Palety: ciemny (10–14), średni (4–9), jasny (1–3). Dla 15+ używany COLOR_15_PLUS (pomarańczowy). */
@@ -307,10 +352,15 @@ ${wordModal}  <script>
         .replace(/\\s+/g, ' ')
         .trim();
     }
-    function addressMatchesSearchMap(adres, query) {
+    function mapPointMatchesSearchMap(p, query) {
       var q = normalizeForAddressSearchMap(query);
       if (!q) return true;
-      return normalizeForAddressSearchMap(adres).indexOf(q) !== -1;
+      if (normalizeForAddressSearchMap(p.adres).indexOf(q) !== -1) return true;
+      var labels = p.searchLabels || [];
+      for (var i = 0; i < labels.length; i++) {
+        if (normalizeForAddressSearchMap(String(labels[i])).indexOf(q) !== -1) return true;
+      }
+      return false;
     }
 
     function hexToRgb(hex) {
@@ -598,9 +648,9 @@ ${wordModal}  <script>
     searchControl.onAdd = function() {
       var wrap = L.DomUtil.create('div', 'map-search-panel');
       wrap.innerHTML =
-        '<label class="map-search-label" for="map-address-search">Szukaj adresu</label>' +
+        '<label class="map-search-label" for="map-address-search">Szukaj na mapie</label>' +
         '<div class="map-search-input-row">' +
-        '<input type="search" id="map-address-search" class="map-search-input" placeholder="Fragment ulicy, miejscowości…" autocomplete="off" spellcheck="false" />' +
+        '<input type="search" id="map-address-search" class="map-search-input" placeholder="Adres, podmiot handlowy lub sklep…" autocomplete="off" spellcheck="false" aria-label="Szukaj: adres, podmiot lub sklep" />' +
         '<div class="map-zoom-inline" role="toolbar" aria-label="Powiększenie mapy">' +
         '<button type="button" id="map-zoom-out" title="Pomniejsz" aria-label="Pomniejsz">−</button>' +
         '<button type="button" id="map-zoom-in" title="Powiększ" aria-label="Powiększ">+</button>' +
@@ -637,7 +687,7 @@ ${wordModal}  <script>
         var r = inputEl ? inputEl.value : '';
         if (String(r).trim().length === 0) return;
         var matched = markerEntries.filter(function(e) {
-          return addressMatchesSearchMap(e.p.adres, r);
+          return mapPointMatchesSearchMap(e.p, r);
         });
         if (matched.length === 0) return;
         var woje = {};
@@ -670,7 +720,7 @@ ${wordModal}  <script>
       var hasFilter = String(raw).trim().length > 0;
       var matchCount = 0;
       markerEntries.forEach(function(entry) {
-        var match = addressMatchesSearchMap(entry.p.adres, raw);
+        var match = mapPointMatchesSearchMap(entry.p, raw);
         if (hasFilter && match) matchCount++;
         entry.marker.setOpacity(hasFilter && !match ? 0.3 : 1);
         entry.marker.setZIndexOffset(hasFilter && match ? 800 : 0);

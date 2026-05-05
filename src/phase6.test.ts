@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { GeocodedAddress } from './phase5';
+import type { SheetRow } from './sheets';
 import {
   formatTimestampForFileName,
   buildMapFileName,
@@ -17,7 +18,26 @@ import {
   executePhase6,
   normalizeForAddressSearch,
   addressMatchesSearch,
+  mapPointMatchesSearch,
 } from './phase6';
+
+function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
+  return {
+    sourceRowIndex: overrides.sourceRowIndex ?? 2,
+    podmiotHandlowy: overrides.podmiotHandlowy ?? '',
+    sklep: overrides.sklep ?? '',
+    gmina: overrides.gmina ?? '',
+    numerPlomby: overrides.numerPlomby ?? '',
+    dataZamknieciaWorka: overrides.dataZamknieciaWorka ?? '',
+    zbiorka: overrides.zbiorka ?? '',
+    raw: overrides.raw ?? [],
+    address: overrides.address ?? '62-320 Miłosław Leśna 1',
+    kodPocztowy: overrides.kodPocztowy ?? '62-320',
+    miasto: overrides.miasto ?? 'Miłosław',
+    ulica: overrides.ulica ?? 'Leśna',
+    numerBudynku: overrides.numerBudynku ?? '1',
+  };
+}
 
 function sampleGeocoded(): GeocodedAddress[] {
   return [
@@ -73,6 +93,28 @@ describe('phase6', () => {
     it('test_addressMatchesSearch_when_no_substring_should_be_false', () => {
       expect(addressMatchesSearch('62-320 Miłosław', 'Warszawa')).toBe(false);
     });
+
+    it('test_mapPointMatchesSearch_when_query_in_podmiot_should_match', () => {
+      expect(
+        mapPointMatchesSearch('00-001 Warszawa ul. Inna 1', ['Biedronka SA'], 'biedronka'),
+      ).toBe(true);
+    });
+
+    it('test_mapPointMatchesSearch_when_query_in_sklep_should_match', () => {
+      expect(
+        mapPointMatchesSearch('00-001 Warszawa ul. Inna 1', ['PH', 'Sklep przy Rynku'], 'rynku'),
+      ).toBe(true);
+    });
+
+    it('test_mapPointMatchesSearch_when_query_not_in_any_field_should_be_false', () => {
+      expect(
+        mapPointMatchesSearch('62-320 Miłosław Leśna 1', ['Firma X'], 'Warszawa'),
+      ).toBe(false);
+    });
+
+    it('test_mapPointMatchesSearch_when_empty_query_should_match_all', () => {
+      expect(mapPointMatchesSearch('x', [], '  ')).toBe(true);
+    });
   });
 
   describe('filename helpers', () => {
@@ -102,7 +144,7 @@ describe('phase6', () => {
       expect(html).toContain('Liczba wystąpień');
       expect(html).toContain('map-address-search');
       expect(html).toContain('applyAddressSearch');
-      expect(html).toContain('addressMatchesSearchMap');
+      expect(html).toContain('mapPointMatchesSearchMap');
       expect(html).toContain('wojBoundsByKey');
       expect(html).toContain('scheduleSearchViewport');
       expect(html).toContain('zoomControl: false');
@@ -118,6 +160,28 @@ describe('phase6', () => {
       expect(html).toContain('"confidence":"uncertain"');
       expect(html).toContain('Wynik niepewny');
       expect(html).toContain('#D40418');
+    });
+
+    it('test_buildMapHtml_when_rows_have_podmiot_and_sklep_should_embed_searchLabels', () => {
+      const geo: GeocodedAddress[] = [
+        {
+          address: '00-001 Warszawa Przykładowa 1',
+          count: 1,
+          lat: 52.1,
+          lng: 21.0,
+          wojewodztwo: 'Mazowieckie',
+          rows: [
+            makeSheetRow({
+              podmiotHandlowy: 'ACME Sp. z o.o.',
+              sklep: 'Sklep przy dworcu',
+            }),
+          ],
+        },
+      ];
+      const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
+      expect(html).toContain('"searchLabels"');
+      expect(html).toContain('ACME Sp. z o.o.');
+      expect(html).toContain('Sklep przy dworcu');
     });
 
     it('test_buildMapHtml_when_ok_confidence_should_use_green_pin', () => {
