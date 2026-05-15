@@ -308,6 +308,65 @@ describe('phase4', () => {
       );
     });
 
+    it('test_executePhase4_when_close_geocoded_pairs_should_write_bliskie_adresy_sheet', async () => {
+      const api = {
+        spreadsheets: {
+          get: vi.fn().mockResolvedValue({
+            data: { sheets: [{ properties: { title: 'Arkusz1' } }] },
+          }),
+          batchUpdate: vi.fn().mockResolvedValue({}),
+          values: {
+            clear: vi.fn().mockResolvedValue({}),
+            update: vi.fn().mockResolvedValue({}),
+          },
+        },
+      };
+
+      const same = { count: 1, lat: 52.1, lng: 21.0, wojewodztwo: 'Mazowieckie', rows: [] as never[] };
+      await executePhase4(api, {
+        spreadsheetId: 'sheet-id',
+        headers: ['A'],
+        rowsDuplikatyPlomb: [],
+        rowsNiepewneWyniki: [],
+        groupedNiepewneAdresy: [],
+        groupedBledneAdresy: [],
+        geocoded: [{ ...same, address: 'Adres pierwszy' }],
+        geocodedNoPostcode: [{ ...same, address: 'Adres drugi' }],
+        uncertainGeocoded: [],
+        cityOnlyGeocoded: [],
+      });
+
+      expect(api.spreadsheets.batchUpdate).toHaveBeenCalledWith({
+        spreadsheetId: 'sheet-id',
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: 'Bliskie adresy (≤20 m)' } } }],
+        },
+      });
+      expect(api.spreadsheets.values.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          range: "'Bliskie adresy (≤20 m)'!A1",
+          requestBody: {
+            values: expect.arrayContaining([
+              [
+                'adres_a',
+                'adres_b',
+                'odleglosc_m',
+                'lat_a',
+                'lng_a',
+                'lat_b',
+                'lng_b',
+                'woj_a',
+                'woj_b',
+                'liczba_wystapien_a',
+                'liczba_wystapien_b',
+              ],
+              ['Adres pierwszy', 'Adres drugi', '0', '52.1', '21', '52.1', '21', 'Mazowieckie', 'Mazowieckie', '1', '1'],
+            ]),
+          },
+        }),
+      );
+    });
+
     it('test_executePhase4_when_no_data_should_not_create_any_sheet', async () => {
       const api = {
         spreadsheets: {

@@ -9,12 +9,14 @@ import {
   SHEET_NAME_ADRESY_PEWNE,
   SHEET_NAME_ADRESY_PEWNE_BEZ_KODU,
   SHEET_NAME_ADRESY_TYLKO_KOD_MIASTO,
+  SHEET_NAME_BLISKIE_ADRESY,
   SHEET_NAME_DUPLIKATY_PLOMB,
   SHEET_NAME_ZGRUPOWANE_BLEDNE_ADRESY,
   SHEET_NAME_ZGRUPOWANE_NIEPEWNE_ADRESY,
 } from './config.js';
 import type { GeocodedAddress } from './phase5.js';
 import type { GroupedBlednyAdres, GroupedNiepewnyAdres } from './phase5.js';
+import { buildCloseGeocodedAddressPairs } from './phase6.js';
 import type { SheetRow } from './sheets.js';
 
 type SheetsMetaClient = {
@@ -129,6 +131,20 @@ const GROUPED_BLEDNE_HEADERS = ['adres', 'liczba_wystapien'];
 
 const ADRESY_TYP_HEADERS = ['adres', 'liczba_wystapien'];
 
+const BLISKIE_ADRESY_HEADERS = [
+  'adres_a',
+  'adres_b',
+  'odleglosc_m',
+  'lat_a',
+  'lng_a',
+  'lat_b',
+  'lng_b',
+  'woj_a',
+  'woj_b',
+  'liczba_wystapien_a',
+  'liczba_wystapien_b',
+];
+
 async function overwriteAdresyTypSheet(
   api: SheetsValuesClient,
   spreadsheetId: string,
@@ -157,7 +173,8 @@ async function overwriteAdresyTypSheet(
  * 1. Duplikaty plomb (pełne wiersze źródłowe) – tylko gdy są duplikaty,
  * 2. Zgrupowane niepewne adresy (adres, liczba_wystapien),
  * 3. Zgrupowane błędne adresy (adres, liczba_wystapien),
- * 4. Adresy pewne (3 typy: pewne, pewne bez kodu, tylko kod+miasto).
+ * 4. Adresy pewne (3 typy: pewne, pewne bez kodu, tylko kod+miasto),
+ * 5. Bliskie adresy (≤20 m) — pary nakładających się punktów na mapie.
  * Zakładka jest tworzona tylko wtedy, gdy są dla niej dane do zapisania.
  */
 export async function executePhase4(
@@ -245,5 +262,43 @@ export async function executePhase4(
       SHEET_NAME_ADRESY_TYLKO_KOD_MIASTO,
       cityOnlyGeocoded,
     );
+  }
+
+  const uncertainGeocoded = input.uncertainGeocoded ?? [];
+  const closePairs = buildCloseGeocodedAddressPairs(
+    geocoded,
+    geocodedNoPostcode,
+    uncertainGeocoded,
+    cityOnlyGeocoded,
+  );
+  if (closePairs.length > 0) {
+    await ensureSheetExists(api, input.spreadsheetId, SHEET_NAME_BLISKIE_ADRESY);
+    await api.spreadsheets.values.clear({
+      spreadsheetId: input.spreadsheetId,
+      range: buildSheetRange(SHEET_NAME_BLISKIE_ADRESY),
+    });
+    await api.spreadsheets.values.update({
+      spreadsheetId: input.spreadsheetId,
+      range: buildSheetStartRange(SHEET_NAME_BLISKIE_ADRESY),
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [
+          BLISKIE_ADRESY_HEADERS,
+          ...closePairs.map((row) => [
+            row.adresA,
+            row.adresB,
+            String(row.odlegloscM),
+            String(row.latA),
+            String(row.lngA),
+            String(row.latB),
+            String(row.lngB),
+            row.wojA,
+            row.wojB,
+            String(row.liczbaWystapienA),
+            String(row.liczbaWystapienB),
+          ]),
+        ],
+      },
+    });
   }
 }

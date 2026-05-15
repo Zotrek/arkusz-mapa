@@ -19,6 +19,11 @@ import {
   normalizeForAddressSearch,
   addressMatchesSearch,
   mapPointMatchesSearch,
+  haversineMeters,
+  spreadCloseMarkerPositions,
+  findCloseMapPointPairs,
+  buildCloseGeocodedAddressPairs,
+  MAP_MARKER_CLUSTER_MAX_M,
 } from './phase6';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
@@ -74,6 +79,60 @@ function sampleUncertainGeocoded(): GeocodedAddress[] {
 }
 
 describe('phase6', () => {
+  describe('marker spread', () => {
+    it('test_spreadCloseMarkerPositions_when_two_points_same_coords_should_offset_markers', () => {
+      const base = { lat: 52.2, lng: 21.0 };
+      const spread = spreadCloseMarkerPositions([
+        { ...base, id: 'a' },
+        { ...base, id: 'b' },
+      ]);
+      expect(spread[0]!.lat).toBe(52.2);
+      expect(spread[0]!.lng).toBe(21.0);
+      expect(spread[1]!.lat).toBe(52.2);
+      expect(haversineMeters(spread[0]!.markerLat, spread[0]!.markerLng, spread[1]!.markerLat, spread[1]!.markerLng)).toBeGreaterThan(
+        30,
+      );
+    });
+
+    it('test_spreadCloseMarkerPositions_when_points_far_apart_should_keep_marker_coords', () => {
+      const spread = spreadCloseMarkerPositions([
+        { lat: 52.2, lng: 21.0 },
+        { lat: 52.3, lng: 21.1 },
+      ]);
+      expect(spread[0]!.markerLat).toBe(52.2);
+      expect(spread[0]!.markerLng).toBe(21.0);
+      expect(spread[1]!.markerLat).toBe(52.3);
+      expect(spread[1]!.markerLng).toBe(21.1);
+    });
+
+    it('test_findCloseMapPointPairs_when_within_20m_should_list_pair', () => {
+      const pairs = findCloseMapPointPairs([
+        { lat: 50.0, lng: 20.0 },
+        { lat: 50.0, lng: 20.0001 },
+      ]);
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.distanceM).toBeLessThanOrEqual(MAP_MARKER_CLUSTER_MAX_M);
+    });
+
+    it('test_buildCloseGeocodedAddressPairs_when_two_same_coords_should_return_row_with_addresses', () => {
+      const base = {
+        count: 1,
+        lat: 52.1,
+        lng: 21.0,
+        wojewodztwo: 'Mazowieckie',
+        rows: [] as SheetRow[],
+      };
+      const pairs = buildCloseGeocodedAddressPairs(
+        [{ ...base, address: 'Adres A' }],
+        [{ ...base, address: 'Adres B' }],
+      );
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.adresA).toBe('Adres A');
+      expect(pairs[0]!.adresB).toBe('Adres B');
+      expect(pairs[0]!.odlegloscM).toBe(0);
+    });
+  });
+
   describe('address search helpers', () => {
     it('test_normalizeForAddressSearch_when_diacritics_should_fold_and_lower', () => {
       expect(normalizeForAddressSearch('Łódź')).toBe('lodz');
@@ -150,6 +209,31 @@ describe('phase6', () => {
       expect(html).toContain('zoomControl: false');
       expect(html).toContain('map-zoom-in');
       expect(html).toContain('map-search-input-row');
+    });
+
+    it('test_buildMapHtml_when_two_close_points_should_embed_markerLat_markerLng', () => {
+      const close: GeocodedAddress[] = [
+        {
+          address: 'Adres A',
+          count: 1,
+          lat: 52.1,
+          lng: 21.0,
+          wojewodztwo: 'Mazowieckie',
+          rows: [],
+        },
+        {
+          address: 'Adres B',
+          count: 1,
+          lat: 52.1,
+          lng: 21.0,
+          wojewodztwo: 'Mazowieckie',
+          rows: [],
+        },
+      ];
+      const html = buildMapHtml(close, [], 'https://example.com/woj.json');
+      expect(html).toContain('"markerLat"');
+      expect(html).toContain('"markerLng"');
+      expect(html).toContain('p.markerLat, p.markerLng');
     });
 
     it('test_buildMapHtml_when_geocoded_data_given_should_embed_addresses_and_counts', () => {

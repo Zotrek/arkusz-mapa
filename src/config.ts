@@ -35,6 +35,8 @@ export const SHEET_NAME_ADRESY_PEWNE = 'Adresy pewne';
 export const SHEET_NAME_ADRESY_PEWNE_BEZ_KODU = 'Adresy pewne bez kodu';
 export const SHEET_NAME_ADRESY_NIEPEWNE = 'Adresy niepewne';
 export const SHEET_NAME_ADRESY_TYLKO_KOD_MIASTO = 'Adresy tylko kod+miasto';
+/** Pary adresów na mapie w odległości ≤ 20 m (nakładające się pinezki). */
+export const SHEET_NAME_BLISKIE_ADRESY = 'Bliskie adresy (≤20 m)';
 
 // REQ-1.5: URL GeoJSON granic województw (Polska)
 export const GEOJSON_WOJEWODZTWA_URL =
