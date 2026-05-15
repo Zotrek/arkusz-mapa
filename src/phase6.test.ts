@@ -25,6 +25,8 @@ import {
   findCloseMapPointPairs,
   buildCloseGeocodedAddressPairs,
   MAP_MARKER_CLUSTER_MAX_M,
+  MAP_SEARCH_SINGLE_MATCH_ZOOM,
+  MAP_SEARCH_FIT_PADDING,
 } from './phase6';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
@@ -229,6 +231,9 @@ describe('phase6', () => {
       expect(html).toContain('mapPointMatchesSearchMap');
       expect(html).toContain('wojBoundsByKey');
       expect(html).toContain('scheduleSearchViewport');
+      expect(html).toContain('map.setView([one.markerLat, one.markerLng]');
+      expect(html).toContain(String(MAP_SEARCH_SINGLE_MATCH_ZOOM));
+      expect(html).toContain(JSON.stringify(MAP_SEARCH_FIT_PADDING));
       expect(html).toContain('zoomControl: false');
       expect(html).toContain('map-zoom-in');
       expect(html).toContain('map-search-input-row');

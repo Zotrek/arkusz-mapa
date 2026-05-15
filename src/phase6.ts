@@ -26,6 +26,15 @@ export const MAP_MARKER_CLUSTER_MAX_M = 20;
 /** Promień rozsunięcia markerów wokół środka klastra (m) — widoczne osobne pinezki. */
 export const MAP_MARKER_SPREAD_RADIUS_M = 18;
 
+/** Zoom przy dokładnie jednym wyniku wyszukiwania (skala okolicy / ulic). */
+export const MAP_SEARCH_SINGLE_MATCH_ZOOM = 16;
+
+/** Górny limit zoomu przy wielu wynikach (fitBounds — nie „wchodzi” za głęboko). */
+export const MAP_SEARCH_MULTI_MATCH_MAX_ZOOM = 16;
+
+/** Margines od krawędzi mapy przy fitBounds wielu wyników [px góra-dół, px lewo-prawo]. */
+export const MAP_SEARCH_FIT_PADDING: [number, number] = [72, 72];
+
 export interface MapPointCoords {
   lat: number;
   lng: number;
@@ -1053,25 +1062,18 @@ ${wordModal}  <script>
           return mapPointMatchesSearchMap(e.p, r);
         });
         if (matched.length === 0) return;
-        var woje = {};
-        matched.forEach(function(e) {
-          var w = String(e.p.woj || '').trim();
-          if (w.length > 0) {
-            woje[normalizeForAddressSearchMap(w)] = true;
-          }
-        });
-        var wojKeys = Object.keys(woje);
-        var pad = [52, 52];
-        if (wojKeys.length === 1) {
-          var polyBounds = wojBoundsByKey[wojKeys[0]];
-          if (polyBounds && polyBounds.isValid && polyBounds.isValid()) {
-            map.fitBounds(polyBounds, { padding: pad });
-            return;
-          }
+        if (matched.length === 1) {
+          var one = matched[0].p;
+          map.setView([one.markerLat, one.markerLng], ${JSON.stringify(MAP_SEARCH_SINGLE_MATCH_ZOOM)}, { animate: true });
+          return;
         }
         var pointBounds = L.latLngBounds(matched.map(function(e) { return [e.p.markerLat, e.p.markerLng]; }));
         if (pointBounds.isValid()) {
-          map.fitBounds(pointBounds, { padding: pad, maxZoom: 18 });
+          map.fitBounds(pointBounds, {
+            padding: ${JSON.stringify(MAP_SEARCH_FIT_PADDING)},
+            maxZoom: ${JSON.stringify(MAP_SEARCH_MULTI_MATCH_MAX_ZOOM)},
+            animate: true
+          });
         }
       }, 300);
     }
