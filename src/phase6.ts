@@ -298,6 +298,24 @@ export function normalizeForAddressSearch(text: string): string {
     .trim();
 }
 
+/**
+ * Lista podwykonawców (modal Word): dopasowanie po nazwie (A) lub treści do dokumentu (B).
+ * Pusty query = wszystkie pozycje.
+ */
+export function podwykoOptionMatchesSearch(label: string, dane: string, query: string): boolean {
+  const q = normalizeForAddressSearch(query);
+  if (!q) {
+    return true;
+  }
+  if (normalizeForAddressSearch(label).includes(q)) {
+    return true;
+  }
+  if (normalizeForAddressSearch(dane).includes(q)) {
+    return true;
+  }
+  return false;
+}
+
 /** Czy fragment zapytania występuje w adresie (po {@link normalizeForAddressSearch}). Pusty query = dopasuj wszystko. */
 export function addressMatchesSearch(adres: string, query: string): boolean {
   const q = normalizeForAddressSearch(query);
@@ -405,9 +423,17 @@ export function buildMapHtml(
     <div class="doc-modal-panel" role="dialog" aria-labelledby="doc-modal-title">
       <h3 id="doc-modal-title">Generuj dokument Word</h3>
       <label for="doc-sel-przewoznik">Przewoźnik</label>
-      <select id="doc-sel-przewoznik"></select>
+      <div class="doc-combobox-wrap">
+        <input type="text" id="doc-sel-przewoznik" class="doc-combobox-input" autocomplete="off" spellcheck="false" placeholder="Wpisz fragment nazwy lub danych…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="doc-sel-przewoznik-list" />
+        <input type="hidden" id="doc-val-przewoznik" value="" />
+        <ul id="doc-sel-przewoznik-list" class="doc-combobox-list" role="listbox" hidden></ul>
+      </div>
       <label for="doc-sel-miejsce">Miejsce dostawy</label>
-      <select id="doc-sel-miejsce"></select>
+      <div class="doc-combobox-wrap">
+        <input type="text" id="doc-sel-miejsce" class="doc-combobox-input" autocomplete="off" spellcheck="false" placeholder="Wpisz fragment nazwy lub danych…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="doc-sel-miejsce-list" />
+        <input type="hidden" id="doc-val-miejsce" value="" />
+        <ul id="doc-sel-miejsce-list" class="doc-combobox-list" role="listbox" hidden></ul>
+      </div>
       <label for="doc-inp-data-zaladunku">Data załadunku</label>
       <input type="date" id="doc-inp-data-zaladunku" />
       <label for="doc-inp-numer-zlecenia">Numer dokumentu (zlecenie transportowe)</label>
@@ -429,7 +455,13 @@ export function buildMapHtml(
     .doc-modal-panel { background: #fff; padding: 20px 22px; border-radius: 10px; max-width: 420px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
     .doc-modal-panel h3 { margin: 0 0 14px 0; font-size: 16px; }
     .doc-modal-panel label { display: block; font-size: 13px; margin: 10px 0 4px; color: #333; }
-    .doc-modal-panel select, .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"] { width: 100%; padding: 8px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
+    .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"], .doc-modal-panel .doc-combobox-input { width: 100%; padding: 8px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
+    .doc-combobox-wrap { position: relative; }
+    .doc-combobox-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); max-height: 220px; overflow-y: auto; z-index: 10; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+    .doc-combobox-list li { padding: 8px 10px; cursor: pointer; font-size: 14px; }
+    .doc-combobox-list li:hover, .doc-combobox-list li.doc-combobox-active { background: #e7f1ff; }
+    .doc-combobox-list li.doc-combobox-empty { color: #666; cursor: default; }
+    .doc-combobox-list li.doc-combobox-empty:hover { background: transparent; }
     .doc-modal-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .doc-modal-actions button { padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; border: 1px solid #ccc; background: #f8f9fa; }
     #doc-btn-ok { background: #198754; border-color: #198754; color: #fff; }
@@ -604,25 +636,163 @@ ${wordModal}  <script>
       return hexWithSaturation(kolorBazowy, 0.35);
     }
 
-    function fillSelect(sel, options) {
-      sel.innerHTML = '';
-      if (options.length === 0) {
-        var o0 = document.createElement('option');
-        o0.value = '';
-        o0.textContent = '(Brak listy — dodaj docs/podwyko lista.xlsx lub ustaw PODWYKOLISTA_ODS_PATH)';
-        sel.appendChild(o0);
+    function podwykoOptionMatchesQuery(opt, query) {
+      var q = normalizeForAddressSearchMap(query);
+      if (!q) return true;
+      if (normalizeForAddressSearchMap(opt.label).indexOf(q) !== -1) return true;
+      if (normalizeForAddressSearchMap(opt.dane).indexOf(q) !== -1) return true;
+      return false;
+    }
+    var docComboboxInited = false;
+    function hideDocComboboxList(listEl, inputEl) {
+      if (!listEl) return;
+      listEl.hidden = true;
+      listEl.innerHTML = '';
+      if (inputEl) inputEl.setAttribute('aria-expanded', 'false');
+    }
+    function showDocComboboxList(listEl, inputEl) {
+      if (!listEl) return;
+      listEl.hidden = false;
+      if (inputEl) inputEl.setAttribute('aria-expanded', 'true');
+    }
+    function selectDocComboboxOption(inputEl, hiddenEl, listEl, idx) {
+      var opt = PODWYKOLISTA[idx];
+      if (!opt || !inputEl || !hiddenEl) return;
+      inputEl.value = opt.label;
+      hiddenEl.value = String(idx);
+      hideDocComboboxList(listEl, inputEl);
+    }
+    function renderDocComboboxList(listEl, inputEl, hiddenEl, query) {
+      if (!listEl || !inputEl || !hiddenEl) return;
+      listEl.innerHTML = '';
+      if (PODWYKOLISTA.length === 0) {
+        var emptyLi = document.createElement('li');
+        emptyLi.className = 'doc-combobox-empty';
+        emptyLi.textContent = '(Brak listy — dodaj docs/podwyko lista.xlsx lub ustaw PODWYKOLISTA_ODS_PATH)';
+        listEl.appendChild(emptyLi);
+        showDocComboboxList(listEl, inputEl);
         return;
       }
-      var ph = document.createElement('option');
-      ph.value = '';
-      ph.textContent = '— wybierz —';
-      sel.appendChild(ph);
-      options.forEach(function (opt, idx) {
-        var o = document.createElement('option');
-        o.value = String(idx);
-        o.textContent = opt.label;
-        sel.appendChild(o);
+      var shown = 0;
+      var maxShow = 80;
+      PODWYKOLISTA.forEach(function (opt, idx) {
+        if (!podwykoOptionMatchesQuery(opt, query)) return;
+        if (shown >= maxShow) return;
+        shown += 1;
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.setAttribute('data-idx', String(idx));
+        li.textContent = opt.label;
+        li.addEventListener('mousedown', function (ev) {
+          ev.preventDefault();
+          selectDocComboboxOption(inputEl, hiddenEl, listEl, idx);
+        });
+        listEl.appendChild(li);
       });
+      if (shown === 0) {
+        var noLi = document.createElement('li');
+        noLi.className = 'doc-combobox-empty';
+        noLi.textContent = 'Brak dopasowań';
+        listEl.appendChild(noLi);
+      }
+      showDocComboboxList(listEl, inputEl);
+    }
+    function tryResolveDocComboboxFromInput(inputEl, hiddenEl) {
+      if (!inputEl || !hiddenEl) return;
+      var text = String(inputEl.value).trim();
+      if (!text) {
+        hiddenEl.value = '';
+        return;
+      }
+      var q = normalizeForAddressSearchMap(text);
+      var i;
+      for (i = 0; i < PODWYKOLISTA.length; i++) {
+        if (normalizeForAddressSearchMap(PODWYKOLISTA[i].label) === q) {
+          selectDocComboboxOption(inputEl, hiddenEl, null, i);
+          return;
+        }
+      }
+      var matches = [];
+      for (i = 0; i < PODWYKOLISTA.length; i++) {
+        if (podwykoOptionMatchesQuery(PODWYKOLISTA[i], text)) matches.push(i);
+      }
+      if (matches.length === 1) {
+        selectDocComboboxOption(inputEl, hiddenEl, null, matches[0]);
+        return;
+      }
+      hiddenEl.value = '';
+    }
+    function resetDocCombobox(inputId, hiddenId, listId) {
+      var inputEl = document.getElementById(inputId);
+      var hiddenEl = document.getElementById(hiddenId);
+      var listEl = document.getElementById(listId);
+      if (!inputEl || !hiddenEl) return;
+      inputEl.value = '';
+      hiddenEl.value = '';
+      hideDocComboboxList(listEl, inputEl);
+    }
+    function setupDocCombobox(inputId, hiddenId, listId) {
+      var inputEl = document.getElementById(inputId);
+      var hiddenEl = document.getElementById(hiddenId);
+      var listEl = document.getElementById(listId);
+      if (!inputEl || !hiddenEl || !listEl) return;
+      inputEl.addEventListener('focus', function () {
+        renderDocComboboxList(listEl, inputEl, hiddenEl, inputEl.value);
+      });
+      inputEl.addEventListener('input', function () {
+        hiddenEl.value = '';
+        renderDocComboboxList(listEl, inputEl, hiddenEl, inputEl.value);
+      });
+      inputEl.addEventListener('blur', function () {
+        window.setTimeout(function () {
+          tryResolveDocComboboxFromInput(inputEl, hiddenEl);
+          hideDocComboboxList(listEl, inputEl);
+        }, 150);
+      });
+      inputEl.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') {
+          hideDocComboboxList(listEl, inputEl);
+          return;
+        }
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          var items = listEl.querySelectorAll('li[data-idx]');
+          if (!items.length) return;
+          ev.preventDefault();
+          var active = listEl.querySelector('li.doc-combobox-active');
+          var nextIdx = 0;
+          if (active) {
+            for (var j = 0; j < items.length; j++) {
+              if (items[j] === active) {
+                nextIdx = ev.key === 'ArrowDown' ? Math.min(j + 1, items.length - 1) : Math.max(j - 1, 0);
+                break;
+              }
+            }
+          } else if (ev.key === 'ArrowUp') {
+            nextIdx = items.length - 1;
+          }
+          for (var k = 0; k < items.length; k++) {
+            items[k].classList.toggle('doc-combobox-active', k === nextIdx);
+          }
+          items[nextIdx].scrollIntoView({ block: 'nearest' });
+          return;
+        }
+        if (ev.key === 'Enter') {
+          var pick = listEl.querySelector('li.doc-combobox-active') || listEl.querySelector('li[data-idx]');
+          if (pick && pick.getAttribute('data-idx') != null) {
+            ev.preventDefault();
+            selectDocComboboxOption(inputEl, hiddenEl, listEl, parseInt(pick.getAttribute('data-idx'), 10));
+          } else {
+            tryResolveDocComboboxFromInput(inputEl, hiddenEl);
+            hideDocComboboxList(listEl, inputEl);
+          }
+        }
+      });
+    }
+    function initDocComboboxes() {
+      if (docComboboxInited) return;
+      docComboboxInited = true;
+      setupDocCombobox('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list');
+      setupDocCombobox('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list');
     }
     function defaultDateZaladunkuYmd() {
       var d = new Date();
@@ -636,10 +806,9 @@ ${wordModal}  <script>
       if (!wordDocEnabled) return;
       window.__currentDocPointIdx = pointIdx;
       var m = document.getElementById('doc-modal');
-      var sp = document.getElementById('doc-sel-przewoznik');
-      var sm = document.getElementById('doc-sel-miejsce');
-      fillSelect(sp, PODWYKOLISTA);
-      fillSelect(sm, PODWYKOLISTA);
+      initDocComboboxes();
+      resetDocCombobox('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list');
+      resetDocCombobox('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list');
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
@@ -685,12 +854,16 @@ ${wordModal}  <script>
         alert('Błąd: brak punktu.');
         return;
       }
-      var prEl = document.getElementById('doc-sel-przewoznik');
-      var mdEl = document.getElementById('doc-sel-miejsce');
-      var prIdx = prEl ? prEl.value : '';
-      var mdIdx = mdEl ? mdEl.value : '';
+      var prInput = document.getElementById('doc-sel-przewoznik');
+      var mdInput = document.getElementById('doc-sel-miejsce');
+      var prVal = document.getElementById('doc-val-przewoznik');
+      var mdVal = document.getElementById('doc-val-miejsce');
+      if (prInput && prVal) tryResolveDocComboboxFromInput(prInput, prVal);
+      if (mdInput && mdVal) tryResolveDocComboboxFromInput(mdInput, mdVal);
+      var prIdx = prVal ? prVal.value : '';
+      var mdIdx = mdVal ? mdVal.value : '';
       if (prIdx === '' || mdIdx === '') {
-        alert('Wybierz przewoźnika i miejsce dostawy.');
+        alert('Wybierz przewoźnika i miejsce dostawy (wpisz fragment nazwy lub danych i wybierz z listy).');
         return;
       }
       var pi = parseInt(prIdx, 10);
@@ -759,6 +932,7 @@ ${wordModal}  <script>
     }
 
     if (wordDocEnabled) {
+      initDocComboboxes();
       document.getElementById('doc-btn-cancel').onclick = closeDocModal;
       document.getElementById('doc-btn-ok').onclick = runDocGenerate;
       document.getElementById('doc-modal').onclick = function(ev) {

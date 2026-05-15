@@ -17,6 +17,7 @@ import {
   buildMapHtml,
   executePhase6,
   normalizeForAddressSearch,
+  podwykoOptionMatchesSearch,
   addressMatchesSearch,
   mapPointMatchesSearch,
   haversineMeters,
@@ -163,6 +164,28 @@ describe('phase6', () => {
       expect(
         mapPointMatchesSearch('00-001 Warszawa ul. Inna 1', ['PH', 'Sklep przy Rynku'], 'rynku'),
       ).toBe(true);
+    });
+
+    it('test_podwykoOptionMatchesSearch_when_fragment_in_label_or_dane_should_match', () => {
+      expect(
+        podwykoOptionMatchesSearch('BLUECARGO', 'BLUECARGO Sp. ul. Rajska 1, Kraków', 'blue'),
+      ).toBe(true);
+      expect(
+        podwykoOptionMatchesSearch('BLUECARGO', 'BLUECARGO Sp. ul. Rajska 1, Kraków', 'carg'),
+      ).toBe(true);
+      expect(
+        podwykoOptionMatchesSearch('BLUECARGO', 'BLUECARGO Sp. ul. Rajska 1, Kraków', 'rajska'),
+      ).toBe(true);
+      expect(podwykoOptionMatchesSearch('Janex', 'Janex — pełne dane', 'janex')).toBe(true);
+      expect(podwykoOptionMatchesSearch('Janex', 'Janex — pełne dane', 'pelne')).toBe(true);
+    });
+
+    it('test_podwykoOptionMatchesSearch_when_no_match_should_be_false', () => {
+      expect(podwykoOptionMatchesSearch('BLUECARGO', 'Kraków', 'warszawa')).toBe(false);
+    });
+
+    it('test_podwykoOptionMatchesSearch_when_empty_query_should_match_all', () => {
+      expect(podwykoOptionMatchesSearch('A', 'B', '')).toBe(true);
     });
 
     it('test_mapPointMatchesSearch_when_query_not_in_any_field_should_be_false', () => {
@@ -337,6 +360,10 @@ describe('phase6', () => {
       expect(html).toContain('pełne dane');
       expect(html).toContain('buildDocxDownloadName');
       expect(html).toContain('dzPlik');
+      expect(html).toContain('doc-combobox-input');
+      expect(html).toContain('id="doc-val-przewoznik"');
+      expect(html).toContain('podwykoOptionMatchesQuery');
+      expect(html).toContain('placeholder="Wpisz fragment nazwy lub danych…"');
       expect(html).toContain('id="doc-inp-data-zaladunku"');
       expect(html).toContain('id="doc-inp-numer-zlecenia"');
       expect(html).toContain('numer_zlecenia_transportowego');
