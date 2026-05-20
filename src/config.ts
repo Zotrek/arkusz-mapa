@@ -87,6 +87,12 @@ export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoP
 export const DEFAULT_PHASE5_CACHE_PATH = join(ARKUSZ_MAPA_ROOT, 'data', 'phase5-cache.json');
 
 /**
+ * Literówki / warianty zapisu → kanoniczny adres (ten sam sklep/punkt).
+ * Klucz = adres z arkusza; wartość = adres używany przy grupowaniu i geokodowaniu.
+ */
+export const DEFAULT_ADDRESS_ALIASES_PATH = join(ARKUSZ_MAPA_ROOT, 'data', 'address-aliases.json');
+
+/**
  * Plik JSON z cache wyników geokodowania (faza 5).
  * Domyślnie: `data/phase5-cache.json` (ten sam plik co w repo / seed w GitHub Actions).
  * Nadpisanie: `PHASE5_CACHE_PATH` — CI ustawia `.cache/phase5-cache.json` (Actions cache, poza artefaktem Pages).

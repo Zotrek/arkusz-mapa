@@ -2,6 +2,7 @@
  * Faza 2: odczyt i parsowanie danych z Google Sheets.
  */
 
+import { readFile } from 'node:fs/promises';
 import { google, type sheets_v4 } from 'googleapis';
 import {
   COL_KOD_POCZTOWY,
@@ -11,6 +12,7 @@ import {
   COL_NUMER_PLOMBY,
   COL_DATA_ZAMKNIECIA_WORKA,
   COL_ZBIORKA,
+  DEFAULT_ADDRESS_ALIASES_PATH,
 } from './config.js';
 
 export interface AddressParts {
@@ -107,6 +109,53 @@ export function mapRawRowToSheetRow(raw: string[], sourceRowIndex: number): Shee
       numerBudynku,
     }),
   };
+}
+
+/** Wpis w `address-aliases.json`: string (kanoniczny) lub obiekt z polem `canonical`. */
+type AddressAliasEntry = string | { canonical: string; note?: string };
+
+/**
+ * Wczytuje mapę aliasów adresów (literówki → kanoniczny zapis). Brak pliku = pusta mapa.
+ */
+export async function loadAddressAliases(
+  filePath: string = DEFAULT_ADDRESS_ALIASES_PATH,
+): Promise<Record<string, string>> {
+  try {
+    const raw = await readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, AddressAliasEntry>;
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+    const result: Record<string, string> = {};
+    for (const [variant, entry] of Object.entries(parsed)) {
+      const canonical = typeof entry === 'string' ? entry : entry?.canonical;
+      if (typeof canonical === 'string' && canonical.length > 0) {
+        result[variant] = canonical;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Zamienia `row.address` na kanoniczny, gdy wariant jest w pliku aliasów (ten sam sklep).
+ */
+export function applyAddressAliases(
+  rows: SheetRow[],
+  aliases: Record<string, string>,
+): SheetRow[] {
+  if (Object.keys(aliases).length === 0) {
+    return rows;
+  }
+  return rows.map((row) => {
+    const canonical = aliases[row.address];
+    if (!canonical || canonical === row.address) {
+      return row;
+    }
+    return { ...row, address: canonical };
+  });
 }
 
 export function parseSheetRows(values: string[][]): { headers: string[]; rows: SheetRow[] } {

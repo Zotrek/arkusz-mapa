@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import {
+  applyAddressAliases,
   buildAddress,
   mapRawRowToSheetRow,
   parseSheetRows,
@@ -51,6 +52,41 @@ describe('sheets phase 2', () => {
       });
 
       expect(address).toBe('26-660 Wierzchowiny 29');
+    });
+  });
+
+  describe('applyAddressAliases', () => {
+    const canonical = '37-200 Przeworsk 11 listopada 76';
+    const typo = '37-200 Przeworsk 11-listopada 76';
+
+    it('test_applyAddressAliases_when_przeworsk_typo_should_map_to_canonical', () => {
+      const row = mapRawRowToSheetRow(
+        ['', '', '37-200', 'Przeworsk', '11-listopada', '76', '', '', 'P1'],
+        2,
+      );
+      expect(row.address).toBe(typo);
+      const out = applyAddressAliases([row], { [typo]: canonical });
+      expect(out[0]!.address).toBe(canonical);
+    });
+
+    it('test_applyAddressAliases_when_tomaszow_hoza_typo_should_map_to_slash_form', () => {
+      const row = mapRawRowToSheetRow(
+        ['', '', '97-200', 'Tomaszów Mazowiecki', 'Hoża', '1-3', '', '', 'P3'],
+        4,
+      );
+      const canonical = '97-200 Tomaszów Mazowiecki Hoża 1/3';
+      expect(row.address).toBe('97-200 Tomaszów Mazowiecki Hoża 1-3');
+      const out = applyAddressAliases([row], { [row.address]: canonical });
+      expect(out[0]!.address).toBe(canonical);
+    });
+
+    it('test_applyAddressAliases_when_no_alias_should_leave_unchanged', () => {
+      const row = mapRawRowToSheetRow(
+        ['', '', '62-320', 'Miłosław', 'Leśna', '1', '', '', 'P2'],
+        3,
+      );
+      const out = applyAddressAliases([row], {});
+      expect(out[0]!.address).toBe(row.address);
     });
   });
 

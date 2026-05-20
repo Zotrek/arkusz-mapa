@@ -3,7 +3,7 @@
  */
 
 import { getConfig, getPhase5CacheFilePath, GEOJSON_WOJEWODZTWA_URL } from './config.js';
-import { createSheetsClient, loadSourceRows } from './sheets.js';
+import { applyAddressAliases, createSheetsClient, loadAddressAliases, loadSourceRows } from './sheets.js';
 import { executePhase3 } from './phase3.js';
 import { executePhase4 } from './phase4.js';
 import { executePhase5 } from './phase5.js';
@@ -68,8 +68,20 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   const sheetsClient = deps.createSheetsClient(config.credentialsPath);
   deps.logger.info('Loading source rows from Google Sheets');
   const source = await deps.loadSourceRows(sheetsClient, config.sheetsId);
+  const addressAliases = await loadAddressAliases();
+  const rowsForPipeline = applyAddressAliases(source.rows, addressAliases);
+  if (Object.keys(addressAliases).length > 0) {
+    const merged = rowsForPipeline.filter((r, i) => r.address !== source.rows[i]!.address).length;
+    if (merged > 0) {
+      deps.logger.info(
+        'Applied %d address alias(es); %d row(s) merged to canonical address',
+        Object.keys(addressAliases).length,
+        merged,
+      );
+    }
+  }
   deps.logger.info('Executing phase 3 (duplicates + grouping)');
-  const phase3 = deps.executePhase3(source.rows);
+  const phase3 = deps.executePhase3(rowsForPipeline);
   deps.logger.info('Executing phase 5 (geocoding)');
   const phase5 = await deps.executePhase5(phase3.groupedByAddress, {
     cacheFilePath: getPhase5CacheFilePath(config.outputDir),
