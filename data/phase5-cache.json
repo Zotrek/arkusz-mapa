@@ -7069,11 +7069,11 @@
       "updatedAt": "2026-03-31T20:34:53.216Z"
     },
     "34-222 Zawoja Zawoja 2773": {
-      "status": "uncertain",
-      "lat": 49.6657364,
-      "lng": 19.5759217,
+      "status": "ok",
+      "lat": 49.665869743413026,
+      "lng": 19.575955655111894,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-03-31T20:34:56.091Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "34-480 Jabłonka Kamieniec 1A": {
       "status": "ok",
@@ -7314,11 +7314,11 @@
       "updatedAt": "2026-04-09T06:07:07.117Z"
     },
     "34-220 Białka Białka 348": {
-      "status": "uncertain",
-      "lat": 49.6956184,
-      "lng": 19.673518,
+      "status": "ok",
+      "lat": 49.69574141002148,
+      "lng": 19.67348103977104,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-04-09T06:07:08.660Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "66-432 Baczyna ul. Gorzowska 36 572778120": {
       "status": "ok",
@@ -7370,11 +7370,11 @@
       "updatedAt": "2026-04-09T06:07:29.086Z"
     },
     "32-420 GDÓW KAMYK 144 144": {
-      "status": "uncertain",
-      "lat": 49.9185913,
-      "lng": 20.2144093,
+      "status": "ok",
+      "lat": 49.897404437514425,
+      "lng": 20.31973356861536,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-04-09T06:07:33.448Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "37-500 Jarosław Kaszewskiego 23": {
       "status": "ok",
@@ -7510,11 +7510,11 @@
       "updatedAt": "2026-04-10T22:36:13.646Z"
     },
     "36-046 NOSÓWKA NOSÓWKA 280a": {
-      "status": "uncertain",
-      "lat": 50.0211188,
-      "lng": 21.8825031,
+      "status": "ok",
+      "lat": 50.0211085648743,
+      "lng": 21.882593770469544,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-10T22:36:15.143Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "86-122 Bukowiec dr.Ceynowy 17": {
       "status": "uncertain",
@@ -7643,11 +7643,11 @@
       "updatedAt": "2026-04-14T17:59:23.773Z"
     },
     "34-231 Juszczyn Juszczyn 233": {
-      "status": "uncertain",
-      "lat": 49.68886,
-      "lng": 19.68533,
+      "status": "ok",
+      "lat": 49.68878021678007,
+      "lng": 19.685510070454963,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-04-14T17:59:25.212Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "62-571 Krągola Strażacka 22": {
       "status": "ok",
@@ -7979,11 +7979,11 @@
       "updatedAt": "2026-05-20T15:55:18.730Z"
     },
     "32-090 SŁOMNIK CZECHY 1E": {
-      "status": "uncertain",
-      "lat": 50.2421645,
-      "lng": 20.0817432,
+      "status": "ok",
+      "lat": 50.226777647208614,
+      "lng": 20.14933275513645,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-05-20T15:55:28.472Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "22-424 Cześniki Cześniki 69": {
       "status": "ok",
@@ -8161,11 +8161,11 @@
       "updatedAt": "2026-05-20T15:56:58.321Z"
     },
     "32-861 Iwkowa IWKOWA 21": {
-      "status": "uncertain",
-      "lat": 49.8152078,
-      "lng": 20.5932628,
+      "status": "ok",
+      "lat": 49.815401710332985,
+      "lng": 20.592906582105154,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-05-20T15:56:59.670Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "30-868 Kraków Jana Kurczaba 3": {
       "status": "ok",
@@ -8826,18 +8826,18 @@
       "updatedAt": "2026-05-20T16:02:41.648Z"
     },
     "32-863 TYMOWA TYMOWA 420": {
-      "status": "uncertain",
-      "lat": 49.8545739,
-      "lng": 20.6427353,
+      "status": "ok",
+      "lat": 49.854699501255965,
+      "lng": 20.64319676861349,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-05-20T16:02:43.069Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "32-863 TYMOWA TYMOWA 367": {
-      "status": "uncertain",
-      "lat": 49.8413732,
-      "lng": 20.6386501,
+      "status": "ok",
+      "lat": 49.841466857633435,
+      "lng": 20.638692055119503,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-05-20T16:02:44.445Z"
+      "updatedAt": "2026-05-20T16:49:39.054Z"
     },
     "98-220 Zduńska Wola Ul. Azaliowa 29C": {
       "status": "ok",
