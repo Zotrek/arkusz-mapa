@@ -1,12 +1,13 @@
-Opcjonalny stały cache geokodowania (faza 5) dla GitHub Actions
+Cache geokodowania (faza 5) — lokalnie i seed dla GitHub Actions
 ================================================================
 
-Skopiuj lokalnie wygenerowany plik JSON (np. z OUTPUT_DIR/phase5-cache.json po udanym
-`npm run generate`) do:
+Domyślnie `npm run generate` czyta i zapisuje TEN plik:
 
   data/phase5-cache.json
 
-i zacommituj. Workflow „arkusz-mapa — Pages” wklei go do .cache/ gdy Actions cache
-jest pusty lub nie przywrócił pliku — wtedy faza 5 od razu ma wpisy (cache hit).
+Po aktualizacji geokodów: zacommituj i wypchnij.
+
+Workflow „arkusz-mapa — Pages”: scala Actions cache + ten plik (data/ wygrywa
+przy tym samym adresie). Zob. scripts/merge-phase5-cache.mjs.
 
 Format pliku: { "version": 2, "entries": { "<adres>": { ... } } } — ten sam co zapisuje skrypt.

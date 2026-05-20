@@ -83,16 +83,18 @@ export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoP
   return { templatePath, podwykoPath };
 }
 
+/** Wspólny plik cache (lokalnie + seed w CI) — commituj po aktualizacji geokodów. */
+export const DEFAULT_PHASE5_CACHE_PATH = join(ARKUSZ_MAPA_ROOT, 'data', 'phase5-cache.json');
+
 /**
  * Plik JSON z cache wyników geokodowania (faza 5).
- * Domyślnie: `OUTPUT_DIR/phase5-cache.json` (obok wygenerowanej mapy).
- * Nadpisanie: `PHASE5_CACHE_PATH` — np. w GitHub Actions ścieżka poza `site/maps`,
- * żeby cache nie był publikowany na Pages wraz z artefaktem strony.
+ * Domyślnie: `data/phase5-cache.json` (ten sam plik co w repo / seed w GitHub Actions).
+ * Nadpisanie: `PHASE5_CACHE_PATH` — CI ustawia `.cache/phase5-cache.json` (Actions cache, poza artefaktem Pages).
  */
-export function getPhase5CacheFilePath(outputDir: string): string {
+export function getPhase5CacheFilePath(_outputDir: string): string {
   const fromEnv = process.env.PHASE5_CACHE_PATH?.trim();
   if (fromEnv) {
     return fromEnv;
   }
-  return join(outputDir, 'phase5-cache.json');
+  return DEFAULT_PHASE5_CACHE_PATH;
 }

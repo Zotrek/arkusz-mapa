@@ -166,8 +166,8 @@ describe('config', () => {
       process.env = originalEnv;
     });
 
-    it('should default to phase5-cache_json_under_output_dir', () => {
-      expect(getPhase5CacheFilePath('/tmp/out')).toMatch(/[/\\]tmp[/\\]out[/\\]phase5-cache\.json$/);
+    it('should default to data_phase5_cache_json_in_package_root', () => {
+      expect(getPhase5CacheFilePath('/tmp/out')).toMatch(/[/\\]data[/\\]phase5-cache\.json$/);
     });
 
     it('should respect PHASE5_CACHE_PATH when set', () => {

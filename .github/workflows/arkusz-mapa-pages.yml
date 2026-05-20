@@ -9,8 +9,8 @@
 #   docs/pusty.docx
 #   docs/podwyko lista.xlsx
 #
-# Opcjonalnie — stały cache adresów (żeby nie geokodować od zera na CI):
-#   data/phase5-cache.json  (skopiuj lokalny OUTPUT_DIR/phase5-cache.json, patrz data/README.txt)
+# Cache geokodowania: commituj data/phase5-cache.json po lokalnym `npm run generate`.
+# Na CI: merge data/ (priorytet) + Actions cache — patrz scripts/merge-phase5-cache.mjs
 #
 # GitHub: Settings → Pages → Source: „GitHub Actions”.
 # Nie dodawaj drugiego workflowu Pages (szablony „Jekyll” / „Deploy static content” z GitHuba)
@@ -51,18 +51,9 @@ jobs:
           restore-keys: |
             phase5-geocode-v2-
 
-      # Gdy Actions cache nic nie dał — użyj pliku z commita (Twój już zapisany cache).
-      - name: Seed cache z repozytorium (gdy brak pliku z Actions)
-        run: |
-          mkdir -p .cache
-          if [ -f .cache/phase5-cache.json ] && [ -s .cache/phase5-cache.json ]; then
-            echo "Jest .cache/phase5-cache.json z Actions ($(wc -c < .cache/phase5-cache.json) b)."
-          elif [ -f data/phase5-cache.json ] && [ -s data/phase5-cache.json ]; then
-            cp data/phase5-cache.json .cache/phase5-cache.json
-            echo "Załadowano data/phase5-cache.json ($(wc -c < .cache/phase5-cache.json) b) — geokodowanie z tego pliku."
-          else
-            echo "::warning::Brak cache: ani Actions, ani data/phase5-cache.json — faza 5 zacznie od zera."
-          fi
+      # Repo data/ nadpisuje ten sam klucz adresu co Actions; wpisy tylko z Actions zostają.
+      - name: Scal cache (data/ + Actions)
+        run: node scripts/merge-phase5-cache.mjs
 
       - name: Raport cache (diagnostyka)
         run: |
