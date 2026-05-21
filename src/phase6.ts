@@ -664,14 +664,33 @@ ${wordModal}  <script>
       listEl.hidden = false;
       if (inputEl) inputEl.setAttribute('aria-expanded', 'true');
     }
-    function selectDocComboboxOption(inputEl, hiddenEl, listEl, idx) {
+    var DOC_LS_PRZEWOZNIK = 'arkusz-mapa-doc-last-przewoznik-label';
+    var DOC_LS_MIEJSCE = 'arkusz-mapa-doc-last-miejsce-label';
+    function saveDocComboboxLastLabel(storageKey, label) {
+      if (!storageKey || !label) return;
+      try { localStorage.setItem(storageKey, label); } catch (e) {}
+    }
+    function findPodwykoIdxByLabel(label) {
+      if (!label) return -1;
+      var i;
+      for (i = 0; i < PODWYKOLISTA.length; i++) {
+        if (PODWYKOLISTA[i].label === label) return i;
+      }
+      var q = normalizeForAddressSearchMap(label);
+      for (i = 0; i < PODWYKOLISTA.length; i++) {
+        if (normalizeForAddressSearchMap(PODWYKOLISTA[i].label) === q) return i;
+      }
+      return -1;
+    }
+    function selectDocComboboxOption(inputEl, hiddenEl, listEl, idx, storageKey) {
       var opt = PODWYKOLISTA[idx];
       if (!opt || !inputEl || !hiddenEl) return;
       inputEl.value = opt.label;
       hiddenEl.value = String(idx);
+      if (storageKey) saveDocComboboxLastLabel(storageKey, opt.label);
       hideDocComboboxList(listEl, inputEl);
     }
-    function renderDocComboboxList(listEl, inputEl, hiddenEl, query) {
+    function renderDocComboboxList(listEl, inputEl, hiddenEl, query, storageKey) {
       if (!listEl || !inputEl || !hiddenEl) return;
       listEl.innerHTML = '';
       if (PODWYKOLISTA.length === 0) {
@@ -694,7 +713,7 @@ ${wordModal}  <script>
         li.textContent = opt.label;
         li.addEventListener('mousedown', function (ev) {
           ev.preventDefault();
-          selectDocComboboxOption(inputEl, hiddenEl, listEl, idx);
+          selectDocComboboxOption(inputEl, hiddenEl, listEl, idx, storageKey);
         });
         listEl.appendChild(li);
       });
@@ -706,7 +725,7 @@ ${wordModal}  <script>
       }
       showDocComboboxList(listEl, inputEl);
     }
-    function tryResolveDocComboboxFromInput(inputEl, hiddenEl) {
+    function tryResolveDocComboboxFromInput(inputEl, hiddenEl, storageKey) {
       if (!inputEl || !hiddenEl) return;
       var text = String(inputEl.value).trim();
       if (!text) {
@@ -717,7 +736,7 @@ ${wordModal}  <script>
       var i;
       for (i = 0; i < PODWYKOLISTA.length; i++) {
         if (normalizeForAddressSearchMap(PODWYKOLISTA[i].label) === q) {
-          selectDocComboboxOption(inputEl, hiddenEl, null, i);
+          selectDocComboboxOption(inputEl, hiddenEl, null, i, storageKey);
           return;
         }
       }
@@ -726,10 +745,23 @@ ${wordModal}  <script>
         if (podwykoOptionMatchesQuery(PODWYKOLISTA[i], text)) matches.push(i);
       }
       if (matches.length === 1) {
-        selectDocComboboxOption(inputEl, hiddenEl, null, matches[0]);
+        selectDocComboboxOption(inputEl, hiddenEl, null, matches[0], storageKey);
         return;
       }
       hiddenEl.value = '';
+    }
+    function restoreDocComboboxFromSavedLabel(inputId, hiddenId, listId, storageKey) {
+      resetDocCombobox(inputId, hiddenId, listId);
+      var saved = '';
+      try { saved = localStorage.getItem(storageKey) || ''; } catch (e) {}
+      saved = String(saved).trim();
+      if (!saved) return;
+      var idx = findPodwykoIdxByLabel(saved);
+      if (idx < 0) return;
+      var inputEl = document.getElementById(inputId);
+      var hiddenEl = document.getElementById(hiddenId);
+      var listEl = document.getElementById(listId);
+      selectDocComboboxOption(inputEl, hiddenEl, listEl, idx);
     }
     function resetDocCombobox(inputId, hiddenId, listId) {
       var inputEl = document.getElementById(inputId);
@@ -740,21 +772,21 @@ ${wordModal}  <script>
       hiddenEl.value = '';
       hideDocComboboxList(listEl, inputEl);
     }
-    function setupDocCombobox(inputId, hiddenId, listId) {
+    function setupDocCombobox(inputId, hiddenId, listId, storageKey) {
       var inputEl = document.getElementById(inputId);
       var hiddenEl = document.getElementById(hiddenId);
       var listEl = document.getElementById(listId);
       if (!inputEl || !hiddenEl || !listEl) return;
       inputEl.addEventListener('focus', function () {
-        renderDocComboboxList(listEl, inputEl, hiddenEl, inputEl.value);
+        renderDocComboboxList(listEl, inputEl, hiddenEl, inputEl.value, storageKey);
       });
       inputEl.addEventListener('input', function () {
         hiddenEl.value = '';
-        renderDocComboboxList(listEl, inputEl, hiddenEl, inputEl.value);
+        renderDocComboboxList(listEl, inputEl, hiddenEl, inputEl.value, storageKey);
       });
       inputEl.addEventListener('blur', function () {
         window.setTimeout(function () {
-          tryResolveDocComboboxFromInput(inputEl, hiddenEl);
+          tryResolveDocComboboxFromInput(inputEl, hiddenEl, storageKey);
           hideDocComboboxList(listEl, inputEl);
         }, 150);
       });
@@ -789,9 +821,9 @@ ${wordModal}  <script>
           var pick = listEl.querySelector('li.doc-combobox-active') || listEl.querySelector('li[data-idx]');
           if (pick && pick.getAttribute('data-idx') != null) {
             ev.preventDefault();
-            selectDocComboboxOption(inputEl, hiddenEl, listEl, parseInt(pick.getAttribute('data-idx'), 10));
+            selectDocComboboxOption(inputEl, hiddenEl, listEl, parseInt(pick.getAttribute('data-idx'), 10), storageKey);
           } else {
-            tryResolveDocComboboxFromInput(inputEl, hiddenEl);
+            tryResolveDocComboboxFromInput(inputEl, hiddenEl, storageKey);
             hideDocComboboxList(listEl, inputEl);
           }
         }
@@ -800,8 +832,8 @@ ${wordModal}  <script>
     function initDocComboboxes() {
       if (docComboboxInited) return;
       docComboboxInited = true;
-      setupDocCombobox('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list');
-      setupDocCombobox('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list');
+      setupDocCombobox('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list', DOC_LS_PRZEWOZNIK);
+      setupDocCombobox('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list', DOC_LS_MIEJSCE);
     }
     function defaultDateZaladunkuYmd() {
       var d = new Date();
@@ -816,8 +848,8 @@ ${wordModal}  <script>
       window.__currentDocPointIdx = pointIdx;
       var m = document.getElementById('doc-modal');
       initDocComboboxes();
-      resetDocCombobox('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list');
-      resetDocCombobox('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list');
+      restoreDocComboboxFromSavedLabel('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list', DOC_LS_PRZEWOZNIK);
+      restoreDocComboboxFromSavedLabel('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list', DOC_LS_MIEJSCE);
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
