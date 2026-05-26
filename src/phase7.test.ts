@@ -36,8 +36,8 @@ describe('phase7 pipeline', () => {
     const rows = [makeRow(), makeRow({ sourceRowIndex: 3, numerPlomby: '222' })];
     const rowsDuplikatyPlomb = [makeRow({ sourceRowIndex: 4, numerPlomby: '333' })];
     const rowsBezDuplikatow = rows;
-    const grouped = new Map<string, { count: number; rows: SheetRow[] }>();
-    grouped.set(rows[0].address, { count: 2, rows });
+    const grouped = new Map<string, { address: string; count: number; rows: SheetRow[] }>();
+    grouped.set(rows[0].address, { address: rows[0].address, count: 2, rows });
 
     const geocoded = [
       {

@@ -12,7 +12,7 @@ const HEADER_HINT = /^(przew|miejsce|nazwa|podwykon|lista|lp\.?|nr\.?|#)/iu;
 
 /** Treść szablonu Word (poza listą w {{@lista_plomb_xml}}): pt → połówki w preprocessie OOXML. */
 export const DOCX_BODY_FONT_SIZE_PT = 10;
-/** Wiersz listy plomb (lp. + tab + data mm-dd + tab + numer) wstawiany przez {{@lista_plomb_xml}} (pt). */
+/** Wiersz listy plomb (lp. + tab + data mm-dd + tab + numer, opcjonalnie + tab + rodzaj zbiórki) wstawiany przez {{@lista_plomb_xml}} (pt). */
 export const DOCX_LISTA_PLOMB_FONT_SIZE_PT = 14;
 /** Akapit „Uwagi: … Brak KPO …” w szablonie Word — poniżej rozmiar niż {@link DOCX_BODY_FONT_SIZE_PT}. */
 export const DOCX_UWAGI_NOTICE_FONT_SIZE_PT = 9;
@@ -146,6 +146,12 @@ export function sortRowsForListaPlomb(rows: SheetRow[]): SheetRow[] {
 /** Kolejne wiersze listy plomb (tekst jak w Wordzie / OCR), bez join `\n`. */
 export function buildListaPlombLines(rows: SheetRow[]): string[] {
   const ordered = sortRowsForListaPlomb(rows);
+  const rodzajeZbiorki = new Set(
+    ordered
+      .map((r) => formatRodzajZbiorkiForDoc(r.zbiorka))
+      .filter((rodzaj) => rodzaj === 'ręczna' || rodzaj === 'automatyczna'),
+  );
+  const shouldAppendBagType = rodzajeZbiorki.size > 1;
   const lines: string[] = [];
   let i = 0;
   for (const r of ordered) {
@@ -155,7 +161,12 @@ export function buildListaPlombLines(rows: SheetRow[]): string[] {
     }
     i += 1;
     const mmdd = formatDataZamknieciaWorkaAsMmDd(r.dataZamknieciaWorka);
-    lines.push(mmdd.length > 0 ? `${i}.\t${mmdd}\t${n}` : `${i}.\t${n}`);
+    const rodzajWorka = shouldAppendBagType ? formatRodzajZbiorkiForDoc(r.zbiorka) : '';
+    let line = mmdd.length > 0 ? `${i}.\t${mmdd}\t${n}` : `${i}.\t${n}`;
+    if (rodzajWorka.length > 0) {
+      line += `\t${rodzajWorka}`;
+    }
+    lines.push(line);
   }
   return lines;
 }

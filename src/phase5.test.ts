@@ -42,9 +42,11 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
 function asGrouped(rows: SheetRow[]): Map<string, AddressGroup> {
   const grouped = new Map<string, AddressGroup>();
   rows.forEach((row) => {
-    const current = grouped.get(row.address);
+    const sklepKey = row.sklep.trim().replace(/\s+/g, ' ').toLowerCase();
+    const groupingKey = sklepKey.length > 0 ? `${row.address}\u0000${sklepKey}` : row.address;
+    const current = grouped.get(groupingKey);
     if (!current) {
-      grouped.set(row.address, { count: 1, rows: [row] });
+      grouped.set(groupingKey, { address: row.address, count: 1, rows: [row] });
       return;
     }
     current.count += 1;
@@ -216,6 +218,42 @@ describe('phase5', () => {
       expect(result.groupedBledneAdresy).toEqual([]);
       expect(fetchFn).toHaveBeenCalledTimes(1);
       expect(sleepFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('test_executePhase5_when_same_address_has_different_shops_should_keep_separate_counts_but_same_geocoded_address', async () => {
+      const row1 = makeRow({ sourceRowIndex: 2, numerPlomby: '111', sklep: 'Sklep 1' });
+      const row2 = makeRow({ sourceRowIndex: 3, numerPlomby: '222', sklep: 'Sklep 2' });
+      const grouped = asGrouped([row1, row2]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '52.206',
+            lon: '17.489',
+            address: {
+              state: 'Wielkopolskie',
+              postcode: '62-320',
+              city: 'Miłosław',
+              road: 'os. Władysława Łokietka',
+              house_number: '18',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(2);
+      expect(result.geocoded.map((item) => item.address)).toEqual([row1.address, row2.address]);
+      expect(result.geocoded.map((item) => item.count)).toEqual([1, 1]);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
     });
 
     it('test_executePhase5_when_nominatim_returns_empty_should_mark_rows_as_bad_addresses', async () => {

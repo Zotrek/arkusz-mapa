@@ -675,7 +675,8 @@ export async function executePhase5(
     );
     const batch = groupedEntries.slice(batchStart, batchEnd);
 
-    for (const [address, group] of batch) {
+    for (const [_groupKey, group] of batch) {
+      const address = group.address;
       const cached = cacheEntries[address];
       if (cached) {
         if (shouldRetrySuspiciousCacheEntry(cached)) {

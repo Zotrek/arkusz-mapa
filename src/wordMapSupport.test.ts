@@ -83,6 +83,22 @@ describe('wordMapSupport', () => {
     expect(s).toBe('1.\t02-01\tz_data\n2.\tbez_daty');
   });
 
+  it('test_buildListaPlombNumbered_when_group_has_mixed_collection_types_should_append_bag_type_per_seal', () => {
+    const s = buildListaPlombNumbered([
+      makeSheetRow({ numerPlomby: 'P1', dataZamknieciaWorka: '2026-01-10', zbiorka: 'Ręczna' }),
+      makeSheetRow({ numerPlomby: 'P2', dataZamknieciaWorka: '2026-02-20', zbiorka: 'Maszyna' }),
+    ]);
+    expect(s).toBe('1.\t02-20\tP2\tautomatyczna\n2.\t01-10\tP1\tręczna');
+  });
+
+  it('test_buildListaPlombNumbered_when_group_has_single_collection_type_should_keep_existing_format', () => {
+    const s = buildListaPlombNumbered([
+      makeSheetRow({ numerPlomby: 'A', dataZamknieciaWorka: '2026-01-10', zbiorka: 'Ręczna' }),
+      makeSheetRow({ numerPlomby: 'B', dataZamknieciaWorka: '2026-02-20', zbiorka: 'Ręczna' }),
+    ]);
+    expect(s).toBe('1.\t02-20\tB\n2.\t01-10\tA');
+  });
+
   it('test_formatDataZamknieciaWorkaAsMmDd_when_iso_or_polish_or_serial_should_parse', () => {
     expect(formatDataZamknieciaWorkaAsMmDd('2026-04-15')).toBe('04-15');
     expect(formatDataZamknieciaWorkaAsMmDd('15.04.2026')).toBe('04-15');
@@ -119,6 +135,16 @@ describe('wordMapSupport', () => {
     ]);
     expect(p.plomby).toEqual(['B', 'A']);
     expect(p.lista_plomb).toBe('1.\t12-31\tB\n2.\t01-01\tA');
+  });
+
+  it('test_buildMapPointDocPayload_when_group_has_mixed_collection_types_should_include_type_in_text_and_xml', () => {
+    const p = buildMapPointDocPayload([
+      makeSheetRow({ numerPlomby: 'A', dataZamknieciaWorka: '2026-01-01', zbiorka: 'Ręczna' }),
+      makeSheetRow({ numerPlomby: 'B', dataZamknieciaWorka: '2026-12-31', zbiorka: 'Maszyna' }),
+    ]);
+    expect(p.lista_plomb).toBe('1.\t12-31\tB\tautomatyczna\n2.\t01-01\tA\tręczna');
+    expect(p.lista_plomb_xml).toContain('1.\t12-31\tB\tautomatyczna');
+    expect(p.lista_plomb_xml).toContain('2.\t01-01\tA\tręczna');
   });
 
   it('test_buildListaPlombOoxml_should_escape_xml_and_use_14pt_half_points', () => {

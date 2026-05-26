@@ -5,6 +5,7 @@
 import type { SheetRow } from './sheets.js';
 
 export interface AddressGroup {
+  address: string;
   count: number;
   rows: SheetRow[];
 }
@@ -49,9 +50,12 @@ export function groupRowsByAddress(rows: SheetRow[]): Map<string, AddressGroup> 
   const grouped = new Map<string, AddressGroup>();
 
   rows.forEach((row) => {
-    const existing = grouped.get(row.address);
+    const sklepKey = row.sklep.trim().replace(/\s+/g, ' ').toLowerCase();
+    const groupingKey = sklepKey.length > 0 ? `${row.address}\u0000${sklepKey}` : row.address;
+    const existing = grouped.get(groupingKey);
     if (!existing) {
-      grouped.set(row.address, {
+      grouped.set(groupingKey, {
+        address: row.address,
         count: 1,
         rows: [row],
       });

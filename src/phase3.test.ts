@@ -65,9 +65,9 @@ describe('phase3', () => {
   describe('REQ-3.2: groupRowsByAddress', () => {
     it('test_groupRowsByAddress_when_same_address_occurs_many_times_should_count_occurrences', () => {
       const rows: SheetRow[] = [
-        makeRow({ sourceRowIndex: 2, numerPlomby: '111', address: 'X' }),
-        makeRow({ sourceRowIndex: 3, numerPlomby: '222', address: 'X' }),
-        makeRow({ sourceRowIndex: 4, numerPlomby: '333', address: 'Y' }),
+        makeRow({ sourceRowIndex: 2, numerPlomby: '111', address: 'X', sklep: '' }),
+        makeRow({ sourceRowIndex: 3, numerPlomby: '222', address: 'X', sklep: '' }),
+        makeRow({ sourceRowIndex: 4, numerPlomby: '333', address: 'Y', sklep: '' }),
       ];
 
       const grouped = groupRowsByAddress(rows);
@@ -77,15 +77,41 @@ describe('phase3', () => {
       expect(grouped.get('X')?.rows.map((r) => r.sourceRowIndex)).toEqual([2, 3]);
       expect(grouped.get('Y')?.count).toBe(1);
     });
+
+    it('test_groupRowsByAddress_when_same_address_has_different_shops_should_create_separate_groups', () => {
+      const rows: SheetRow[] = [
+        makeRow({ sourceRowIndex: 2, numerPlomby: '111', address: 'X', sklep: 'Sklep 1' }),
+        makeRow({ sourceRowIndex: 3, numerPlomby: '222', address: 'X', sklep: 'Sklep 2' }),
+      ];
+
+      const grouped = groupRowsByAddress(rows);
+
+      expect(grouped.size).toBe(2);
+      expect([...grouped.values()].map((group) => group.address)).toEqual(['X', 'X']);
+      expect([...grouped.values()].map((group) => group.count)).toEqual([1, 1]);
+    });
+
+    it('test_groupRowsByAddress_when_shop_is_empty_should_group_by_address_only', () => {
+      const rows: SheetRow[] = [
+        makeRow({ sourceRowIndex: 2, numerPlomby: '111', address: 'X', sklep: '' }),
+        makeRow({ sourceRowIndex: 3, numerPlomby: '222', address: 'X', sklep: '   ' }),
+      ];
+
+      const grouped = groupRowsByAddress(rows);
+
+      expect(grouped.size).toBe(1);
+      expect([...grouped.values()][0]?.address).toBe('X');
+      expect([...grouped.values()][0]?.count).toBe(2);
+    });
   });
 
   describe('REQ-3.1 + REQ-3.2: executePhase3', () => {
     it('test_executePhase3_when_input_has_duplicates_and_repeated_addresses_should_return_complete_result', () => {
       const rows: SheetRow[] = [
-        makeRow({ sourceRowIndex: 2, numerPlomby: '111', address: 'A' }),
-        makeRow({ sourceRowIndex: 3, numerPlomby: '111', address: 'A' }), // duplicate seal
-        makeRow({ sourceRowIndex: 4, numerPlomby: '222', address: 'A' }),
-        makeRow({ sourceRowIndex: 5, numerPlomby: '333', address: 'B' }),
+        makeRow({ sourceRowIndex: 2, numerPlomby: '111', address: 'A', sklep: '' }),
+        makeRow({ sourceRowIndex: 3, numerPlomby: '111', address: 'A', sklep: '' }), // duplicate seal
+        makeRow({ sourceRowIndex: 4, numerPlomby: '222', address: 'A', sklep: '' }),
+        makeRow({ sourceRowIndex: 5, numerPlomby: '333', address: 'B', sklep: '' }),
       ];
 
       const result = executePhase3(rows);

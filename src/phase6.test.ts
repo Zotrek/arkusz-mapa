@@ -373,6 +373,11 @@ describe('phase6', () => {
       expect(html).toContain('id="doc-inp-numer-zlecenia"');
       expect(html).toContain('numer_zlecenia_transportowego');
       expect(html).toContain('defaultDateZaladunkuYmd');
+      expect(html).toContain('DOC_SS_NUMER_ZLECENIA');
+      expect(html).toContain('sessionStorage.setItem(storageKey, value)');
+      expect(html).toContain('incrementDocNumberValue');
+      expect(html).toContain('numEl.value = getNextDocNumberValue()');
+      expect(html).toContain('var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;');
     });
   });
 

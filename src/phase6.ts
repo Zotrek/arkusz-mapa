@@ -666,9 +666,36 @@ ${wordModal}  <script>
     }
     var DOC_LS_PRZEWOZNIK = 'arkusz-mapa-doc-last-przewoznik-label';
     var DOC_LS_MIEJSCE = 'arkusz-mapa-doc-last-miejsce-label';
+    var DOC_SS_NUMER_ZLECENIA = 'arkusz-mapa-doc-last-numer-zlecenia';
     function saveDocComboboxLastLabel(storageKey, label) {
       if (!storageKey || !label) return;
       try { localStorage.setItem(storageKey, label); } catch (e) {}
+    }
+    function saveDocSessionValue(storageKey, value) {
+      if (!storageKey) return;
+      try {
+        if (value) sessionStorage.setItem(storageKey, value);
+        else sessionStorage.removeItem(storageKey);
+      } catch (e) {}
+    }
+    function readDocSessionValue(storageKey) {
+      if (!storageKey) return '';
+      try { return sessionStorage.getItem(storageKey) || ''; } catch (e) {}
+      return '';
+    }
+    function incrementDocNumberValue(value) {
+      var text = String(value || '').trim();
+      if (!text) return '';
+      var match = text.match(/^(.*?)(\d+)(\D.*)?$/);
+      if (!match) return text;
+      var prefix = match[1] || '';
+      var numberText = match[2] || '';
+      var suffix = match[3] || '';
+      var nextNumber = String(parseInt(numberText, 10) + 1).padStart(numberText.length, '0');
+      return prefix + nextNumber + suffix;
+    }
+    function getNextDocNumberValue() {
+      return incrementDocNumberValue(readDocSessionValue(DOC_SS_NUMER_ZLECENIA));
     }
     function findPodwykoIdxByLabel(label) {
       if (!label) return -1;
@@ -837,7 +864,9 @@ ${wordModal}  <script>
     }
     function defaultDateZaladunkuYmd() {
       var d = new Date();
-      d.setDate(d.getDate() + 1);
+      var hour = d.getHours();
+      var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;
+      d.setDate(d.getDate() + dayOffset);
       var y = d.getFullYear();
       var mo = String(d.getMonth() + 1).padStart(2, '0');
       var day = String(d.getDate()).padStart(2, '0');
@@ -853,7 +882,7 @@ ${wordModal}  <script>
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
-      if (numEl) numEl.value = '';
+      if (numEl) numEl.value = getNextDocNumberValue();
       m.style.display = 'flex';
       m.setAttribute('aria-hidden', 'false');
     }
@@ -965,6 +994,7 @@ ${wordModal}  <script>
         });
         var safeName = buildDocxDownloadName(prOpt.label, dzPlik, p.adres);
         saveAs(out, safeName);
+        if (numerZlecenia) saveDocSessionValue(DOC_SS_NUMER_ZLECENIA, numerZlecenia);
         closeDocModal();
       } catch (err) {
         console.error(err);
