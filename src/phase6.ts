@@ -686,7 +686,7 @@ ${wordModal}  <script>
     function incrementDocNumberValue(value) {
       var text = String(value || '').trim();
       if (!text) return '';
-      var match = text.match(/^(.*?)(\d+)(\D.*)?$/);
+      var match = text.match(/^(.*?)(\\d+)(\\D.*)?$/);
       if (!match) return text;
       var prefix = match[1] || '';
       var numberText = match[2] || '';

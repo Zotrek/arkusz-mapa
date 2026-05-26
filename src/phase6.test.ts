@@ -376,6 +376,7 @@ describe('phase6', () => {
       expect(html).toContain('DOC_SS_NUMER_ZLECENIA');
       expect(html).toContain('sessionStorage.setItem(storageKey, value)');
       expect(html).toContain('incrementDocNumberValue');
+      expect(html).toContain('text.match(/^(.*?)(\\d+)(\\D.*)?$/);');
       expect(html).toContain('numEl.value = getNextDocNumberValue()');
       expect(html).toContain('var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;');
     });
