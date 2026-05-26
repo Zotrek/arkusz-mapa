@@ -40,6 +40,7 @@ type SheetsWriteClient = SheetsMetaClient & SheetsValuesClient;
 type SheetMeta = {
   sheets?: Array<{
     properties?: {
+      sheetId?: number;
       title?: string;
     };
   }>;
@@ -181,6 +182,33 @@ export async function executePhase4(
   api: SheetsWriteClient,
   input: Phase4Input,
 ): Promise<void> {
+  const metaResponse = await api.spreadsheets.get({ spreadsheetId: input.spreadsheetId });
+  const sheets = (((metaResponse.data as SheetMeta) ?? {}).sheets ?? [])
+    .map((sheet) => ({
+      sheetId: sheet.properties?.sheetId,
+      title: sheet.properties?.title,
+    }))
+    .filter((sheet): sheet is { sheetId: number; title: string } => {
+      return typeof sheet.sheetId === 'number' && typeof sheet.title === 'string';
+    });
+  const sheetToKeep = sheets.some((sheet) => sheet.title === 'Arkusz1')
+    ? 'Arkusz1'
+    : sheets[0]?.title;
+  const sheetIdsToDelete = sheets
+    .filter((sheet) => sheet.title !== sheetToKeep)
+    .map((sheet) => sheet.sheetId);
+
+  if (sheetIdsToDelete.length > 0) {
+    await api.spreadsheets.batchUpdate({
+      spreadsheetId: input.spreadsheetId,
+      requestBody: {
+        requests: sheetIdsToDelete.map((sheetId) => ({
+          deleteSheet: { sheetId },
+        })),
+      },
+    });
+  }
+
   if (input.rowsDuplikatyPlomb.length > 0) {
     await ensureSheetExists(api, input.spreadsheetId, SHEET_NAME_DUPLIKATY_PLOMB);
     await overwriteSheetRows(

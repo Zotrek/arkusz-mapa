@@ -118,6 +118,65 @@ describe('phase4', () => {
   });
 
   describe('executePhase4', () => {
+    it('test_executePhase4_when_extra_tabs_exist_should_delete_all_non_arkusz1_tabs_first', async () => {
+      const api = {
+        spreadsheets: {
+          get: vi
+            .fn()
+            .mockResolvedValueOnce({
+              data: {
+                sheets: [
+                  { properties: { sheetId: 1, title: 'Arkusz1' } },
+                  { properties: { sheetId: 2, title: 'Stare wyniki' } },
+                  { properties: { sheetId: 3, title: 'Jeszcze stara zakładka' } },
+                ],
+              },
+            })
+            .mockResolvedValue({
+              data: {
+                sheets: [{ properties: { title: 'Arkusz1' } }],
+              },
+            }),
+          batchUpdate: vi.fn().mockResolvedValue({}),
+          values: {
+            clear: vi.fn().mockResolvedValue({}),
+            update: vi.fn().mockResolvedValue({}),
+          },
+        },
+      };
+
+      await executePhase4(api, {
+        spreadsheetId: 'sheet-id',
+        headers: ['A', 'B'],
+        rowsDuplikatyPlomb: [],
+        rowsNiepewneWyniki: [],
+        groupedNiepewneAdresy: [],
+        groupedBledneAdresy: [
+          {
+            address: '34-300 Zywiec Bracka 1',
+            liczbaWystapien: 3,
+          },
+        ],
+        geocoded: [],
+        geocodedNoPostcode: [],
+        uncertainGeocoded: [],
+        cityOnlyGeocoded: [],
+      });
+
+      expect(api.spreadsheets.batchUpdate).toHaveBeenNthCalledWith(1, {
+        spreadsheetId: 'sheet-id',
+        requestBody: {
+          requests: [{ deleteSheet: { sheetId: 2 } }, { deleteSheet: { sheetId: 3 } }],
+        },
+      });
+      expect(api.spreadsheets.batchUpdate).toHaveBeenNthCalledWith(2, {
+        spreadsheetId: 'sheet-id',
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: 'Zgrupowane błędne adresy' } } }],
+        },
+      });
+    });
+
     it('test_executePhase4_when_called_should_save_grouped_and_adresy_tabs', async () => {
       const api = {
         spreadsheets: {
