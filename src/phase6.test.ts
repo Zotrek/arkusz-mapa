@@ -20,6 +20,9 @@ import {
   podwykoOptionMatchesSearch,
   addressMatchesSearch,
   mapPointMatchesSearch,
+  uniquePodmiotyHandloweFromRows,
+  classifyMapPointZbiorka,
+  mapPointMatchesZbiorkaFilter,
   haversineMeters,
   spreadCloseMarkerPositions,
   findCloseMapPointPairs,
@@ -162,6 +165,16 @@ describe('phase6', () => {
       ).toBe(true);
     });
 
+    it('test_uniquePodmiotyHandloweFromRows_when_rows_given_should_deduplicate_column_a', () => {
+      const rows = [
+        makeSheetRow({ podmiotHandlowy: 'ACME Sp. z o.o.', sklep: 'Sklep A' }),
+        makeSheetRow({ podmiotHandlowy: 'ACME Sp. z o.o.', sklep: 'Sklep B' }),
+        makeSheetRow({ podmiotHandlowy: 'Inna firma', sklep: '' }),
+        makeSheetRow({ podmiotHandlowy: '  ', sklep: 'Tylko sklep' }),
+      ];
+      expect(uniquePodmiotyHandloweFromRows(rows)).toEqual(['ACME Sp. z o.o.', 'Inna firma']);
+    });
+
     it('test_mapPointMatchesSearch_when_query_in_sklep_should_match', () => {
       expect(
         mapPointMatchesSearch('00-001 Warszawa ul. Inna 1', ['PH', 'Sklep przy Rynku'], 'rynku'),
@@ -201,6 +214,36 @@ describe('phase6', () => {
     });
   });
 
+  describe('zbiorka filter', () => {
+    it('test_classifyMapPointZbiorka_when_reczna_and_maszyna_should_return_obie', () => {
+      expect(classifyMapPointZbiorka('Ręczna / Maszyna')).toBe('obie');
+    });
+
+    it('test_classifyMapPointZbiorka_when_only_reczna_should_return_reczna', () => {
+      expect(classifyMapPointZbiorka('Ręczna')).toBe('reczna');
+    });
+
+    it('test_classifyMapPointZbiorka_when_only_maszyna_should_return_maszyna', () => {
+      expect(classifyMapPointZbiorka('Maszyna')).toBe('maszyna');
+    });
+
+    it('test_mapPointMatchesZbiorkaFilter_when_default_obie_should_match_both_modes_only', () => {
+      expect(mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'obie')).toBe(true);
+      expect(mapPointMatchesZbiorkaFilter('Ręczna', 'obie')).toBe(false);
+      expect(mapPointMatchesZbiorkaFilter('Maszyna', 'obie')).toBe(false);
+    });
+
+    it('test_mapPointMatchesZbiorkaFilter_when_reczna_mode_should_match_reczna_only', () => {
+      expect(mapPointMatchesZbiorkaFilter('Ręczna', 'reczna')).toBe(true);
+      expect(mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'reczna')).toBe(false);
+    });
+
+    it('test_mapPointMatchesZbiorkaFilter_when_maszyna_mode_should_match_maszyna_only', () => {
+      expect(mapPointMatchesZbiorkaFilter('Maszyna', 'maszyna')).toBe(true);
+      expect(mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'maszyna')).toBe(false);
+    });
+  });
+
   describe('filename helpers', () => {
     it('test_formatTimestampForFileName_when_winter_utc_should_use_europe_warsaw_cet', () => {
       const date = new Date('2026-02-25T17:05:06Z');
@@ -237,6 +280,35 @@ describe('phase6', () => {
       expect(html).toContain('zoomControl: false');
       expect(html).toContain('map-zoom-in');
       expect(html).toContain('map-search-input-row');
+    });
+
+    it('test_buildMapHtml_when_zbiorka_data_present_should_embed_zbiorka_filter_controls', () => {
+      const geo: GeocodedAddress[] = [
+        {
+          address: 'Adres obie',
+          count: 1,
+          lat: 52.1,
+          lng: 21.0,
+          wojewodztwo: 'Mazowieckie',
+          zbiorka: 'Ręczna / Maszyna',
+          rows: [],
+        },
+        {
+          address: 'Adres reczna',
+          count: 1,
+          lat: 52.2,
+          lng: 21.1,
+          wojewodztwo: 'Mazowieckie',
+          zbiorka: 'Ręczna',
+          rows: [],
+        },
+      ];
+      const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
+      expect(html).toContain('map-zbiorka-filter');
+      expect(html).toContain('mapPointMatchesZbiorkaFilterMap');
+      expect(html).toContain('value="obie" checked');
+      expect(html).toContain('Tylko ręczna');
+      expect(html).toContain('Tylko maszynowa');
     });
 
     it('test_buildMapHtml_when_two_close_points_should_embed_markerLat_markerLng', () => {
@@ -292,8 +364,12 @@ describe('phase6', () => {
       ];
       const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
       expect(html).toContain('"searchLabels"');
+      expect(html).toContain('"podmiotyHandlowe"');
+      expect(html).toContain('"podmiotyHandlowe":["ACME Sp. z o.o."]');
       expect(html).toContain('ACME Sp. z o.o.');
       expect(html).toContain('Sklep przy dworcu');
+      expect(html).toContain('popup-podmiot');
+      expect(html).toContain('p.podmiotyHandlowe.join');
     });
 
     it('test_buildMapHtml_when_ok_confidence_should_use_green_pin', () => {

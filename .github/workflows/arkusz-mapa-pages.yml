@@ -1,4 +1,6 @@
-# Ręcznie: Actions → „arkusz-mapa — Pages” → Run workflow.
+# Uruchomienia:
+#   • Ręcznie: Actions → „arkusz-mapa — Pages” → Run workflow.
+#   • Harmonogram: codziennie o 9:30 i 14:00 (Europe/Warsaw).
 # Katalog główny repozytorium = ten pakiet (arkusz-mapa).
 #
 # Wymagane sekrety:
@@ -24,6 +26,11 @@ name: arkusz-mapa — Pages
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '30 9 * * *'
+      timezone: Europe/Warsaw
+    - cron: '0 14 * * *'
+      timezone: Europe/Warsaw
 
 permissions:
   contents: read

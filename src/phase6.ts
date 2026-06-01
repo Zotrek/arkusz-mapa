@@ -262,6 +262,8 @@ type MapPoint = {
   confidence: 'ok' | 'ok_no_postcode' | 'uncertain' | 'city_only';
   /** Unikalne etykiety z kolumn A (podmiot) i B (sklep) — wyszukiwarka mapy. */
   searchLabels: string[];
+  /** Unikalne wartości kolumny A (podmiot handlowy) — popup na mapie. */
+  podmiotyHandlowe: string[];
   /** Zbiórka: Ręczna / Maszyna (z kolumny L) */
   zbiorka?: string;
   /** Do {{rodzaj_zbiorki}} w Word: ręczna | automatyczna | ręczna i automatyczna */
@@ -354,6 +356,82 @@ export function mapPointMatchesSearch(adres: string, searchLabels: string[], que
   return false;
 }
 
+/** Filtr warstwy zbiórki na mapie (domyślnie: oba tryby na jednym adresie). */
+export type ZbiorkaFilterMode = 'obie' | 'reczna' | 'maszyna';
+
+export type MapPointZbiorkaKind = ZbiorkaFilterMode | 'unknown';
+
+export interface ZbiorkaFlags {
+  hasReczna: boolean;
+  hasMaszyna: boolean;
+}
+
+/** Parsuje agregat kolumny zbiórki (jak {@link aggregateZbiorka} / popup na mapie). */
+export function parseZbiorkaFlags(zbiorka: string | undefined): ZbiorkaFlags {
+  const raw = (zbiorka ?? '').trim();
+  if (raw.length === 0) {
+    return { hasReczna: false, hasMaszyna: false };
+  }
+  const lower = raw.toLowerCase();
+  const segments = lower
+    .split('/')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const toScan = segments.length > 0 ? segments : [lower];
+  let hasReczna = false;
+  let hasMaszyna = false;
+  for (const seg of toScan) {
+    if (seg.includes('ręcz') || seg === 'r') {
+      hasReczna = true;
+    } else if (seg.includes('maszyn') || seg === 'm' || seg.includes('automat')) {
+      hasMaszyna = true;
+    }
+  }
+  return { hasReczna, hasMaszyna };
+}
+
+/** Klasyfikacja punktu mapy wg trybu zbiórki. */
+export function classifyMapPointZbiorka(zbiorka: string | undefined): MapPointZbiorkaKind {
+  const { hasReczna, hasMaszyna } = parseZbiorkaFlags(zbiorka);
+  if (hasReczna && hasMaszyna) {
+    return 'obie';
+  }
+  if (hasReczna) {
+    return 'reczna';
+  }
+  if (hasMaszyna) {
+    return 'maszyna';
+  }
+  return 'unknown';
+}
+
+/** Czy punkt jest widoczny przy wybranym filtrze zbiórki. */
+export function mapPointMatchesZbiorkaFilter(
+  zbiorka: string | undefined,
+  mode: ZbiorkaFilterMode,
+): boolean {
+  return classifyMapPointZbiorka(zbiorka) === mode;
+}
+
+/** Unikalne wartości kolumny A z wierszy punktu (deduplikacja po {@link normalizeForAddressSearch}). */
+export function uniquePodmiotyHandloweFromRows(rows: SheetRow[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rows) {
+    const t = String(r.podmiotHandlowy ?? '').trim();
+    if (t.length === 0) {
+      continue;
+    }
+    const key = normalizeForAddressSearch(t);
+    if (key.length === 0 || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
 /** Wartości A/B z wierszy punktu (deduplikacja po {@link normalizeForAddressSearch}). */
 function uniqueSearchLabelsFromRows(rows: SheetRow[]): string[] {
   const seen = new Set<string>();
@@ -386,6 +464,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     woj: item.wojewodztwo || 'Nieznane',
     confidence,
     searchLabels: uniqueSearchLabelsFromRows(item.rows),
+    podmiotyHandlowe: uniquePodmiotyHandloweFromRows(item.rows),
     zbiorka: item.zbiorka,
     rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
     doc: buildMapPointDocPayload(item.rows),
@@ -418,6 +497,7 @@ export function buildMapHtml(
     color: LEGEND_QUALITY[c].color,
   }));
   const hasAnyPoints = points.length > 0;
+  const showZbiorkaFilter = points.some((p) => classifyMapPointZbiorka(p.zbiorka) !== 'unknown');
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
 
   const wordHeadScripts = wordEnabled
@@ -492,6 +572,7 @@ ${wordHeadScripts}  <style>
     .leaflet-popup-content-wrapper { border-radius: 8px; }
     .leaflet-popup-content { margin: 12px 16px; min-width: 220px; }
     .popup-address { font-weight: 600; margin-bottom: 6px; color: #1a1a1a; }
+    .popup-podmiot { font-size: 0.92em; color: #333; margin-bottom: 6px; }
     .popup-count { color: #0d6efd; font-size: 1.05em; }
     .popup-woj { font-size: 0.85em; color: #555; margin-top: 4px; }
     .popup-zbiorka { font-size: 0.85em; color: #0d6efd; margin-top: 4px; }
@@ -515,6 +596,11 @@ ${wordHeadScripts}  <style>
     .map-zoom-inline button:first-child { border-radius: 4px 0 0 4px; border-right: none; }
     .map-zoom-inline button:last-child { border-radius: 0 4px 4px 0; }
     .map-search-status { margin-top: 6px; font-size: 11px; color: #555; min-height: 1.2em; }
+    .map-zbiorka-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
+    .map-zbiorka-filter-title { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
+    .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 4px; }
+    .map-zbiorka-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
+    .map-zbiorka-filter-options input { margin: 0; flex-shrink: 0; }
 ${docStyles}  </style>
 </head>
 <body>
@@ -523,6 +609,7 @@ ${wordModal}  <script>
     const adresy = ${JSON.stringify(points)};
     const legendQualityItems = ${JSON.stringify(legendQualityItems)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
+    const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
     const wordDocEnabled = ${JSON.stringify(wordEnabled)};
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
@@ -591,6 +678,34 @@ ${wordModal}  <script>
         if (normalizeForAddressSearchMap(String(labels[i])).indexOf(q) !== -1) return true;
       }
       return false;
+    }
+    function parseZbiorkaFlagsMap(zbiorka) {
+      var raw = String(zbiorka || '').trim();
+      if (!raw) return { hasReczna: false, hasMaszyna: false };
+      var lower = raw.toLowerCase();
+      var segments = lower.split('/').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+      var toScan = segments.length > 0 ? segments : [lower];
+      var hasReczna = false, hasMaszyna = false;
+      for (var i = 0; i < toScan.length; i++) {
+        var seg = toScan[i];
+        if (seg.indexOf('ręcz') !== -1 || seg === 'r') hasReczna = true;
+        else if (seg.indexOf('maszyn') !== -1 || seg === 'm' || seg.indexOf('automat') !== -1) hasMaszyna = true;
+      }
+      return { hasReczna: hasReczna, hasMaszyna: hasMaszyna };
+    }
+    function classifyMapPointZbiorkaMap(zbiorka) {
+      var f = parseZbiorkaFlagsMap(zbiorka);
+      if (f.hasReczna && f.hasMaszyna) return 'obie';
+      if (f.hasReczna) return 'reczna';
+      if (f.hasMaszyna) return 'maszyna';
+      return 'unknown';
+    }
+    function mapPointMatchesZbiorkaFilterMap(zbiorka, mode) {
+      return classifyMapPointZbiorkaMap(zbiorka) === mode;
+    }
+    function getZbiorkaFilterMode() {
+      var el = document.querySelector('input[name="map-zbiorka-filter"]:checked');
+      return el ? String(el.value) : 'obie';
     }
 
     function hexToRgb(hex) {
@@ -1044,11 +1159,16 @@ ${wordModal}  <script>
       const zbiorkaLine = p.zbiorka
         ? '<div class="popup-zbiorka">Zbiórka: ' + p.zbiorka + '</div>'
         : '';
+      const podmiotLine =
+        p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
+          ? '<div class="popup-podmiot">Podmiot handlowy: ' + p.podmiotyHandlowe.join(', ') + '</div>'
+          : '';
       const genDocBtn = wordDocEnabled
         ? '<div><button type="button" class="btn-gen-doc">Generuj dokument</button></div>'
         : '';
       const popupContent =
         '<div class="popup-address">' + p.adres + '</div>' +
+        (podmiotLine || '') +
         '<div class="popup-count">Liczba wystąpień: <strong>' + p.count + '</strong></div>' +
         (zbiorkaLine || '') +
         '<div class="popup-woj">' + p.woj + '</div>' +
@@ -1078,6 +1198,16 @@ ${wordModal}  <script>
       map.fitBounds(allPointsBounds, { padding: [40, 40] });
     }
 
+    var zbiorkaFilterHtml = showZbiorkaFilter
+      ? '<div class="map-zbiorka-filter" role="group" aria-labelledby="map-zbiorka-filter-title">' +
+        '<span id="map-zbiorka-filter-title" class="map-zbiorka-filter-title">Warstwa zbiórki</span>' +
+        '<div class="map-zbiorka-filter-options">' +
+        '<label><input type="radio" name="map-zbiorka-filter" value="obie" checked /> Ręczna i maszynowa</label>' +
+        '<label><input type="radio" name="map-zbiorka-filter" value="reczna" /> Tylko ręczna</label>' +
+        '<label><input type="radio" name="map-zbiorka-filter" value="maszyna" /> Tylko maszynowa</label>' +
+        '</div></div>'
+      : '';
+
     var searchControl = L.control({ position: 'topleft' });
     searchControl.onAdd = function() {
       var wrap = L.DomUtil.create('div', 'map-search-panel');
@@ -1089,13 +1219,20 @@ ${wordModal}  <script>
         '<button type="button" id="map-zoom-out" title="Pomniejsz" aria-label="Pomniejsz">−</button>' +
         '<button type="button" id="map-zoom-in" title="Powiększ" aria-label="Powiększ">+</button>' +
         '</div></div>' +
-        '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>';
+        '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>' +
+        zbiorkaFilterHtml;
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
       var zIn = wrap.querySelector('#map-zoom-in');
       var zOut = wrap.querySelector('#map-zoom-out');
       if (zIn) zIn.onclick = function() { map.zoomIn(); };
       if (zOut) zOut.onclick = function() { map.zoomOut(); };
+      if (showZbiorkaFilter) {
+        var zbiorkaRadios = wrap.querySelectorAll('input[name="map-zbiorka-filter"]');
+        for (var zi = 0; zi < zbiorkaRadios.length; zi++) {
+          zbiorkaRadios[zi].addEventListener('change', applyAddressSearch);
+        }
+      }
       return wrap;
     };
     searchControl.addTo(map);
@@ -1120,8 +1257,10 @@ ${wordModal}  <script>
         var inputEl = document.getElementById('map-address-search');
         var r = inputEl ? inputEl.value : '';
         if (String(r).trim().length === 0) return;
+        var zMode = getZbiorkaFilterMode();
         var matched = markerEntries.filter(function(e) {
-          return mapPointMatchesSearchMap(e.p, r);
+          var zOk = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(e.p.zbiorka, zMode);
+          return zOk && mapPointMatchesSearchMap(e.p, r);
         });
         if (matched.length === 0) return;
         if (matched.length === 1) {
@@ -1144,17 +1283,24 @@ ${wordModal}  <script>
       var inputEl = document.getElementById('map-address-search');
       var statusEl = document.getElementById('map-search-status');
       var raw = inputEl ? inputEl.value : '';
-      var hasFilter = String(raw).trim().length > 0;
+      var hasSearchFilter = String(raw).trim().length > 0;
+      var zbiorkaMode = getZbiorkaFilterMode();
       var matchCount = 0;
       markerEntries.forEach(function(entry) {
-        var match = mapPointMatchesSearchMap(entry.p, raw);
-        if (hasFilter && match) matchCount++;
-        entry.marker.setOpacity(hasFilter && !match ? 0.3 : 1);
-        entry.marker.setZIndexOffset(hasFilter && match ? 800 : 0);
-        entry.marker.setIcon(pinIcon(entry.kolor, hasFilter && match));
+        var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
+        if (!zMatch) {
+          entry.marker.setOpacity(0);
+          entry.marker.setZIndexOffset(0);
+          return;
+        }
+        var sMatch = mapPointMatchesSearchMap(entry.p, raw);
+        if (hasSearchFilter && sMatch) matchCount++;
+        entry.marker.setOpacity(hasSearchFilter && !sMatch ? 0.3 : 1);
+        entry.marker.setZIndexOffset(hasSearchFilter && sMatch ? 800 : 0);
+        entry.marker.setIcon(pinIcon(entry.kolor, hasSearchFilter && sMatch));
       });
       if (statusEl) {
-        if (!hasFilter) {
+        if (!hasSearchFilter) {
           statusEl.textContent = '';
         } else if (matchCount === 0) {
           statusEl.textContent = 'Brak dopasowań';
@@ -1162,7 +1308,7 @@ ${wordModal}  <script>
           statusEl.textContent = 'Znaleziono: ' + matchCount;
         }
       }
-      scheduleSearchViewport(hasFilter, raw, matchCount);
+      scheduleSearchViewport(hasSearchFilter, raw, matchCount);
       skipInitialSearchViewport = false;
     }
     var searchInputEl = document.getElementById('map-address-search');
