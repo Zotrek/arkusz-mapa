@@ -227,7 +227,13 @@ describe('phase6', () => {
       expect(classifyMapPointZbiorka('Maszyna')).toBe('maszyna');
     });
 
-    it('test_mapPointMatchesZbiorkaFilter_when_default_obie_should_match_both_modes_only', () => {
+    it('test_mapPointMatchesZbiorkaFilter_when_wszystkie_should_match_any_point', () => {
+      expect(mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesZbiorkaFilter('Ręczna', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesZbiorkaFilter(undefined, 'wszystkie')).toBe(true);
+    });
+
+    it('test_mapPointMatchesZbiorkaFilter_when_obie_should_match_both_modes_only', () => {
       expect(mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'obie')).toBe(true);
       expect(mapPointMatchesZbiorkaFilter('Ręczna', 'obie')).toBe(false);
       expect(mapPointMatchesZbiorkaFilter('Maszyna', 'obie')).toBe(false);
@@ -306,7 +312,8 @@ describe('phase6', () => {
       const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
       expect(html).toContain('map-zbiorka-filter');
       expect(html).toContain('mapPointMatchesZbiorkaFilterMap');
-      expect(html).toContain('value="obie" checked');
+      expect(html).toContain('value="wszystkie" checked');
+      expect(html).toContain('Wszystkie punkty');
       expect(html).toContain('Tylko ręczna');
       expect(html).toContain('Tylko maszynowa');
     });

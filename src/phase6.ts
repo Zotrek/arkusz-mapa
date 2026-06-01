@@ -356,10 +356,10 @@ export function mapPointMatchesSearch(adres: string, searchLabels: string[], que
   return false;
 }
 
-/** Filtr warstwy zbiórki na mapie (domyślnie: oba tryby na jednym adresie). */
-export type ZbiorkaFilterMode = 'obie' | 'reczna' | 'maszyna';
+/** Filtr warstwy zbiórki na mapie (domyślnie: wszystkie punkty). */
+export type ZbiorkaFilterMode = 'wszystkie' | 'obie' | 'reczna' | 'maszyna';
 
-export type MapPointZbiorkaKind = ZbiorkaFilterMode | 'unknown';
+export type MapPointZbiorkaKind = 'obie' | 'reczna' | 'maszyna' | 'unknown';
 
 export interface ZbiorkaFlags {
   hasReczna: boolean;
@@ -410,6 +410,9 @@ export function mapPointMatchesZbiorkaFilter(
   zbiorka: string | undefined,
   mode: ZbiorkaFilterMode,
 ): boolean {
+  if (mode === 'wszystkie') {
+    return true;
+  }
   return classifyMapPointZbiorka(zbiorka) === mode;
 }
 
@@ -701,11 +704,12 @@ ${wordModal}  <script>
       return 'unknown';
     }
     function mapPointMatchesZbiorkaFilterMap(zbiorka, mode) {
+      if (mode === 'wszystkie') return true;
       return classifyMapPointZbiorkaMap(zbiorka) === mode;
     }
     function getZbiorkaFilterMode() {
       var el = document.querySelector('input[name="map-zbiorka-filter"]:checked');
-      return el ? String(el.value) : 'obie';
+      return el ? String(el.value) : 'wszystkie';
     }
 
     function hexToRgb(hex) {
@@ -1202,7 +1206,8 @@ ${wordModal}  <script>
       ? '<div class="map-zbiorka-filter" role="group" aria-labelledby="map-zbiorka-filter-title">' +
         '<span id="map-zbiorka-filter-title" class="map-zbiorka-filter-title">Warstwa zbiórki</span>' +
         '<div class="map-zbiorka-filter-options">' +
-        '<label><input type="radio" name="map-zbiorka-filter" value="obie" checked /> Ręczna i maszynowa</label>' +
+        '<label><input type="radio" name="map-zbiorka-filter" value="wszystkie" checked /> Wszystkie punkty</label>' +
+        '<label><input type="radio" name="map-zbiorka-filter" value="obie" /> Ręczna i maszynowa</label>' +
         '<label><input type="radio" name="map-zbiorka-filter" value="reczna" /> Tylko ręczna</label>' +
         '<label><input type="radio" name="map-zbiorka-filter" value="maszyna" /> Tylko maszynowa</label>' +
         '</div></div>'
