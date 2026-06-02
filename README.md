@@ -47,6 +47,12 @@ npm run build
 
 Kompilacja TypeScript → `dist/`. Do uruchomienia pipeline’u użyj `npm run generate` (tsx).
 
+## GitHub Actions (Pages) i harmonogram
+
+- Ręcznie: **Actions** → **arkusz-mapa — Pages** → **Run workflow**.
+- Automatycznie **9:30** i **14:00** (czas warszawski): zewnętrzny cron wywołuje ten sam workflow przez API — instrukcja w [`docs/harmonogram-github-actions.md`](docs/harmonogram-github-actions.md) (skrypt `scripts/trigger-pages-workflow.sh`).
+- Natywny `on.schedule` w GitHub **nie uruchamia się** w tym repozytorium; nie polegaj na nim, dopóki w historii Actions nie pojawią się runy z eventem **Schedule**.
+
 ## Testy
 
 ```bash

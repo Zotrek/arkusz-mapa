@@ -1,6 +1,7 @@
 # Uruchomienia:
 #   • Ręcznie: Actions → „arkusz-mapa — Pages” → Run workflow.
-#   • Harmonogram: arkusz-mapa-cron-trigger.yml (cron → workflow_dispatch tutaj).
+#   • Harmonogram: zewnętrzny cron → API workflow_dispatch (docs/harmonogram-github-actions.md).
+#     GitHub on.schedule w tym repo nie działa (0 runów schedule w historii).
 # Katalog główny repozytorium = ten pakiet (arkusz-mapa).
 #
 # Wymagane sekrety:
