@@ -1,0 +1,24 @@
+# Harmonogram → ręczne wywołanie arkusz-mapa-pages.yml (obejście gdy schedule w Pages nie działa).
+# Godziny w UTC (CEST, lato): 07:30→09:30, 10:30→12:30 (test), 12:00→14:00 Warszawa.
+# Usuń cron '30 10' po udanym teście; zimą (CET) dostosuj godziny UTC.
+name: arkusz-mapa cron trigger
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 10 * * *'
+    - cron: '30 7 * * *'
+    - cron: '0 12 * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  trigger-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Uruchom arkusz-mapa — Pages
+        run: gh workflow run arkusz-mapa-pages.yml --ref master
+        env:
+          GH_TOKEN: ${{ github.token }}
