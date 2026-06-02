@@ -1,6 +1,6 @@
 # Uruchomienia:
 #   • Ręcznie: Actions → „arkusz-mapa — Pages” → Run workflow.
-#   • Harmonogram: codziennie o 9:30 i 14:00 (Europe/Warsaw).
+#   • Harmonogram: codziennie o 9:30 i 14:00 czasu warszawskiego (cron w UTC, patrz on.schedule).
 # Katalog główny repozytorium = ten pakiet (arkusz-mapa).
 #
 # Wymagane sekrety:
@@ -26,11 +26,11 @@ name: arkusz-mapa — Pages
 
 on:
   workflow_dispatch:
+  # GitHub cron = UTC. 07:30 i 12:00 UTC ≈ 09:30 i 14:00 w Warszawie (CEST, lato).
+  # Zimą (CET): zmień na '30 8' i '0 13' albo przywróć timezone: "Europe/Warsaw" gdy UI to obsłuży.
   schedule:
-    - cron: '30 9 * * *'
-      timezone: Europe/Warsaw
-    - cron: '0 14 * * *'
-      timezone: Europe/Warsaw
+    - cron: '30 7 * * *'
+    - cron: '0 12 * * *'
 
 permissions:
   contents: read
