@@ -20,6 +20,9 @@ import {
 /** Kolor pinezki dla 15+ wystąpień (wyróżnienie dużych zbiórek). */
 const COLOR_15_PLUS = '#fd7e14';
 
+/** Kolor pinezki dla 10–14 wystąpień. */
+const COLOR_10_14 = '#ffc107';
+
 /** Maks. odległość między punktami (m), aby uznać je za „nakładające się” na mapie. */
 export const MAP_MARKER_CLUSTER_MAX_M = 20;
 
@@ -474,9 +477,9 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
   };
 }
 
-/** Palety: ciemny (10–14), średni (4–9), jasny (1–3). Dla 15+ używany COLOR_15_PLUS (pomarańczowy). */
-const PALETTE_OK = ['#97F0C7', '#5CC494', '#198754'] as const; // jasny, średni, ciemny
-const PALETTE_UNCERTAIN = ['#D1A5A9', '#CC606A', '#D40418'] as const;
+/** Palety: jasny (1–3), ciemny (4–9), żółty (10–14). Dla 15+ używany COLOR_15_PLUS (pomarańczowy). */
+const PALETTE_OK = ['#97F0C7', '#198754', COLOR_10_14] as const;
+const PALETTE_UNCERTAIN = ['#D1A5A9', '#D40418', COLOR_10_14] as const;
 
 export function buildMapHtml(
   geocoded: GeocodedAddress[],
@@ -629,9 +632,28 @@ ${wordModal}  <script>
       attribution: '&copy; <a href="https://tileservers.com/">TileServers</a> | ' + attribution
     });
     layerCarto.addTo(map);
-    layerCarto.once('tileerror', function() {
+    var cartoTileErrors = 0;
+    var cartoTileLoaded = false;
+    var cartoFallbackActive = false;
+    var CARTO_FALLBACK_MIN_ERRORS = 4;
+    function activateCartoFallback() {
+      if (cartoFallbackActive) return;
+      cartoFallbackActive = true;
+      layerCarto.off('tileerror');
+      layerCarto.off('tileload');
       map.removeLayer(layerCarto);
       map.addLayer(layerTileServerS);
+    }
+    layerCarto.on('tileerror', function() {
+      if (cartoFallbackActive || cartoTileLoaded) return;
+      cartoTileErrors++;
+      if (cartoTileErrors >= CARTO_FALLBACK_MIN_ERRORS) {
+        activateCartoFallback();
+      }
+    });
+    layerCarto.on('tileload', function() {
+      cartoTileLoaded = true;
+      cartoTileErrors = 0;
     });
 
     function pinIcon(kolor, highlight) {
@@ -711,6 +733,10 @@ ${wordModal}  <script>
       var el = document.querySelector('input[name="map-zbiorka-filter"]:checked');
       return el ? String(el.value) : 'wszystkie';
     }
+    function setMarkerClickable(marker, clickable) {
+      var el = marker.getElement ? marker.getElement() : null;
+      if (el) el.style.pointerEvents = clickable ? '' : 'none';
+    }
 
     function hexToRgb(hex) {
       var n = parseInt(hex.slice(1), 16);
@@ -759,8 +785,8 @@ ${wordModal}  <script>
       if (confidence === 'ok' || confidence === 'ok_no_postcode') return paletteOk[idx];
       if (confidence === 'uncertain') return paletteUncertain[idx];
       var kolorBazowy = '#0d6efd';
-      if (count >= 10) return kolorBazowy;
-      if (count >= 4) return hexWithSaturation(kolorBazowy, 0.65);
+      if (count >= 10) return ${JSON.stringify(COLOR_10_14)};
+      if (count >= 4) return kolorBazowy;
       return hexWithSaturation(kolorBazowy, 0.35);
     }
 
@@ -1296,10 +1322,12 @@ ${wordModal}  <script>
         if (!zMatch) {
           entry.marker.setOpacity(0);
           entry.marker.setZIndexOffset(0);
+          setMarkerClickable(entry.marker, false);
           return;
         }
         var sMatch = mapPointMatchesSearchMap(entry.p, raw);
         if (hasSearchFilter && sMatch) matchCount++;
+        setMarkerClickable(entry.marker, true);
         entry.marker.setOpacity(hasSearchFilter && !sMatch ? 0.3 : 1);
         entry.marker.setZIndexOffset(hasSearchFilter && sMatch ? 800 : 0);
         entry.marker.setIcon(pinIcon(entry.kolor, hasSearchFilter && sMatch));

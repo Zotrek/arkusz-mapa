@@ -286,6 +286,9 @@ describe('phase6', () => {
       expect(html).toContain('zoomControl: false');
       expect(html).toContain('map-zoom-in');
       expect(html).toContain('map-search-input-row');
+      expect(html).toContain('basemaps.cartocdn.com/light_all');
+      expect(html).toContain('activateCartoFallback');
+      expect(html).toContain('CARTO_FALLBACK_MIN_ERRORS');
     });
 
     it('test_buildMapHtml_when_zbiorka_data_present_should_embed_zbiorka_filter_controls', () => {
@@ -312,6 +315,8 @@ describe('phase6', () => {
       const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
       expect(html).toContain('map-zbiorka-filter');
       expect(html).toContain('mapPointMatchesZbiorkaFilterMap');
+      expect(html).toContain('setMarkerClickable');
+      expect(html).toContain("pointerEvents = clickable ? '' : 'none'");
       expect(html).toContain('value="wszystkie" checked');
       expect(html).toContain('Wszystkie punkty');
       expect(html).toContain('Tylko ręczna');

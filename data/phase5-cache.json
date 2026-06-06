@@ -6735,10 +6735,6 @@
       "wojewodztwo": "Kujawsko-pomorskie",
       "updatedAt": "2026-03-29T20:11:45.153Z"
     },
-    "Kod pocztowy Miasto Ulica Numer budynku": {
-      "status": "bad",
-      "updatedAt": "2026-03-29T20:50:30.708Z"
-    },
     "66-600 Krosno odrzańskie Szklarka Radnicka 16 16": {
       "status": "ok",
       "lat": 52.090200876685344,
@@ -6992,11 +6988,11 @@
       "updatedAt": "2026-03-31T20:34:09.933Z"
     },
     "64-111 Lipno Górka Duchowna 61": {
-      "status": "uncertain",
-      "lat": 51.9535178,
-      "lng": 16.5905268,
+      "status": "ok",
+      "lat": 51.9536370635409,
+      "lng": 16.590510748613692,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-03-31T20:34:12.670Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "05-076 Warszawa I Pułku Praskiego 3": {
       "status": "ok",
@@ -7048,11 +7044,11 @@
       "updatedAt": "2026-03-31T20:34:44.438Z"
     },
     "63-322 Gołuchów BIELAWY 21": {
-      "status": "uncertain",
-      "lat": 51.8645565,
-      "lng": 17.9024747,
+      "status": "ok",
+      "lat": 51.864678522048735,
+      "lng": 17.902414474838594,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-03-31T20:34:47.085Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "39-400 TARNOBRZEG Wyspiańskiego 13": {
       "status": "ok",
@@ -7188,18 +7184,18 @@
       "updatedAt": "2026-05-20T15:51:07.424Z"
     },
     "66-400 Gorzów Wilekopolski Śląska 19": {
-      "status": "uncertain",
-      "lat": 52.730766,
-      "lng": 15.2354362,
+      "status": "ok",
+      "lat": 52.72300882465642,
+      "lng": 15.233291290003013,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-04-09T06:06:06.297Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "36-147 NIWISKA NIWISKA 276": {
-      "status": "uncertain",
-      "lat": 50.2240054,
-      "lng": 21.6416952,
+      "status": "ok",
+      "lat": 50.22415126300549,
+      "lng": 21.641695419934578,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-09T06:06:07.834Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "58-213 Lutomia Górna Lutomia Górna 178": {
       "status": "ok",
@@ -7209,11 +7205,11 @@
       "updatedAt": "2026-04-09T06:14:35.118Z"
     },
     "66-400 GORZÓW WLKP. PAPUSZY 5A": {
-      "status": "uncertain",
-      "lat": 52.7563543,
-      "lng": 15.2631051,
+      "status": "ok",
+      "lat": 52.756467206513484,
+      "lng": 15.263247493911049,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-04-09T06:06:32.720Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "06-400 Ciechanów Księdza Piotra Ściegiennego 9": {
       "status": "ok",
@@ -7223,11 +7219,11 @@
       "updatedAt": "2026-04-09T06:06:35.381Z"
     },
     "38-131 GOGOŁÓW GLINIK GÓRNY 142": {
-      "status": "uncertain",
-      "lat": 49.8481078,
-      "lng": 21.5270169,
+      "status": "ok",
+      "lat": 49.8484116778153,
+      "lng": 21.528250933225735,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-09T06:06:37.289Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "08-300 Sokołów Podlaski PIłsudskiego 5": {
       "status": "ok",
@@ -7244,11 +7240,11 @@
       "updatedAt": "2026-04-09T06:06:42.920Z"
     },
     "63-322 TURSKO TURSKO 14": {
-      "status": "uncertain",
-      "lat": 51.8781767,
-      "lng": 17.9329688,
+      "status": "ok",
+      "lat": 51.87827509348059,
+      "lng": 17.932948247470435,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-04-09T06:06:44.320Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "59-101 Sobin Polkowicka 77": {
       "status": "ok",
@@ -7461,11 +7457,11 @@
       "updatedAt": "2026-04-09T20:15:38.540Z"
     },
     "96-115 Nowy Kawęczyn Strzyboga 41A": {
-      "status": "uncertain",
-      "lat": 51.9124074,
-      "lng": 20.2004698,
+      "status": "ok",
+      "lat": 51.91250716211192,
+      "lng": 20.200436661859918,
       "wojewodztwo": "Łódzkie",
-      "updatedAt": "2026-04-09T20:15:41.383Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "42-200 Częstochowa ul. Wojska Polskiego 120": {
       "status": "ok",
@@ -7482,11 +7478,11 @@
       "updatedAt": "2026-04-09T20:15:45.891Z"
     },
     "66-615 Dąbie ŁUŻYCKA 3C 3c": {
-      "status": "uncertain",
-      "lat": 52.0026012,
-      "lng": 15.1746253,
+      "status": "ok",
+      "lat": 52.01128110748294,
+      "lng": 15.151323361578807,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-04-09T20:15:50.076Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "62-330 Nekla Rynek 21": {
       "status": "ok",
@@ -7503,11 +7499,11 @@
       "updatedAt": "2026-04-10T22:36:10.998Z"
     },
     "39-451 Skopanie Al. Gen. Sikorskiego 11": {
-      "status": "uncertain",
-      "lat": 50.47541,
-      "lng": 21.55385,
+      "status": "ok",
+      "lat": 50.47548761330264,
+      "lng": 21.554065154792283,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-10T22:36:13.646Z"
+      "updatedAt": "2026-06-03T14:50:18.969Z"
     },
     "36-046 NOSÓWKA NOSÓWKA 280a": {
       "status": "ok",
@@ -7524,11 +7520,11 @@
       "updatedAt": "2026-05-26T20:55:00.000Z"
     },
     "86-060 Pęchowo Pęchowo 20": {
-      "status": "uncertain",
-      "lat": 52.931488,
-      "lng": 18.0698177,
+      "status": "ok",
+      "lat": 52.93169971746888,
+      "lng": 18.069800077971475,
       "wojewodztwo": "Kujawsko-pomorskie",
-      "updatedAt": "2026-04-10T22:36:19.594Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "62-200 GNIEZNO Os. Jagiellońskie 45": {
       "status": "ok",
@@ -7545,11 +7541,11 @@
       "updatedAt": "2026-04-10T22:36:23.693Z"
     },
     "95-001 BESIEKIERZ RUDNY BESIEKIERZ RUDNY 50": {
-      "status": "uncertain",
-      "lat": 51.9486272,
-      "lng": 19.4604428,
+      "status": "ok",
+      "lat": 51.96204021788463,
+      "lng": 19.472363421177388,
       "wojewodztwo": "Łódzkie",
-      "updatedAt": "2026-04-14T17:58:22.638Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "21-500 BIAŁA PODLASKA POROSIUKI 130 130": {
       "status": "ok",
@@ -7594,11 +7590,11 @@
       "updatedAt": "2026-04-14T17:58:57.159Z"
     },
     "39-332 Czajkowa Czajkowa 109": {
-      "status": "uncertain",
-      "lat": 50.3722053,
-      "lng": 21.5340787,
+      "status": "ok",
+      "lat": 50.37230159947924,
+      "lng": 21.53410863326524,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-14T17:58:58.605Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "42-520 dąbrowa górnicza DWORCOWA 4": {
       "status": "ok",
@@ -7636,11 +7632,11 @@
       "updatedAt": "2026-04-14T17:59:14.860Z"
     },
     "37-430 Jata Jata 33b": {
-      "status": "uncertain",
-      "lat": 50.3719633,
-      "lng": 22.1239248,
+      "status": "ok",
+      "lat": 50.39174970354067,
+      "lng": 22.07611477587336,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-14T17:59:23.773Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "34-231 Juszczyn Juszczyn 233": {
       "status": "ok",
@@ -7706,11 +7702,11 @@
       "updatedAt": "2026-04-14T18:00:01.046Z"
     },
     "63-000 ŚRODA WLKP. Plac Armii Poznań 1": {
-      "status": "uncertain",
-      "lat": 52.2296743,
-      "lng": 17.277264,
+      "status": "ok",
+      "lat": 52.229805643162244,
+      "lng": 17.277502904879547,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-04-14T18:00:04.323Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "39-450 Suchorzów Krótka 3": {
       "status": "ok",
@@ -7720,11 +7716,11 @@
       "updatedAt": "2026-04-14T18:00:07.189Z"
     },
     "39-332 Tuszów Tuszów 218B": {
-      "status": "uncertain",
-      "lat": 50.370673,
-      "lng": 21.4931458,
+      "status": "ok",
+      "lat": 50.37022842690135,
+      "lng": 21.463166346709844,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-14T18:00:11.349Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "00-193 WARSZAWA STAWKI 2A": {
       "status": "ok",
@@ -7762,11 +7758,11 @@
       "updatedAt": "2026-05-20T16:43:52.840Z"
     },
     "39-460 Alfredówka Alfredówka 204": {
-      "status": "uncertain",
-      "lat": 50.466998,
-      "lng": 21.756599,
+      "status": "ok",
+      "lat": 50.46706680506344,
+      "lng": 21.756605331763847,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-04-15T20:25:02.367Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "62-200 GNIEZNO Poznańska 39": {
       "status": "ok",
@@ -7951,11 +7947,11 @@
       "updatedAt": "2026-05-20T15:54:53.188Z"
     },
     "39-331 Chorzelów Chorzelów 112A": {
-      "status": "uncertain",
-      "lat": 50.3294779,
-      "lng": 21.4401933,
+      "status": "ok",
+      "lat": 50.32958827777812,
+      "lng": 21.440169805121993,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-05-20T15:54:54.622Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "20-611 Lublin Chrobrego 6": {
       "status": "ok",
@@ -7965,18 +7961,18 @@
       "updatedAt": "2026-05-20T15:54:58.121Z"
     },
     "39-310 Chrząstów Chrząstów 2A": {
-      "status": "uncertain",
-      "lat": 50.1971641,
-      "lng": 21.2699343,
+      "status": "ok",
+      "lat": 50.335828459779066,
+      "lng": 21.41076979253165,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-05-20T15:55:08.035Z"
+      "updatedAt": "2026-06-03T14:59:09.561Z"
     },
     "66-600 CZARNOWO CZARNOWO 19": {
-      "status": "uncertain",
-      "lat": 52.056372,
-      "lng": 15.0859596,
+      "status": "ok",
+      "lat": 52.034256946502445,
+      "lng": 14.960154520012388,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-05-20T15:55:18.730Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "32-090 SŁOMNIK CZECHY 1E": {
       "status": "ok",
@@ -8014,11 +8010,11 @@
       "updatedAt": "2026-05-20T16:21:54.817Z"
     },
     "39-451 Durdy Durdy 14": {
-      "status": "uncertain",
-      "lat": 50.4228726,
-      "lng": 21.5902756,
+      "status": "ok",
+      "lat": 50.42296186799712,
+      "lng": 21.590306648413257,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-05-20T15:55:46.551Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "62-280 Kiszkowo Dworcowa 16a": {
       "status": "ok",
@@ -8028,11 +8024,11 @@
       "updatedAt": "2026-05-20T15:55:49.303Z"
     },
     "66-626 Dychów Dychów 67": {
-      "status": "uncertain",
-      "lat": 51.9854037,
-      "lng": 15.0596506,
+      "status": "ok",
+      "lat": 51.98551254820417,
+      "lng": 15.05970563375258,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-05-20T15:55:50.650Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "11-300 BISKUPIEC DYMER 8/1": {
       "status": "ok",
@@ -8091,11 +8087,11 @@
       "updatedAt": "2026-05-20T15:56:24.205Z"
     },
     "55-200 Godzikowice Godzikowice 94b": {
-      "status": "uncertain",
-      "lat": 50.927953,
-      "lng": 17.3427436,
+      "status": "ok",
+      "lat": 50.910397605992955,
+      "lng": 17.311905394106667,
       "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-05-20T15:56:31.664Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "20-605 Lublin Grażyny 14": {
       "status": "ok",
@@ -8147,11 +8143,11 @@
       "updatedAt": "2026-05-20T15:56:52.383Z"
     },
     "59-726 Swietoszow Husarska 1 1": {
-      "status": "uncertain",
-      "lat": 51.4750646,
-      "lng": 15.3949289,
+      "status": "ok",
+      "lat": 51.47260878554426,
+      "lng": 15.395745049638249,
       "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-05-20T15:56:55.481Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "59-930 Pieńsk Hutnicza 29": {
       "status": "ok",
@@ -8175,11 +8171,11 @@
       "updatedAt": "2026-05-20T15:57:02.476Z"
     },
     "74-404 cychry jana pawłaII 38": {
-      "status": "uncertain",
-      "lat": 52.6872209,
-      "lng": 14.7237964,
+      "status": "ok",
+      "lat": 52.69252208059913,
+      "lng": 14.705409720450374,
       "wojewodztwo": "Zachodniopomorskie",
-      "updatedAt": "2026-05-20T15:57:10.814Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "97-226 Żelechlinek Jarzębinowa 1": {
       "status": "ok",
@@ -8231,11 +8227,11 @@
       "updatedAt": "2026-05-20T15:57:31.918Z"
     },
     "38-303 Kobylanka kobylanka 658": {
-      "status": "uncertain",
-      "lat": 49.6543689,
-      "lng": 21.2247611,
+      "status": "ok",
+      "lat": 49.654788774450104,
+      "lng": 21.224994388882372,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-05-20T15:57:33.445Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "63-230 Witaszyce Kolejowa 19": {
       "status": "ok",
@@ -8259,11 +8255,11 @@
       "updatedAt": "2026-05-20T16:08:09.040Z"
     },
     "66-400 Gorzów Wilekopolski Kombatantów 2": {
-      "status": "uncertain",
-      "lat": 52.7614899,
-      "lng": 15.2676263,
+      "status": "ok",
+      "lat": 52.761545967489,
+      "lng": 15.267686161131651,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-05-20T15:57:56.579Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "64-500 Szamotuły Kopernika 4": {
       "status": "ok",
@@ -8301,11 +8297,11 @@
       "updatedAt": "2026-05-20T16:21:54.817Z"
     },
     "36-110 Krzątka Krzątka 36": {
-      "status": "uncertain",
-      "lat": 50.3769146,
-      "lng": 21.7690375,
+      "status": "ok",
+      "lat": 50.401799951500166,
+      "lng": 21.827845602522295,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-05-20T15:58:19.267Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "30-809 Kraków Ks. Piotra Ściegiennego 67A": {
       "status": "ok",
@@ -8315,11 +8311,11 @@
       "updatedAt": "2026-05-20T16:43:52.840Z"
     },
     "62-301 Marzenin Ks. Twardego 35": {
-      "status": "uncertain",
-      "lat": 52.38709,
-      "lng": 17.54255,
+      "status": "ok",
+      "lat": 52.3872712416238,
+      "lng": 17.54254300988839,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-05-20T15:58:25.274Z"
+      "updatedAt": "2026-06-03T14:54:18.597Z"
     },
     "07-402 Kurpiewskie kurpiewskie 7": {
       "status": "ok",
@@ -8420,11 +8416,11 @@
       "updatedAt": "2026-05-20T15:59:17.657Z"
     },
     "62-212 Mieleszyn Mieleszyn 84a": {
-      "status": "uncertain",
-      "lat": 52.666525,
-      "lng": 17.5071002,
+      "status": "ok",
+      "lat": 52.66667391554224,
+      "lng": 17.507094532640057,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-05-20T15:59:18.987Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "62-007 BISKUPICE MIESZKA I 2": {
       "status": "ok",
@@ -8462,11 +8458,11 @@
       "updatedAt": "2026-05-20T15:59:33.732Z"
     },
     "63-308 GIZAŁKI NOWA WIEŚ 15": {
-      "status": "uncertain",
-      "lat": 52.0395152,
-      "lng": 17.7549396,
+      "status": "ok",
+      "lat": 52.039590232723164,
+      "lng": 17.754855079408436,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-05-20T15:59:36.690Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "62-510 Konin Nowowiejskiego 1a": {
       "status": "ok",
@@ -8602,11 +8598,11 @@
       "updatedAt": "2026-05-20T16:00:53.842Z"
     },
     "39-460 Rozalin Rozalin 71A": {
-      "status": "uncertain",
-      "lat": 50.4263058,
-      "lng": 21.74946,
+      "status": "ok",
+      "lat": 50.44970091766485,
+      "lng": 21.703438334023932,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-05-20T16:01:03.074Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "63-330 Dobrzyca Różana 7": {
       "status": "ok",
@@ -8707,11 +8703,11 @@
       "updatedAt": "2026-05-20T16:01:51.290Z"
     },
     "63-330 Dobrzyca Sośnica 33a": {
-      "status": "uncertain",
-      "lat": 51.8596961,
-      "lng": 17.6791694,
+      "status": "ok",
+      "lat": 51.85978413684269,
+      "lng": 17.679195851224193,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-05-20T16:01:54.465Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "14-202 Rudzienice Sportowa 4": {
       "status": "ok",
@@ -8756,18 +8752,18 @@
       "updatedAt": "2026-05-20T16:02:13.608Z"
     },
     "91-341 Łódź św. Teresy od Dzieciątka Jezus 100": {
-      "status": "uncertain",
-      "lat": 51.8029061,
-      "lng": 19.4219727,
+      "status": "ok",
+      "lat": 51.80390179173091,
+      "lng": 19.421657076722678,
       "wojewodztwo": "Łódzkie",
-      "updatedAt": "2026-05-20T16:02:16.417Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "87-335 Świedziebnia Świedziebnia 102A": {
-      "status": "uncertain",
-      "lat": 53.152156,
-      "lng": 19.5595032,
+      "status": "ok",
+      "lat": 53.15227819050274,
+      "lng": 19.559492377993223,
       "wojewodztwo": "Kujawsko-pomorskie",
-      "updatedAt": "2026-05-20T16:02:18.493Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "12-120 DZWIERZUTY SZCZYCIEŃSKA 37": {
       "status": "ok",
@@ -8938,11 +8934,11 @@
       "updatedAt": "2026-05-20T16:25:42.229Z"
     },
     "66-400 Gorzów Wilekopolski Ulimska 1": {
-      "status": "uncertain",
-      "lat": 52.7473669,
-      "lng": 15.1357141,
+      "status": "ok",
+      "lat": 52.69348298114705,
+      "lng": 15.227134420840265,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-05-20T16:03:31.397Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "26-332 Unwel Unwel 42": {
       "status": "ok",
@@ -8980,11 +8976,11 @@
       "updatedAt": "2026-05-20T16:21:54.817Z"
     },
     "62-050 Krosinko Wiejska 55A": {
-      "status": "uncertain",
-      "lat": 52.2327632,
-      "lng": 16.8130274,
+      "status": "ok",
+      "lat": 52.23276471749765,
+      "lng": 16.81228413799733,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-05-20T16:03:57.776Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "31-061 Kraków wizawi Podgórska 16 16": {
       "status": "ok",
@@ -9071,18 +9067,18 @@
       "updatedAt": "2026-05-20T16:04:53.446Z"
     },
     "39-300 ZŁOTNIKI ZŁOTNIKI 228": {
-      "status": "uncertain",
-      "lat": 50.2882474,
-      "lng": 21.4413662,
+      "status": "ok",
+      "lat": 50.32461219048905,
+      "lng": 21.410757831085768,
       "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-05-20T16:05:01.646Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "67-120 KOŻUCHÓW ZYGMUNTOWSKA 7A": {
-      "status": "uncertain",
-      "lat": 51.7560021,
-      "lng": 15.6061482,
+      "status": "ok",
+      "lat": 51.75289882824453,
+      "lng": 15.601724075965617,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-05-20T16:05:03.009Z"
+      "updatedAt": "2026-06-03T15:02:11.256Z"
     },
     "37-200 Przeworsk 11-listopada 76": {
       "status": "ok",
@@ -9125,6 +9121,405 @@
       "lng": 20.0195554,
       "wojewodztwo": "Łódzkie",
       "updatedAt": "2026-05-20T21:05:12.981Z"
+    },
+    "67-410 Slawa Gola 44": {
+      "status": "uncertain",
+      "lat": 51.898298,
+      "lng": 16.03966,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-06T17:35:05.607Z"
+    },
+    "75-642 Koszalin Westerplatte 30": {
+      "status": "ok",
+      "lat": 54.1917827,
+      "lng": 16.2329827,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-06-06T17:35:08.294Z"
+    },
+    "22-200 Włodawa Lubelska 64": {
+      "status": "ok",
+      "lat": 51.550218,
+      "lng": 23.5400542,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:35:11.166Z"
+    },
+    "18-400 Łomża Al. Legionów 58A": {
+      "status": "ok",
+      "lat": 53.16906,
+      "lng": 22.0627201,
+      "wojewodztwo": "Podlaskie",
+      "updatedAt": "2026-06-06T17:35:14.484Z"
+    },
+    "33-390 ŁĄCKO ŁĄCKO 106A": {
+      "status": "city_only",
+      "lat": 49.5576697,
+      "lng": 20.4349281,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:35:15.994Z"
+    },
+    "98-330 PAJĘCZNO WYSZYŃSKIEGO 5": {
+      "status": "ok",
+      "lat": 51.1450899,
+      "lng": 18.9955808,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-06T17:35:18.980Z"
+    },
+    "98-290 WARTA PROBOSZCZOWICE 56": {
+      "status": "uncertain",
+      "lat": 51.7188428,
+      "lng": 18.6242199,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-06T17:35:22.566Z"
+    },
+    "32-731 ŁĄKTA GÓRNA ŁĄKTA GÓRNA 86": {
+      "status": "uncertain",
+      "lat": 49.8122334,
+      "lng": 20.4276409,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:35:31.466Z"
+    },
+    "23-251 Wyżnianka Wyżnianka 33": {
+      "status": "uncertain",
+      "lat": 50.9424647,
+      "lng": 22.1383888,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:35:32.906Z"
+    },
+    "33-386 Gostwica Gostwica 329": {
+      "status": "city_only",
+      "lat": 49.5954589,
+      "lng": 20.5916078,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:35:34.453Z"
+    },
+    "18-400 ŁOMŻA WOJSKA POLSKIEGO 161 E": {
+      "status": "ok",
+      "lat": 53.1787301,
+      "lng": 22.062865,
+      "wojewodztwo": "Podlaskie",
+      "updatedAt": "2026-06-06T17:35:38.050Z"
+    },
+    "95-200 Pabianice Torowa 25": {
+      "status": "ok",
+      "lat": 51.6624834,
+      "lng": 19.3212545,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-06T17:35:40.831Z"
+    },
+    "23-230 Trzydnik Duży Trzydnik Duży 59b": {
+      "status": "uncertain",
+      "lat": 50.8568543,
+      "lng": 22.1524183,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:35:45.027Z"
+    },
+    "32-825 Borzęcin Borzęcin 583K": {
+      "status": "uncertain",
+      "lat": 50.0680743,
+      "lng": 20.7120843,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:35:46.319Z"
+    },
+    "30-382 Kraków PRZYBYSZEWSKIEGO 75": {
+      "status": "city_only",
+      "lat": 50.0159818,
+      "lng": 19.9022418,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:35:50.837Z"
+    },
+    "39-221 Łęki Dolne Łęki Dolne 124a": {
+      "status": "uncertain",
+      "lat": 49.9762735,
+      "lng": 21.2078983,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-06-06T17:36:00.349Z"
+    },
+    "21-080 Bogucin Bogucin 59A": {
+      "status": "city_only",
+      "lat": 51.3309728,
+      "lng": 22.386442,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:36:03.113Z"
+    },
+    "74-304 Nowogrodek Pomorski Trzcinna 82": {
+      "status": "uncertain",
+      "lat": 52.8842985,
+      "lng": 15.0106316,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-06-06T17:36:05.981Z"
+    },
+    "62-200 GNIEZNO Armii Krajowej 10": {
+      "status": "ok",
+      "lat": 52.5145239,
+      "lng": 17.604745,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-06T17:36:08.962Z"
+    },
+    "33-270 Wietrzychowice Wietrzychowice 188": {
+      "status": "uncertain",
+      "lat": 50.1899363,
+      "lng": 20.7556398,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:36:10.452Z"
+    },
+    "65-613 Zielona Góra Żołnierzy 2 Armii 40": {
+      "status": "ok",
+      "lat": 51.9348123,
+      "lng": 15.4864791,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-06T17:36:11.759Z"
+    },
+    "67-100 Nowa Sól zielonogórska 134": {
+      "status": "ok",
+      "lat": 51.8380035,
+      "lng": 15.7097779,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-06T17:36:14.591Z"
+    },
+    "37-710 Przemyśl Orzechowce 200": {
+      "status": "uncertain",
+      "lat": 49.818509,
+      "lng": 22.8035415,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-06-06T17:36:18.640Z"
+    },
+    "48-100 Głubczyce Oświęcimska 26": {
+      "status": "ok",
+      "lat": 50.1924364,
+      "lng": 17.8181105,
+      "wojewodztwo": "Opolskie",
+      "updatedAt": "2026-06-06T17:36:21.629Z"
+    },
+    "68-200 Żary Wapienna 1": {
+      "status": "ok",
+      "lat": 51.6543165,
+      "lng": 15.1350011,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-06T17:36:24.291Z"
+    },
+    "21-500 Biała Podlaska Brzeska 172": {
+      "status": "ok",
+      "lat": 52.0405619,
+      "lng": 23.1598911,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:36:25.901Z"
+    },
+    "32-440 Biertowice Krakowska 16": {
+      "status": "ok",
+      "lat": 49.8775456,
+      "lng": 19.791706,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:36:28.726Z"
+    },
+    "66-400 Gorzów Wielkopolski Batalionu Zośka 10a": {
+      "status": "ok",
+      "lat": 52.7607932,
+      "lng": 15.2620258,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-06T17:36:31.464Z"
+    },
+    "42-217 Częstochowa 1 maja 19": {
+      "status": "ok",
+      "lat": 50.7994261,
+      "lng": 19.1163258,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-06-06T17:36:33.016Z"
+    },
+    "66-200 Świebodzin Grottgera 1": {
+      "status": "ok",
+      "lat": 52.2478392,
+      "lng": 15.5404021,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-06T17:36:36.497Z"
+    },
+    "56-500 Syców Plac Wolności 6": {
+      "status": "ok",
+      "lat": 51.3074864,
+      "lng": 17.7198433,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-06T17:36:39.472Z"
+    },
+    "37-750 Dubiecko Winne-Podbukowina 11 11": {
+      "status": "city_only",
+      "lat": 49.8275952,
+      "lng": 22.3988526,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-06-06T17:36:43.459Z"
+    },
+    "22-100 Chełm Ramba Brzeska 14A": {
+      "status": "city_only",
+      "lat": 51.1272685,
+      "lng": 23.4667291,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:36:47.848Z"
+    },
+    "30-241 Kraków Olszanicka 85": {
+      "status": "ok",
+      "lat": 50.0647221,
+      "lng": 19.8231928,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:36:50.629Z"
+    },
+    "33-250 Otfinów Gorzyce 205": {
+      "status": "city_only",
+      "lat": 50.1913414,
+      "lng": 20.8200703,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:36:54.829Z"
+    },
+    "22-500 Hrubieszów Kolejowa 49A": {
+      "status": "ok",
+      "lat": 50.7939121,
+      "lng": 23.9012595,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:36:57.548Z"
+    },
+    "32-800 Brzesko Dworcowa 2": {
+      "status": "ok",
+      "lat": 49.9858832,
+      "lng": 20.6132681,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:37:00.261Z"
+    },
+    "34-483 Lipnica Wielka Lipnica Wielka 606": {
+      "status": "uncertain",
+      "lat": 49.4995943,
+      "lng": 19.6106428,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:37:01.703Z"
+    },
+    "62-200 GNIEZNO WITKOWSKA 18A": {
+      "status": "ok",
+      "lat": 52.5238363,
+      "lng": 17.6006586,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-06T17:37:05.580Z"
+    },
+    "62-200 GNIEZNO BUDOWLANYCH 2": {
+      "status": "ok",
+      "lat": 52.5420597,
+      "lng": 17.6107742,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-06T17:37:08.318Z"
+    },
+    "21-025 JAKUBOWICE KONIŃSKIE JAKUBOWICE KONIŃSKIE UL.LUBELSKA 15": {
+      "status": "uncertain",
+      "lat": 51.3575282,
+      "lng": 22.5661334,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:37:16.921Z"
+    },
+    "03-290 Warszawa Geodezyjna 76": {
+      "status": "ok",
+      "lat": 52.3101046,
+      "lng": 21.0787452,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-06-06T17:37:19.696Z"
+    },
+    "18-400 Łomża Aleja Legionów 60/1F": {
+      "status": "ok",
+      "lat": 53.1671314,
+      "lng": 22.061828,
+      "wojewodztwo": "Podlaskie",
+      "updatedAt": "2026-06-06T17:37:23.042Z"
+    },
+    "32-007 WOLA ZABIERZOWSKA WOLA ZABIERZOWSKA 253": {
+      "status": "uncertain",
+      "lat": 50.0679567,
+      "lng": 20.318709,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:37:24.934Z"
+    },
+    "87-800 Włocławek Łęgska 16": {
+      "status": "ok",
+      "lat": 52.6559645,
+      "lng": 19.0847322,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-06-06T17:37:27.752Z"
+    },
+    "39-200 Dębica Rzeszowska 151": {
+      "status": "ok",
+      "lat": 50.0551319,
+      "lng": 21.4331165,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-06-06T17:37:29.085Z"
+    },
+    "26-200 Końskie Piłsudskiego 39": {
+      "status": "ok",
+      "lat": 51.1917877,
+      "lng": 20.4041408,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-06-06T17:37:32.205Z"
+    },
+    "22-300 KRASNYSTAW BOROWA 9": {
+      "status": "ok",
+      "lat": 50.970885,
+      "lng": 23.1601108,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:37:35.405Z"
+    },
+    "08-110 Siedlce Warszawska 133": {
+      "status": "ok",
+      "lat": 52.1693978,
+      "lng": 22.2327916,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-06-06T17:37:38.465Z"
+    },
+    "02-337 Warszawa Mszczonowska 2": {
+      "status": "ok",
+      "lat": 52.2123207,
+      "lng": 20.9491296,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-06-06T17:37:41.146Z"
+    },
+    "87-500 Rypin 3 maja 11": {
+      "status": "ok",
+      "lat": 53.0708,
+      "lng": 19.41616,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-06-06T17:37:44.449Z"
+    },
+    "62-200 Lubochnia os. Sosnowe 207": {
+      "status": "ok",
+      "lat": 52.5216888,
+      "lng": 17.7143396,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-06T17:37:47.564Z"
+    },
+    "62-100 Wągrowiec JEZYKA 48": {
+      "status": "ok",
+      "lat": 52.812914,
+      "lng": 17.206173,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-06T17:37:50.116Z"
+    },
+    "34-532 Brzegi Głodówka 20": {
+      "status": "ok",
+      "lat": 49.3020265,
+      "lng": 20.1167599,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-06T17:37:53.298Z"
+    },
+    "62-200 Gniezno Roosevelta 114": {
+      "status": "ok",
+      "lat": 52.5404186,
+      "lng": 17.6252204,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-06T17:37:54.686Z"
+    },
+    "63-600 Świba brak 110 110": {
+      "status": "uncertain",
+      "lat": 51.3002153,
+      "lng": 18.0010987,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-06T17:38:04.183Z"
+    },
+    "22-300 Krasnystaw PONIATOWSKIEGO 3": {
+      "status": "ok",
+      "lat": 50.9846429,
+      "lng": 23.1712823,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-06T17:38:07.487Z"
     }
   }
 }
