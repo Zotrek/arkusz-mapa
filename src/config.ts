@@ -11,19 +11,38 @@ import 'dotenv/config';
 const ARKUSZ_MAPA_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // REQ-1.5: indeksy kolumn (A=0, B=1, C=2, …)
-// Aktualna struktura arkusza (od 2026-04-09 dodano kolumnę "Województwo" na pozycji H):
-// A=0 Podmiot handlowy, B=1 Sklep, C=2 Kod pocztowy, D=3 Miasto, E=4 Ulica,
-// F=5 Numer budynku, G=6 Gmina, H=7 Województwo, I=8 Numer plomby,
-// J=9 Status worka, K=10 Status TMS worka, L=11 Data zamknięcia worka,
-// M=12 Tryb zbiórki, N=13 Waga, O=14 Frakcja, P=15 Typ worka
-export const COL_KOD_POCZTOWY = 2;   // C
-export const COL_MIASTO = 3;          // D
-export const COL_ULICA = 4;           // E
-export const COL_NUMER_BUDYNKU = 5;   // F
-export const COL_NUMER_PLOMBY = 8;    // I – przesunięte po dodaniu kolumny "Województwo" w H
-/** L (11): data zamknięcia worka — m.in. do listy plomb w Wordzie (mm-dd). */
-export const COL_DATA_ZAMKNIECIA_WORKA = 11;
-export const COL_ZBIORKA = 12;        // M – Tryb zbiórki (poprzednio L=11)
+// Aktualna struktura arkusza (2026-06: kolumna NIP na A; 2026-04: Województwo):
+// A=0 NIP, B=1 Podmiot handlowy, C=2 Sklep, D=3 Kod pocztowy, E=4 Miasto, F=5 Ulica,
+// G=6 Numer budynku, H=7 Gmina, I=8 Województwo, J=9 Numer plomby,
+// K=10 Status worka, L=11 Status TMS worka, M=12 Data zamknięcia worka,
+// N=13 Tryb zbiórki, O=14 Waga, P=15 Frakcja, Q=16 Typ worka
+export const COL_NIP = 0;
+export const COL_PODMIOT_HANDLOWY = 1;
+export const COL_SKLEP = 2;
+export const COL_KOD_POCZTOWY = 3;   // D
+export const COL_MIASTO = 4;          // E
+export const COL_ULICA = 5;           // F
+export const COL_NUMER_BUDYNKU = 6;   // G
+export const COL_GMINA = 7;           // H
+export const COL_WOJEWODZTWO = 8;     // I
+export const COL_NUMER_PLOMBY = 9;    // J
+/** M (12): data zamknięcia worka — m.in. do listy plomb w Wordzie (mm-dd). */
+export const COL_DATA_ZAMKNIECIA_WORKA = 12;
+export const COL_ZBIORKA = 13;        // N – Tryb zbiórki
+
+/** Domyślne indeksy kolumn — używane gdy brak wiersza nagłówków; patrz też resolveSheetColumnMap(). */
+export const DEFAULT_SHEET_COLUMN_MAP = {
+  podmiotHandlowy: COL_PODMIOT_HANDLOWY,
+  sklep: COL_SKLEP,
+  kodPocztowy: COL_KOD_POCZTOWY,
+  miasto: COL_MIASTO,
+  ulica: COL_ULICA,
+  numerBudynku: COL_NUMER_BUDYNKU,
+  gmina: COL_GMINA,
+  numerPlomby: COL_NUMER_PLOMBY,
+  dataZamknieciaWorka: COL_DATA_ZAMKNIECIA_WORKA,
+  zbiorka: COL_ZBIORKA,
+} as const;
 
 // REQ-1.5: nazwy zakładek w Google Sheets
 export const SHEET_NAME_DUPLIKATY_PLOMB = 'Duplikaty plomb';

@@ -4,16 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { google, type sheets_v4 } from 'googleapis';
-import {
-  COL_KOD_POCZTOWY,
-  COL_MIASTO,
-  COL_ULICA,
-  COL_NUMER_BUDYNKU,
-  COL_NUMER_PLOMBY,
-  COL_DATA_ZAMKNIECIA_WORKA,
-  COL_ZBIORKA,
-  DEFAULT_ADDRESS_ALIASES_PATH,
-} from './config.js';
+import { DEFAULT_SHEET_COLUMN_MAP, DEFAULT_ADDRESS_ALIASES_PATH } from './config.js';
 
 export interface AddressParts {
   kodPocztowy: string;
@@ -22,15 +13,19 @@ export interface AddressParts {
   numerBudynku: string;
 }
 
+export type SheetColumnMap = {
+  [K in keyof typeof DEFAULT_SHEET_COLUMN_MAP]: number;
+};
+
 export interface SheetRow extends AddressParts {
   sourceRowIndex: number;
   podmiotHandlowy: string;
   sklep: string;
   gmina: string;
   numerPlomby: string;
-  /** Kolumna L: data zamknięcia worka (surowy tekst z arkusza). */
+  /** Kolumna daty zamknięcia worka (surowy tekst z arkusza). */
   dataZamknieciaWorka: string;
-  /** Kolumna M: tryb zbiórki – ręczna / maszyna */
+  /** Tryb zbiórki – ręczna / maszyna */
   zbiorka: string;
   raw: string[];
   address: string;
@@ -65,6 +60,55 @@ function normalizeCell(value: string | undefined): string {
   return (value ?? '').trim();
 }
 
+function normalizeHeader(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+}
+
+function findHeaderIndex(headers: string[], matchers: string[]): number {
+  for (let i = 0; i < headers.length; i++) {
+    const header = normalizeHeader(headers[i] ?? '');
+    if (matchers.some((matcher) => header.includes(normalizeHeader(matcher)))) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Mapuje kolumny arkusza po nagłówkach (odporne na dodanie kolumn typu NIP / Województwo).
+ * Gdy brak nagłówków — używa {@link DEFAULT_SHEET_COLUMN_MAP}.
+ */
+export function resolveSheetColumnMap(headers: string[]): SheetColumnMap {
+  if (!headers || headers.length === 0 || headers.every((header) => header.trim().length === 0)) {
+    return { ...DEFAULT_SHEET_COLUMN_MAP };
+  }
+
+  const pick = (matchers: string[], fallback: number): number => {
+    const index = findHeaderIndex(headers, matchers);
+    return index >= 0 ? index : fallback;
+  };
+
+  return {
+    podmiotHandlowy: pick(['podmiot handlowy', 'podmiot'], DEFAULT_SHEET_COLUMN_MAP.podmiotHandlowy),
+    sklep: pick(['sklep'], DEFAULT_SHEET_COLUMN_MAP.sklep),
+    kodPocztowy: pick(['kod pocztowy', 'kod poczt'], DEFAULT_SHEET_COLUMN_MAP.kodPocztowy),
+    miasto: pick(['miasto'], DEFAULT_SHEET_COLUMN_MAP.miasto),
+    ulica: pick(['ulica'], DEFAULT_SHEET_COLUMN_MAP.ulica),
+    numerBudynku: pick(['numer budynku', 'numer bud'], DEFAULT_SHEET_COLUMN_MAP.numerBudynku),
+    gmina: pick(['gmina'], DEFAULT_SHEET_COLUMN_MAP.gmina),
+    numerPlomby: pick(['numer plomby', 'numer plomb'], DEFAULT_SHEET_COLUMN_MAP.numerPlomby),
+    dataZamknieciaWorka: pick(
+      ['data zamkniecia worka', 'data zamkniecia', 'data zamk'],
+      DEFAULT_SHEET_COLUMN_MAP.dataZamknieciaWorka,
+    ),
+    zbiorka: pick(['tryb zbiorki', 'tryb zbior', 'zbiorki'], DEFAULT_SHEET_COLUMN_MAP.zbiorka),
+  };
+}
+
 function isMissingStreet(street: string): boolean {
   return street.trim().length === 0 || street.trim().toLowerCase() === 'brak';
 }
@@ -83,26 +127,30 @@ export function buildAddress(parts: AddressParts): string {
     .trim();
 }
 
-export function mapRawRowToSheetRow(raw: string[], sourceRowIndex: number): SheetRow {
-  const kodPocztowy = normalizeCell(raw[COL_KOD_POCZTOWY]);
-  const miasto = normalizeCell(raw[COL_MIASTO]);
-  const ulica = normalizeCell(raw[COL_ULICA]);
-  const numerBudynku = normalizeCell(raw[COL_NUMER_BUDYNKU]);
+export function mapRawRowToSheetRow(
+  raw: string[],
+  sourceRowIndex: number,
+  columns: SheetColumnMap = DEFAULT_SHEET_COLUMN_MAP,
+): SheetRow {
+  const kodPocztowy = normalizeCell(raw[columns.kodPocztowy]);
+  const miasto = normalizeCell(raw[columns.miasto]);
+  const ulica = normalizeCell(raw[columns.ulica]);
+  const numerBudynku = normalizeCell(raw[columns.numerBudynku]);
 
   return {
     sourceRowIndex,
-    podmiotHandlowy: normalizeCell(raw[0]),
-    sklep: normalizeCell(raw[1]),
+    podmiotHandlowy: normalizeCell(raw[columns.podmiotHandlowy]),
+    sklep: normalizeCell(raw[columns.sklep]),
     kodPocztowy,
     miasto,
     ulica,
     numerBudynku,
-  gmina: normalizeCell(raw[6]),
-  numerPlomby: normalizeCell(raw[COL_NUMER_PLOMBY]),
-  dataZamknieciaWorka: normalizeCell(raw[COL_DATA_ZAMKNIECIA_WORKA] ?? ''),
-  zbiorka: normalizeCell(raw[COL_ZBIORKA] ?? ''),
-  raw,
-  address: buildAddress({
+    gmina: normalizeCell(raw[columns.gmina]),
+    numerPlomby: normalizeCell(raw[columns.numerPlomby]),
+    dataZamknieciaWorka: normalizeCell(raw[columns.dataZamknieciaWorka] ?? ''),
+    zbiorka: normalizeCell(raw[columns.zbiorka] ?? ''),
+    raw,
+    address: buildAddress({
       kodPocztowy,
       miasto,
       ulica,
@@ -158,15 +206,20 @@ export function applyAddressAliases(
   });
 }
 
-export function parseSheetRows(values: string[][]): { headers: string[]; rows: SheetRow[] } {
+export function parseSheetRows(values: string[][]): {
+  headers: string[];
+  rows: SheetRow[];
+  columnMap: SheetColumnMap;
+} {
   if (!values || values.length === 0) {
-    return { headers: [], rows: [] };
+    return { headers: [], rows: [], columnMap: { ...DEFAULT_SHEET_COLUMN_MAP } };
   }
 
   const [headers, ...dataRows] = values;
-  const rows = dataRows.map((rawRow, idx) => mapRawRowToSheetRow(rawRow, idx + 2));
+  const columnMap = resolveSheetColumnMap(headers);
+  const rows = dataRows.map((rawRow, idx) => mapRawRowToSheetRow(rawRow, idx + 2, columnMap));
 
-  return { headers, rows };
+  return { headers, rows, columnMap };
 }
 
 export function getFirstSheetTitle(meta: SheetMeta): string {
@@ -195,7 +248,7 @@ export async function fetchSourceSheetValues(
 export async function loadSourceRows(
   api: SheetsReadClient,
   spreadsheetId: string,
-): Promise<{ sheetTitle: string; headers: string[]; rows: SheetRow[] }> {
+): Promise<{ sheetTitle: string; headers: string[]; rows: SheetRow[]; columnMap: SheetColumnMap }> {
   const metaResponse = await api.spreadsheets.get({ spreadsheetId });
   const sheetTitle = getFirstSheetTitle((metaResponse.data as SheetMeta) ?? {});
   const values = await fetchSourceSheetValues(api, spreadsheetId, sheetTitle);
@@ -205,6 +258,7 @@ export async function loadSourceRows(
     sheetTitle,
     headers: parsed.headers,
     rows: parsed.rows,
+    columnMap: parsed.columnMap,
   };
 }
 

@@ -3,7 +3,7 @@
 Skrypt uruchamiany lokalnie, który realizuje pipeline:
 
 1. Odczyt danych z Google Sheets
-2. Wykrycie duplikatów `Numer plomby` (kolumna H)
+2. Wykrycie duplikatów `Numer plomby` (kolumna J)
 3. Grupowanie adresów dla rekordów bez duplikatów
 4. Geokodowanie (Nominatim / OSM) – wiele wariantów zapytań (m.in. z/bez kodu na początku); kod z arkusza jest weryfikowany z kodem z wyniku OSM
 5. Aktualizacja zakładek w arkuszu:

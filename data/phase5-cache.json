@@ -9558,7 +9558,7 @@
     },
     "25-250 CHARSZNICA ŻARNOWIECKA 50 A": {
       "status": "bad",
-      "updatedAt": "2026-06-17T06:43:40.921Z"
+      "updatedAt": "2026-06-26T14:34:18.611Z"
     },
     "27-400 OSTROWIEC ŚWIĘTOKRZYSKI 32 ul. Kilińskiego 27-400 OSTROWIEC ŚW 32": {
       "status": "city_only",
@@ -9811,6 +9811,269 @@
       "lng": 19.7079508,
       "wojewodztwo": "Łódzkie",
       "updatedAt": "2026-06-17T06:45:28.287Z"
+    },
+    "68-343 Biecz Biecz 61": {
+      "status": "city_only",
+      "lat": 51.8062358,
+      "lng": 14.8330065,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-26T14:23:56.440Z"
+    },
+    "38-713 Ustrzyki Górne Ustrzyki Górne 1": {
+      "status": "uncertain",
+      "lat": 49.2158374,
+      "lng": 22.658036,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-06-26T14:24:05.642Z"
+    },
+    "32-085 Modlnica Jurajska 5": {
+      "status": "ok",
+      "lat": 50.1290132,
+      "lng": 19.8714442,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:24:07.201Z"
+    },
+    "33-388 GOŁKOWICE GÓRNE GOŁKOWICE GÓRNE 189": {
+      "status": "city_only",
+      "lat": 49.5422234,
+      "lng": 20.5777938,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:24:08.732Z"
+    },
+    "55-065 Jordanów Śląski Wrocławska 43": {
+      "status": "ok",
+      "lat": 50.863315,
+      "lng": 16.8676985,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-26T14:24:11.975Z"
+    },
+    "76-004 SIANÓW DĘBOWA 25": {
+      "status": "ok",
+      "lat": 54.23132,
+      "lng": 16.30662,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-06-26T14:24:15.890Z"
+    },
+    "91-718 Łódź al.Chryzantem 8": {
+      "status": "city_only",
+      "lat": 51.7916321,
+      "lng": 19.4842363,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-26T14:24:20.388Z"
+    },
+    "97-300 Piotrków Trybunalski Sulejowska 31D": {
+      "status": "ok",
+      "lat": 51.4047066,
+      "lng": 19.7113633,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-26T14:24:23.256Z"
+    },
+    "66-615 SZCZAWNO SZKOLNA 6 6": {
+      "status": "ok",
+      "lat": 52.0230919,
+      "lng": 15.2169937,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-26T14:24:26.123Z"
+    },
+    "95-200 Pabianice Jutrzkowicka 66": {
+      "status": "ok",
+      "lat": 51.6476583,
+      "lng": 19.3608839,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-26T14:24:29.399Z"
+    },
+    "21-302 Brzozowica Duża 119c 119c": {
+      "status": "uncertain",
+      "lat": 51.904881,
+      "lng": 22.6705818,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-26T14:24:37.484Z"
+    },
+    "34-604 PRZYSZOWA PRZYSZOWA 703": {
+      "status": "uncertain",
+      "lat": 49.6408489,
+      "lng": 20.5029937,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:24:39.001Z"
+    },
+    "97-318 Czarnocin Biskupia Wola 130": {
+      "status": "city_only",
+      "lat": 51.5781486,
+      "lng": 19.6829007,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-26T14:24:40.459Z"
+    },
+    "33-163 Rzepiennik Suchy Rzepiennik Suchy 66": {
+      "status": "uncertain",
+      "lat": 49.7971056,
+      "lng": 21.0681066,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:24:49.017Z"
+    },
+    "56-400 Oleśnica Rynek 48 48": {
+      "status": "ok",
+      "lat": 51.209571,
+      "lng": 17.3802462,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-26T14:24:52.544Z"
+    },
+    "24-100 Puławy Dęblińska 41": {
+      "status": "ok",
+      "lat": 51.4389841,
+      "lng": 21.9477395,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-26T14:24:55.306Z"
+    },
+    "98-100 Łask Traugutta 1": {
+      "status": "ok",
+      "lat": 51.6194462,
+      "lng": 19.1915094,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-06-26T14:24:58.082Z"
+    },
+    "32-765 BOREK BOREK 145": {
+      "status": "uncertain",
+      "lat": 50.0174793,
+      "lng": 20.530816,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:25:00.222Z"
+    },
+    "66-004 Zielona Góra Racula-Głogowska 4 4": {
+      "status": "ok",
+      "lat": 51.9168915,
+      "lng": 15.5644856,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-06-26T14:25:03.191Z"
+    },
+    "59-230 Prochowice Wrocławska 18": {
+      "status": "ok",
+      "lat": 51.27246,
+      "lng": 16.3645601,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-26T14:25:06.286Z"
+    },
+    "32-700 BOCHNIA BRZEŹNICKA 55D": {
+      "status": "ok",
+      "lat": 49.964894,
+      "lng": 20.4504356,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:25:08.838Z"
+    },
+    "57-300 KŁODZKO ŁUKASIŃSKIEGO 5": {
+      "status": "ok",
+      "lat": 50.4394461,
+      "lng": 16.6551612,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-26T14:25:11.709Z"
+    },
+    "56-400 Nowoszyce Nowoszyce 25": {
+      "status": "uncertain",
+      "lat": 51.1840566,
+      "lng": 17.4663862,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-26T14:25:13.124Z"
+    },
+    "13-200 Działdowo Mrongowiusza 9": {
+      "status": "ok",
+      "lat": 53.2277927,
+      "lng": 20.171364,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-06-26T14:25:16.299Z"
+    },
+    "07-430 Myszyniec ul. Władysława Reymonta 27 27": {
+      "status": "ok",
+      "lat": 53.3815797,
+      "lng": 21.3518779,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-06-26T14:25:19.168Z"
+    },
+    "24-140 Nałęczów B. Głowackiego 12": {
+      "status": "city_only",
+      "lat": 51.280195,
+      "lng": 22.219502,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-06-26T14:25:23.836Z"
+    },
+    "64-100 Leszno Geodetów 4": {
+      "status": "ok",
+      "lat": 51.820897,
+      "lng": 16.5964055,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-26T14:25:26.782Z"
+    },
+    "11-500 GIŻYCKO KOSCIUSZKI 26": {
+      "status": "ok",
+      "lat": 54.0383225,
+      "lng": 21.7845986,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-06-26T14:25:29.508Z"
+    },
+    "34-730 Mszana Dolna Zakopiańska 6N": {
+      "status": "ok",
+      "lat": 49.6696444,
+      "lng": 20.0620009,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:25:32.147Z"
+    },
+    "36-220 Jasienica Rosielna Jasienica Rosielna 255b": {
+      "status": "city_only",
+      "lat": 49.7506895,
+      "lng": 21.9402817,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-06-26T14:25:33.611Z"
+    },
+    "27-400 Ostrowiec Świętokrzyski Sandomierska 87": {
+      "status": "ok",
+      "lat": 50.9259343,
+      "lng": 21.3972247,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-06-26T14:25:36.266Z"
+    },
+    "36-065 DYNÓW K. WIELKIEGO 1/1": {
+      "status": "city_only",
+      "lat": 49.8132659,
+      "lng": 22.2187088,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-06-26T14:25:40.518Z"
+    },
+    "80-843 Gdansk Olejarna 3": {
+      "status": "uncertain",
+      "lat": 54.3544635,
+      "lng": 18.6546215,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-06-26T14:25:43.221Z"
+    },
+    "89-320 Wysoka Pocztowa 9": {
+      "status": "ok",
+      "lat": 53.1813574,
+      "lng": 17.0817023,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-26T14:25:45.897Z"
+    },
+    "62-100 Śrem Chopina 1D": {
+      "status": "bad",
+      "updatedAt": "2026-06-26T14:34:04.834Z"
+    },
+    "57-300 KŁODZKO LUTYCKA 25": {
+      "status": "ok",
+      "lat": 50.43545,
+      "lng": 16.6607501,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-26T14:26:01.963Z"
+    },
+    "32-765 BRATUCICE BRATUCICE 69": {
+      "status": "uncertain",
+      "lat": 49.9951237,
+      "lng": 20.5205187,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-26T14:26:10.605Z"
+    },
+    "56-410 DOBROSZYCE 11 listopada 2": {
+      "status": "ok",
+      "lat": 51.2637045,
+      "lng": 17.3393113,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-06-26T14:26:30.339Z"
     }
   }
 }

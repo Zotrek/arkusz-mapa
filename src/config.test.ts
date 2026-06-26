@@ -3,7 +3,7 @@
  *
  * Wymagania:
  *   REQ-1.4: Konfiguracja środowiska – odczyt GOOGLE_SHEETS_ID, GOOGLE_APPLICATION_CREDENTIALS, OUTPUT_DIR z env.
- *   REQ-1.5: Stałe – indeksy kolumn (C=2 … I=8 numer plomby, M=12 zbiórka), nazwy zakładek, URL GeoJSON województw.
+ *   REQ-1.5: Stałe – indeksy kolumn (D=3 … J=9 numer plomby, N=13 zbiórka), nazwy zakładek, URL GeoJSON województw.
  *
  * Traceability: REQ-1.4 → getConfig (odczyt z env, brak zmiennych); REQ-1.5 → stałe eksportowane z config.ts.
  */
@@ -13,10 +13,15 @@ import {
   getConfig,
   getOptionalWordMapAssetPaths,
   getPhase5CacheFilePath,
+  COL_NIP,
+  COL_PODMIOT_HANDLOWY,
+  COL_SKLEP,
   COL_KOD_POCZTOWY,
   COL_MIASTO,
   COL_ULICA,
   COL_NUMER_BUDYNKU,
+  COL_GMINA,
+  COL_WOJEWODZTWO,
   COL_NUMER_PLOMBY,
   COL_DATA_ZAMKNIECIA_WORKA,
   COL_ZBIORKA,
@@ -35,32 +40,52 @@ describe('config', () => {
   });
 
   describe('REQ-1.5: Stałe – indeksy kolumn', () => {
-    it('should expose column index for Kod pocztowy (C) as 2', () => {
-      expect(COL_KOD_POCZTOWY).toBe(2);
+    it('should expose column index for NIP (A) as 0', () => {
+      expect(COL_NIP).toBe(0);
     });
 
-    it('should expose column index for Miasto (D) as 3', () => {
-      expect(COL_MIASTO).toBe(3);
+    it('should expose column index for Podmiot handlowy (B) as 1', () => {
+      expect(COL_PODMIOT_HANDLOWY).toBe(1);
     });
 
-    it('should expose column index for Ulica (E) as 4', () => {
-      expect(COL_ULICA).toBe(4);
+    it('should expose column index for Sklep (C) as 2', () => {
+      expect(COL_SKLEP).toBe(2);
     });
 
-    it('should expose column index for Numer budynku (F) as 5', () => {
-      expect(COL_NUMER_BUDYNKU).toBe(5);
+    it('should expose column index for Kod pocztowy (D) as 3', () => {
+      expect(COL_KOD_POCZTOWY).toBe(3);
     });
 
-    it('should expose column index for Numer plomby (I) as 8', () => {
-      expect(COL_NUMER_PLOMBY).toBe(8);
+    it('should expose column index for Miasto (E) as 4', () => {
+      expect(COL_MIASTO).toBe(4);
     });
 
-    it('should expose column index for Data zamknięcia worka (L) as 11', () => {
-      expect(COL_DATA_ZAMKNIECIA_WORKA).toBe(11);
+    it('should expose column index for Ulica (F) as 5', () => {
+      expect(COL_ULICA).toBe(5);
     });
 
-    it('should expose column index for Tryb zbiórki (M) as 12', () => {
-      expect(COL_ZBIORKA).toBe(12);
+    it('should expose column index for Numer budynku (G) as 6', () => {
+      expect(COL_NUMER_BUDYNKU).toBe(6);
+    });
+
+    it('should expose column index for Gmina (H) as 7', () => {
+      expect(COL_GMINA).toBe(7);
+    });
+
+    it('should expose column index for Województwo (I) as 8', () => {
+      expect(COL_WOJEWODZTWO).toBe(8);
+    });
+
+    it('should expose column index for Numer plomby (J) as 9', () => {
+      expect(COL_NUMER_PLOMBY).toBe(9);
+    });
+
+    it('should expose column index for Data zamknięcia worka (M) as 12', () => {
+      expect(COL_DATA_ZAMKNIECIA_WORKA).toBe(12);
+    });
+
+    it('should expose column index for Tryb zbiórki (N) as 13', () => {
+      expect(COL_ZBIORKA).toBe(13);
     });
   });
 
@@ -139,9 +164,9 @@ describe('config', () => {
     it('should default to arkusz-mapa/docs filenames regardless of cwd', () => {
       delete process.env.WORD_TEMPLATE_PATH;
       delete process.env.PODWYKOLISTA_ODS_PATH;
-      const paths = getOptionalWordMapAssetPaths();
-      expect(paths.templatePath).toMatch(/[/\\]docs[/\\]pusty\.docx$/);
-      expect(paths.podwykoPath).toMatch(/[/\\]docs[/\\]podwyko lista\.xlsx$/);
+      const path = getOptionalWordMapAssetPaths();
+      expect(path.templatePath).toMatch(/[/\\]docs[/\\]pusty\.docx$/);
+      expect(path.podwykoPath).toMatch(/[/\\]docs[/\\]podwyko lista\.xlsx$/);
     });
 
     it('should respect WORD_TEMPLATE_PATH and PODWYKOLISTA_ODS_PATH when set', () => {
