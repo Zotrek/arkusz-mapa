@@ -43,6 +43,9 @@ interface NominatimResult {
     municipality?: string;
     hamlet?: string;
     suburb?: string;
+    city_district?: string;
+    neighbourhood?: string;
+    quarter?: string;
     place?: string;
     isolated_dwelling?: string;
     road?: string;
