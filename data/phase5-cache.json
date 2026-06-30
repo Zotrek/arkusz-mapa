@@ -9859,10 +9859,10 @@
     },
     "32-765 BOREK BOREK 145": {
       "status": "uncertain",
-      "lat": 49.9951237,
-      "lng": 20.5205187,
+      "lat": 49.995125,
+      "lng": 20.5205189,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-06-30T13:35:33.200Z"
+      "updatedAt": "2026-06-30T21:41:40.860Z"
     },
     "87-500 Rypin Księdza Lissowskiego 45": {
       "status": "ok",
@@ -9922,10 +9922,10 @@
     },
     "38-307 SIARY 11 SIARY 11": {
       "status": "uncertain",
-      "lat": 49.603815,
-      "lng": 21.2299261,
+      "lat": 49.6037374,
+      "lng": 21.2300082,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-06-30T13:35:45.202Z"
+      "updatedAt": "2026-06-30T21:41:54.943Z"
     },
     "39-451 Skopanie Aleja Generała Sikorskiego 11": {
       "status": "ok",
@@ -10054,11 +10054,8 @@
       "updatedAt": "2026-06-30T13:11:42.257Z"
     },
     "33-331 POLNA STARA REMIZA OSP 1": {
-      "status": "uncertain",
-      "lat": 49.6556674,
-      "lng": 20.9875507,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-04-14T17:59:49.372Z"
+      "status": "bad",
+      "updatedAt": "2026-06-30T21:42:25.800Z"
     },
     "97-318 Czarnocin Biskupia Wola 130": {
       "status": "city_only",
@@ -10163,14 +10160,14 @@
       "lat": 51.898298,
       "lng": 16.03966,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-06-30T13:37:01.236Z"
+      "updatedAt": "2026-06-30T21:43:03.242Z"
     },
     "74-304 Nowogrodek Pomorski Trzcinna 82": {
       "status": "uncertain",
       "lat": 52.8842985,
       "lng": 15.0106316,
       "wojewodztwo": "Zachodniopomorskie",
-      "updatedAt": "2026-06-30T13:37:19.877Z"
+      "updatedAt": "2026-06-30T21:43:28.102Z"
     },
     "27-400 OSTROWIEC ŚWIĘTOKRZYSKI 32 ul. Kilińskiego 27-400 OSTROWIEC ŚW 32": {
       "status": "city_only",
@@ -10205,7 +10202,7 @@
       "lat": 53.3500552,
       "lng": 14.4600882,
       "wojewodztwo": "Zachodniopomorskie",
-      "updatedAt": "2026-06-30T13:37:44.754Z"
+      "updatedAt": "2026-06-30T21:43:39.803Z"
     },
     "46-080 CHRÓŚCICE Powstańców śląskich 25": {
       "status": "ok",
@@ -10472,6 +10469,27 @@
       "lng": 20.5573142,
       "wojewodztwo": "Mazowieckie",
       "updatedAt": "2026-05-20T16:03:12.369Z"
+    },
+    "32-065 Nowa Góra Nowa Góra 501": {
+      "status": "ok",
+      "lat": 52.6463892,
+      "lng": 20.0921295,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-06-30T21:40:56.824Z"
+    },
+    "34-615 SŁOPNICE SŁOPNICE 888": {
+      "status": "ok",
+      "lat": 49.6960554,
+      "lng": 20.3522442,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-06-30T21:41:26.720Z"
+    },
+    "62-271 DZIAŁYŃ DZIAŁYŃ 5A": {
+      "status": "ok",
+      "lat": 52.589665,
+      "lng": 17.4872206,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-06-30T21:41:30.024Z"
     }
   }
 }
