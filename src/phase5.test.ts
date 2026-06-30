@@ -17,6 +17,9 @@ import {
   buildNominatimUrl,
   executePhase5,
   extractVoivodeship,
+  isLargeCity,
+  isHamletPlaceAddress,
+  isVillagePlaceAddress,
   stripStreetPrefix,
   stripAfterSlash,
 } from './phase5';
@@ -29,6 +32,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
     kodPocztowy: params.kodPocztowy ?? '62-320',
     miasto: params.miasto ?? 'Miłosław',
     ulica: params.ulica ?? 'os. Władysława Łokietka',
+    ulicaRaw: params.ulicaRaw ?? params.ulica ?? 'os. Władysława Łokietka',
     numerBudynku: params.numerBudynku ?? '18',
     gmina: params.gmina ?? 'Września',
     numerPlomby: params.numerPlomby ?? '111',
@@ -66,7 +70,7 @@ describe('phase5', () => {
       });
 
       const query = buildGeocodingQuery(row);
-      expect(query).toBe('62-320 Miłosław Władysława Łokietka 18, Polska');
+      expect(query).toBe('62-320 Miłosław os. Władysława Łokietka 18, Polska');
     });
 
     it('test_buildGeocodingQuery_when_street_is_brak_should_skip_street', () => {
@@ -79,6 +83,18 @@ describe('phase5', () => {
 
       const query = buildGeocodingQuery(row);
       expect(query).toBe('26-660 Wierzchowiny 29, Polska');
+    });
+
+    it('test_buildGeocodingQuery_when_village_place_should_skip_duplicate_street', () => {
+      const row = makeRow({
+        kodPocztowy: '33-390',
+        miasto: 'ŁĄCKO',
+        ulica: 'ŁĄCKO',
+        numerBudynku: '106A',
+        address: '33-390 ŁĄCKO ŁĄCKO 106A',
+      });
+
+      expect(buildGeocodingQuery(row)).toBe('33-390 ŁĄCKO 106A, Polska');
     });
 
     it('test_buildGeocodingQuery_when_city_is_wroclaw_fabryczna_should_normalize_to_wroclaw', () => {
@@ -115,19 +131,183 @@ describe('phase5', () => {
 
       const queries = buildGeocodingQueries(row);
       expect(queries.length).toBeGreaterThan(1);
-      expect(queries.some((q) => q.includes('Miłosław Władysława Łokietka 18'))).toBe(true);
+      expect(queries.some((q) => q.includes('Miłosław os. Władysława Łokietka 18'))).toBe(true);
+    });
+
+    it('test_buildGeocodingQueries_when_village_place_address_should_query_without_street_name', () => {
+      const row = makeRow({
+        kodPocztowy: '21-080',
+        miasto: 'Bogucin',
+        ulica: 'Bogucin',
+        numerBudynku: '59A',
+        address: '21-080 Bogucin Bogucin 59A',
+      });
+
+      const queries = buildGeocodingQueries(row);
+
+      expect(queries[0]).toBe('21-080 Bogucin 59A, Polska');
+      expect(queries.slice(0, 4).some((q) => q.match(/Bogucin Bogucin/))).toBe(false);
+    });
+
+    it('test_buildGeocodingQueries_when_osiedle_street_should_include_osiedle_variants', () => {
+      const row = makeRow({
+        kodPocztowy: '31-818',
+        miasto: 'Kraków',
+        ulica: 'os. Wysokie',
+        numerBudynku: '19',
+        address: '31-818 Kraków os. Wysokie 19',
+      });
+
+      const queries = buildGeocodingQueries(row);
+
+      expect(queries.some((q) => q.includes('osiedle Wysokie 19'))).toBe(true);
+      expect(queries.some((q) => q.includes('os. Wysokie 19'))).toBe(true);
+    });
+
+    it('test_buildGeocodingQueries_when_street_without_ul_prefix_should_include_ul_and_al_variants', () => {
+      const row = makeRow({
+        kodPocztowy: '34-130',
+        miasto: 'Kalwaria Zabrzydowska',
+        ulica: 'Targowa',
+        numerBudynku: '3',
+        address: '34-130 Kalwaria Zabrzydowska Targowa 3',
+      });
+
+      const queries = buildGeocodingQueries(row);
+
+      expect(queries.some((q) => q.includes('ul. Targowa 3'))).toBe(true);
+      expect(queries.some((q) => q.includes('al. Targowa 3'))).toBe(true);
+    });
+
+    it('test_buildGeocodingQueries_when_skopanie_gen_sikorskiego_should_include_aleja_variants', () => {
+      const row = makeRow({
+        kodPocztowy: '39-451',
+        miasto: 'Skopanie',
+        ulica: 'Aleja Generała Sikorskiego',
+        numerBudynku: '11',
+        address: '39-451 Skopanie Aleja Generała Sikorskiego 11',
+      });
+
+      const queries = buildGeocodingQueries(row);
+
+      expect(queries.some((q) => q.includes('al. Generała Sikorskiego 11'))).toBe(true);
+      expect(queries.some((q) => q.includes('Generała Sikorskiego 11'))).toBe(true);
+    });
+
+    it('test_buildGeocodingQueries_when_gdansk_with_diacritics_should_include_ascii_variant', () => {
+      const row = makeRow({
+        kodPocztowy: '80-843',
+        miasto: 'Gdańsk',
+        ulica: 'Olejarna',
+        numerBudynku: '3',
+        address: '80-843 Gdańsk Olejarna 3',
+      });
+
+      const queries = buildGeocodingQueries(row);
+
+      expect(queries.some((q) => q.includes('Gdańsk Olejarna 3'))).toBe(true);
+      expect(queries.some((q) => q.includes('Gdansk Olejarna 3'))).toBe(true);
+    });
+
+    it('test_buildGeocodingQueries_when_generala_street_should_include_abbrev_variant', () => {
+      const row = makeRow({
+        kodPocztowy: '04-247',
+        miasto: 'Warszawa',
+        ulica: 'Generała Chruściela',
+        ulicaRaw: 'Gen. Chruściela',
+        numerBudynku: '25',
+        address: '04-247 Warszawa Generała Chruściela 25',
+      });
+
+      const queries = buildGeocodingQueries(row);
+
+      expect(queries.some((q) => q.includes('Gen. Chruściela 25'))).toBe(true);
+      expect(queries.some((q) => q.includes('GEN. Chruściela 25'))).toBe(true);
+      expect(queries.some((q) => q.includes('Generała Chruściela 25'))).toBe(true);
+    });
+
+    it('test_buildGeocodingQueries_when_raw_gen_j_haller_should_include_legacy_forms', () => {
+      const row = makeRow({
+        kodPocztowy: '41-214',
+        miasto: 'Sosnowiec',
+        ulica: 'Generała J.HALLERA',
+        ulicaRaw: 'GEN.J.HALLERA',
+        numerBudynku: '16',
+        address: '41-214 Sosnowiec Generała J.HALLERA 16',
+      });
+
+      const queries = buildGeocodingQueries(row);
+
+      expect(queries.some((q) => q.includes('GEN.J.HALLERA 16'))).toBe(true);
+      expect(queries.some((q) => q.includes('GEN. J.HALLERA 16'))).toBe(true);
+    });
+  });
+
+  describe('isVillagePlaceAddress', () => {
+    it('test_isVillagePlaceAddress_when_ulica_equals_miasto_should_return_true', () => {
+      expect(
+        isVillagePlaceAddress({ miasto: 'Bogucin', ulica: 'Bogucin', numerBudynku: '59A' }),
+      ).toBe(true);
+      expect(
+        isVillagePlaceAddress({ miasto: 'ŁĄCKO', ulica: 'ŁĄCKO', numerBudynku: '106A' }),
+      ).toBe(true);
+    });
+
+    it('test_isVillagePlaceAddress_when_ulica_is_miasto_and_number_should_return_true', () => {
+      expect(
+        isVillagePlaceAddress({ miasto: 'Tokarnia', ulica: 'Tokarnia 853', numerBudynku: '853' }),
+      ).toBe(true);
+    });
+
+    it('test_isVillagePlaceAddress_when_real_street_should_return_false', () => {
+      expect(
+        isVillagePlaceAddress({ miasto: 'Kraków', ulica: 'Przybyszewskiego', numerBudynku: '75' }),
+      ).toBe(false);
+    });
+
+    it('test_isVillagePlaceAddress_when_brak_street_should_return_false', () => {
+      expect(isVillagePlaceAddress({ miasto: 'Wierzchowiny', ulica: 'brak', numerBudynku: '29' })).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('isHamletPlaceAddress', () => {
+    it('test_isHamletPlaceAddress_when_all_caps_hamlet_in_city_should_return_true', () => {
+      expect(
+        isHamletPlaceAddress({ miasto: 'GDÓW', ulica: 'KLĘCZANA', numerBudynku: '33' }),
+      ).toBe(true);
+    });
+
+    it('test_isHamletPlaceAddress_when_real_street_should_return_false', () => {
+      expect(
+        isHamletPlaceAddress({ miasto: 'Brzozów', ulica: 'Bema', numerBudynku: '12' }),
+      ).toBe(false);
+    });
+  });
+
+  describe('isLargeCity', () => {
+    it('test_isLargeCity_when_krakow_should_return_true', () => {
+      expect(isLargeCity('Kraków')).toBe(true);
+      expect(isLargeCity('KRAKÓW')).toBe(true);
+    });
+
+    it('test_isLargeCity_when_small_town_should_return_false', () => {
+      expect(isLargeCity('Rabka')).toBe(false);
+      expect(isLargeCity('Miłosław')).toBe(false);
     });
   });
 
   describe('stripStreetPrefix', () => {
-    it('test_stripStreetPrefix_when_os_prefix_should_remove_it', () => {
-      expect(stripStreetPrefix('os. Władysława Łokietka')).toBe('Władysława Łokietka');
+    it('test_stripStreetPrefix_when_os_prefix_should_keep_osiedle_name', () => {
+      expect(stripStreetPrefix('os. Władysława Łokietka')).toBe('os. Władysława Łokietka');
     });
     it('test_stripStreetPrefix_when_ul_prefix_should_remove_it', () => {
       expect(stripStreetPrefix('ul. Marszałkowska')).toBe('Marszałkowska');
     });
     it('test_stripStreetPrefix_when_al_prefix_should_remove_it', () => {
       expect(stripStreetPrefix('al. Niepodległości')).toBe('Niepodległości');
+      expect(stripStreetPrefix('al.Chryzantem')).toBe('Chryzantem');
     });
     it('test_stripStreetPrefix_when_no_prefix_should_return_unchanged', () => {
       expect(stripStreetPrefix('Marszałkowska')).toBe('Marszałkowska');
@@ -333,6 +513,123 @@ describe('phase5', () => {
       expect(result.geocoded).toHaveLength(1);
       expect(result.uncertainGeocoded).toHaveLength(0);
       expect(result.rowsBledneAdresy).toHaveLength(0);
+    });
+
+    it('test_executePhase5_when_village_place_and_number_match_should_classify_as_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '21-080',
+        miasto: 'Bogucin',
+        ulica: 'Bogucin',
+        numerBudynku: '59A',
+        address: '21-080 Bogucin Bogucin 59A',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '51.3309728',
+            lon: '22.386442',
+            address: {
+              postcode: '21-080',
+              village: 'Bogucin',
+              house_number: '59A',
+              state: 'Lubelskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.geocoded[0].address).toBe(row.address);
+      expect(result.cityOnlyGeocoded).toEqual([]);
+      expect(result.uncertainGeocoded).toEqual([]);
+    });
+
+    it('test_executePhase5_when_village_only_postcode_and_place_match_should_classify_as_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '33-390',
+        miasto: 'ŁĄCKO',
+        ulica: 'ŁĄCKO',
+        numerBudynku: '106A',
+        address: '33-390 ŁĄCKO ŁĄCKO 106A',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '49.5630584',
+            lon: '20.4297326',
+            address: {
+              postcode: '33-390',
+              village: 'gmina Łącko',
+              state: 'Małopolskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.cityOnlyGeocoded).toEqual([]);
+    });
+
+    it('test_executePhase5_when_krakow_osiedle_and_neighbourhood_match_should_classify_as_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '31-818',
+        miasto: 'Kraków',
+        ulica: 'os. Wysokie',
+        numerBudynku: '19',
+        address: '31-818 Kraków os. Wysokie 19',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '50.0905274',
+            lon: '20.0169256',
+            address: {
+              postcode: '31-820',
+              city: 'Kraków',
+              neighbourhood: 'Osiedle Wysokie',
+              house_number: '19',
+              state: 'Małopolskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.uncertainGeocoded).toEqual([]);
+      expect(result.cityOnlyGeocoded).toEqual([]);
     });
 
     it('test_executePhase5_when_only_postcode_and_city_match_should_classify_as_city_only', async () => {
@@ -700,6 +997,177 @@ describe('phase5', () => {
       expect(result.rowsBledneAdresy).toHaveLength(0);
     });
 
+    it('test_executePhase5_when_large_city_wrong_postcode_but_street_matches_should_classify_as_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '30-382',
+        miasto: 'Kraków',
+        ulica: 'PRZYBYSZEWSKIEGO',
+        numerBudynku: '75',
+        gmina: 'Kraków',
+        address: '30-382 Kraków PRZYBYSZEWSKIEGO 75',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '50.061',
+            lon: '19.937',
+            address: {
+              postcode: '30-382',
+              city: 'Kraków',
+              state: 'Małopolskie',
+            },
+          },
+          {
+            lat: '50.016',
+            lon: '19.902',
+            address: {
+              postcode: '30-091',
+              city: 'Kraków',
+              road: 'Przybyszewskiego',
+              house_number: '75',
+              state: 'Małopolskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.geocoded[0].lat).toBe(50.016);
+      expect(result.geocoded[0].lng).toBe(19.902);
+      expect(result.cityOnlyGeocoded).toHaveLength(0);
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+    });
+
+    it('test_executePhase5_when_gdansk_typo_and_wrong_postcode_should_classify_as_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '80-000',
+        miasto: 'Gdansk',
+        ulica: 'Olejarna',
+        numerBudynku: '3',
+        address: '80-000 Gdańsk Olejarna 3',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '54.3544635',
+            lon: '18.6546215',
+            type: 'retail',
+            address: {
+              postcode: '80-843',
+              city: 'Gdańsk',
+              road: 'Olejarna',
+              house_number: '3',
+              state: 'województwo pomorskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.uncertainGeocoded).toHaveLength(0);
+    });
+
+    it('test_executePhase5_when_lodz_typo_and_city_match_should_classify_as_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '90-339',
+        miasto: 'Łódż',
+        ulica: 'Wilcza',
+        numerBudynku: '4',
+        address: '90-339 Łódź Wilcza 4',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '51.7560029',
+            lon: '19.4847904',
+            type: 'retail',
+            address: {
+              postcode: '90-339',
+              city: 'Łódź',
+              road: 'Wilcza',
+              house_number: '4',
+              state: 'województwo łódzkie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.uncertainGeocoded).toHaveLength(0);
+    });
+
+    it('test_executePhase5_when_small_city_wrong_postcode_should_not_ignore_postcode_mismatch', async () => {
+      const row = makeRow({
+        kodPocztowy: '34-700',
+        miasto: 'Rabka',
+        ulica: 'Chopina',
+        numerBudynku: '16',
+        address: '34-700 Rabka Chopina 16',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '49.609',
+            lon: '19.966',
+            address: {
+              postcode: '00-001',
+              city: 'Rabka',
+              road: 'Chopina',
+              house_number: '16',
+              state: 'Małopolskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(0);
+      expect(result.rowsBledneAdresy).toHaveLength(1);
+    });
+
     it('test_executePhase5_when_first_candidate_is_wrong_city_should_pick_better_matching_candidate', async () => {
       const row = makeRow({
         kodPocztowy: '34-700',
@@ -873,6 +1341,150 @@ describe('phase5', () => {
       expect(result.geocoded[0].lng).toBe(20.0481726);
       expect(result.geocoded[0].wojewodztwo).toBe('Małopolskie');
       expect(result.groupedBledneAdresy).toEqual([]);
+    });
+
+    it('test_executePhase5_when_village_building_match_without_village_name_should_classify_as_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '68-343',
+        miasto: 'Biecz',
+        ulica: 'Biecz',
+        numerBudynku: '61',
+        address: '68-343 Biecz Biecz 61',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '51.7595',
+            lon: '14.7170',
+            type: 'house',
+            class: 'building',
+            address: {
+              postcode: '68-343',
+              house_number: '61',
+              state: 'Lubuskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.uncertainGeocoded).toHaveLength(0);
+    });
+
+    it('test_executePhase5_when_street_address_and_postcode_centroid_should_ignore_postcode_result', async () => {
+      const row = makeRow({
+        kodPocztowy: '42-200',
+        miasto: 'Częstochowa',
+        ulica: 'Jasnogórska',
+        numerBudynku: '61',
+        address: '42-200 Częstochowa Jasnogórska 61',
+      });
+      const grouped = asGrouped([row]);
+
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '50.796',
+            lon: '19.124',
+            type: 'postcode',
+            address: {
+              postcode: '42-200',
+              city: 'Częstochowa',
+              state: 'Śląskie',
+            },
+          },
+          {
+            lat: '50.814',
+            lon: '19.108',
+            type: 'house',
+            address: {
+              postcode: '42-200',
+              city: 'Częstochowa',
+              road: 'Jasnogórska',
+              house_number: '61',
+              state: 'Śląskie',
+            },
+          },
+        ],
+      });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.geocoded[0].lat).toBe(50.814);
+      expect(result.cityOnlyGeocoded).toHaveLength(0);
+    });
+
+    it('test_executePhase5_when_first_query_uncertain_and_later_ok_should_pick_ok', async () => {
+      const row = makeRow({
+        kodPocztowy: '32-420',
+        miasto: 'GDÓW',
+        ulica: 'KLĘCZANA',
+        numerBudynku: '33',
+        address: '32-420 GDÓW KLĘCZANA 33',
+      });
+      const grouped = asGrouped([row]);
+
+      const uncertainPayload = [
+        {
+          lat: '49.89',
+          lon: '20.25',
+          type: 'postcode',
+          address: { postcode: '32-420', city: 'Gdów', state: 'Małopolskie' },
+        },
+      ];
+      const okPayload = [
+        {
+          lat: '49.8967',
+          lon: '20.2567',
+          type: 'house',
+          class: 'building',
+          address: {
+            postcode: '32-420',
+            village: 'Kłęczana',
+            house_number: '33',
+            state: 'Małopolskie',
+          },
+        },
+      ];
+
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => uncertainPayload })
+        .mockResolvedValueOnce({ ok: true, json: async () => uncertainPayload })
+        .mockResolvedValueOnce({ ok: true, json: async () => uncertainPayload })
+        .mockResolvedValueOnce({ ok: true, json: async () => okPayload });
+
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn,
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.geocoded[0].lat).toBe(49.8967);
+      expect(result.uncertainGeocoded).toHaveLength(0);
     });
   });
 });

@@ -11,6 +11,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   applyAddressAliases,
   buildAddress,
+  stripTrailingHouseNumberFromStreet,
+  correctKnownPostcodeTypo,
   mapRawRowToSheetRow,
   parseSheetRows,
   resolveSheetColumnMap,
@@ -45,6 +47,40 @@ const CURRENT_HEADERS = [
 ];
 
 describe('sheets phase 2', () => {
+  describe('correctKnownPostcodeTypo', () => {
+    it('test_correctKnownPostcodeTypo_when_srem_with_62_100_should_return_63_100', () => {
+      expect(correctKnownPostcodeTypo('62-100', 'Śrem')).toBe('63-100');
+      expect(correctKnownPostcodeTypo('62-100', 'ŚREM')).toBe('63-100');
+    });
+
+    it('test_correctKnownPostcodeTypo_when_witkowo_with_62_100_should_leave_unchanged', () => {
+      expect(correctKnownPostcodeTypo('62-100', 'Witkowo')).toBe('62-100');
+    });
+
+    it('test_correctKnownPostcodeTypo_when_srem_with_63_100_should_leave_unchanged', () => {
+      expect(correctKnownPostcodeTypo('63-100', 'Śrem')).toBe('63-100');
+    });
+  });
+
+  describe('stripTrailingHouseNumberFromStreet', () => {
+    it('test_stripTrailingHouseNumberFromStreet_when_number_duplicated_at_end_should_remove_from_street', () => {
+      expect(stripTrailingHouseNumberFromStreet('Winne-Podbukowina 11', '11')).toBe('Winne-Podbukowina');
+      expect(stripTrailingHouseNumberFromStreet('OSIEDLE RYBACKIE 113A', '113A')).toBe('OSIEDLE RYBACKIE');
+      expect(stripTrailingHouseNumberFromStreet('Tokarnia 853', '853')).toBe('Tokarnia');
+      expect(stripTrailingHouseNumberFromStreet('Muszaki 13', '13')).toBe('Muszaki');
+    });
+
+    it('test_stripTrailingHouseNumberFromStreet_when_number_differs_should_leave_street_unchanged', () => {
+      expect(stripTrailingHouseNumberFromStreet('11 listopada', '76')).toBe('11 listopada');
+      expect(stripTrailingHouseNumberFromStreet('Przybyszewskiego', '75')).toBe('Przybyszewskiego');
+      expect(stripTrailingHouseNumberFromStreet('Hoża 1-3', '1/3')).toBe('Hoża 1-3');
+    });
+
+    it('test_stripTrailingHouseNumberFromStreet_when_glued_number_should_split_street', () => {
+      expect(stripTrailingHouseNumberFromStreet('Dworcowa17', '17')).toBe('Dworcowa');
+    });
+  });
+
   describe('REQ-2.4: buildAddress', () => {
     it('test_buildAddress_when_street_is_present_should_include_street', () => {
       const address = buildAddress({
@@ -165,6 +201,98 @@ describe('sheets phase 2', () => {
       expect(row.zbiorka).toBe('Maszyna');
       expect(row.address).toBe('62-320 Miłosław os. Władysławs Łokietka 18');
       expect(row.sourceRowIndex).toBe(2);
+    });
+
+    it('test_mapRawRowToSheetRow_when_srem_has_wrong_postcode_should_correct_to_63_100', () => {
+      const raw = [
+        '',
+        'Chata Polska Śrem',
+        'Sklep',
+        '62-100',
+        'Śrem',
+        'Chopina',
+        '1D',
+        '',
+        'Wielkopolskie',
+        '700000008275797',
+      ];
+
+      const row = mapRawRowToSheetRow(raw, 5);
+
+      expect(row.kodPocztowy).toBe('63-100');
+      expect(row.address).toBe('63-100 Śrem Chopina 1D');
+    });
+
+    it('test_mapRawRowToSheetRow_when_number_duplicated_in_ulica_should_build_address_without_duplicate', () => {
+      const raw = [
+        '',
+        'Agnieszka Daraż',
+        'Sklep',
+        '37-750',
+        'Dubiecko',
+        'Winne-Podbukowina 11',
+        '11',
+        '',
+        'Podkarpackie',
+        '700000000000001',
+      ];
+
+      const row = mapRawRowToSheetRow(raw, 6);
+
+      expect(row.ulica).toBe('Winne-Podbukowina');
+      expect(row.numerBudynku).toBe('11');
+      expect(row.address).toBe('37-750 Dubiecko Winne-Podbukowina 11');
+    });
+
+    it('test_mapRawRowToSheetRow_when_street_has_prefix_or_abbreviation_should_normalize_ulica', () => {
+      const lodz = mapRawRowToSheetRow(
+        ['', 'FAV', 'Sklep', '91-718', 'Łódź', 'al.Chryzantem', '8', '', 'Łódzkie', '1'],
+        7,
+      );
+      expect(lodz.ulica).toBe('Chryzantem');
+      expect(lodz.address).toBe('91-718 Łódź Chryzantem 8');
+
+      const gdansk = mapRawRowToSheetRow(
+        ['', 'Sklep', 'Sklep', '80-843', 'Gdansk', 'Olejarna', '3', '', 'Pomorskie', '10'],
+        10,
+      );
+      expect(gdansk.miasto).toBe('Gdańsk');
+      expect(gdansk.address).toBe('80-843 Gdańsk Olejarna 3');
+
+      const gen = mapRawRowToSheetRow(
+        ['', 'Sklep', 'Sklep', '04-247', 'Warszawa', 'Gen. Chruściela', '25', '', '', '12'],
+        12,
+      );
+      expect(gen.ulica).toBe('Generała Chruściela');
+      expect(gen.ulicaRaw).toBe('Gen. Chruściela');
+
+      const lodzTypo = mapRawRowToSheetRow(
+        ['', 'Sklep', 'Sklep', '90-339', 'Łódż', 'Wilcza', '4', '', 'Łódzkie', '11'],
+        11,
+      );
+      expect(lodzTypo.miasto).toBe('Łódź');
+      expect(lodzTypo.address).toBe('90-339 Łódź Wilcza 4');
+
+      const naleczow = mapRawRowToSheetRow(
+        ['', 'Sanatorium', 'Sklep', '24-140', 'Nałęczów', 'B. Głowackiego', '12', '', 'Lubelskie', '2'],
+        8,
+      );
+      expect(naleczow.ulica).toBe('Barbary Głowackiego');
+      expect(naleczow.address).toBe('24-140 Nałęczów Barbary Głowackiego 12');
+
+      const dynow = mapRawRowToSheetRow(
+        ['', 'Delikatesy', 'Sklep', '36-065', 'DYNÓW', 'K. WIELKIEGO', '1/1', '', 'Podkarpackie', '3'],
+        9,
+      );
+      expect(dynow.ulica).toBe('Króla Wielkiego');
+      expect(dynow.address).toBe('36-065 DYNÓW Króla Wielkiego 1/1');
+
+      const chelm = mapRawRowToSheetRow(
+        ['', 'Sklep', 'Sklep', '22-100', 'Chełm', 'Ramba Brzeska', '14A', '', 'Lubelskie', '4'],
+        10,
+      );
+      expect(chelm.ulica).toBe('Rampa Brzeska');
+      expect(chelm.address).toBe('22-100 Chełm Rampa Brzeska 14A');
     });
   });
 

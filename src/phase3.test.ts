@@ -22,6 +22,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
     kodPocztowy: params.kodPocztowy ?? '62-320',
     miasto: params.miasto ?? 'Miłosław',
     ulica: params.ulica ?? 'os. Władysława Łokietka',
+    ulicaRaw: params.ulicaRaw ?? params.ulica ?? 'os. Władysława Łokietka',
     numerBudynku: params.numerBudynku ?? '18',
     gmina: params.gmina ?? 'Września',
     numerPlomby: params.numerPlomby ?? '111',

@@ -5,6 +5,8 @@
 import { readFile } from 'node:fs/promises';
 import { google, type sheets_v4 } from 'googleapis';
 import { DEFAULT_SHEET_COLUMN_MAP, DEFAULT_ADDRESS_ALIASES_PATH } from './config.js';
+import { normalizeCityFromSheet } from './cityNormalize.js';
+import { normalizeStreetFromSheet } from './streetNormalize.js';
 
 export interface AddressParts {
   kodPocztowy: string;
@@ -27,6 +29,8 @@ export interface SheetRow extends AddressParts {
   dataZamknieciaWorka: string;
   /** Tryb zbiórki – ręczna / maszyna */
   zbiorka: string;
+  /** Ulica z arkusza przed rozwinięciem skrótów (Gen. → Generała). */
+  ulicaRaw: string;
   raw: string[];
   address: string;
 }
@@ -113,6 +117,57 @@ function isMissingStreet(street: string): boolean {
   return street.trim().length === 0 || street.trim().toLowerCase() === 'brak';
 }
 
+function stripAfterSlash(value: string): string {
+  const s = value.trim();
+  const beforeSlash = s.split('/')[0];
+  return (beforeSlash ?? s).trim();
+}
+
+/**
+ * Gdy numer budynku jest powtórzony na końcu pola „Ulica”, usuwa go z ulicy.
+ * Np. „Winne-Podbukowina 11” + numer „11” → „Winne-Podbukowina”.
+ */
+export function stripTrailingHouseNumberFromStreet(ulica: string, numerBudynku: string): string {
+  const number = normalizeCell(stripAfterSlash(numerBudynku));
+  let street = normalizeCell(ulica);
+  if (!street || !number || isMissingStreet(street)) {
+    return street;
+  }
+
+  const gluedMatch = street.match(/^(.+?)(\d+[a-zA-Z]?)$/u);
+  if (gluedMatch?.[1] && gluedMatch[2]?.toLowerCase() === number.toLowerCase()) {
+    street = gluedMatch[1].trim();
+  }
+
+  const suffix = ` ${number}`;
+  if (street.length > suffix.length && street.toLowerCase().endsWith(suffix.toLowerCase())) {
+    return street.slice(0, street.length - suffix.length).trim();
+  }
+
+  return street;
+}
+
+function normalizeCityForPostcodeTypo(miasto: string): string {
+  return miasto
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+}
+
+/**
+ * Znane literówki kodu pocztowego w arkuszu (np. 62-100 zamiast 63-100 dla Śremu).
+ * Poprawka tylko gdy miasto pasuje — 62-100 to też Witkowo (Wielkopolskie).
+ */
+export function correctKnownPostcodeTypo(kodPocztowy: string, miasto: string): string {
+  const kod = kodPocztowy.trim();
+  const city = normalizeCityForPostcodeTypo(miasto);
+  if (kod === '62-100' && city === 'srem') {
+    return '63-100';
+  }
+  return kodPocztowy;
+}
+
 export function buildAddress(parts: AddressParts): string {
   const items = [normalizeCell(parts.kodPocztowy), normalizeCell(parts.miasto)];
   if (!isMissingStreet(parts.ulica)) {
@@ -132,10 +187,17 @@ export function mapRawRowToSheetRow(
   sourceRowIndex: number,
   columns: SheetColumnMap = DEFAULT_SHEET_COLUMN_MAP,
 ): SheetRow {
-  const kodPocztowy = normalizeCell(raw[columns.kodPocztowy]);
-  const miasto = normalizeCell(raw[columns.miasto]);
-  const ulica = normalizeCell(raw[columns.ulica]);
+  const kodPocztowy = correctKnownPostcodeTypo(
+    normalizeCell(raw[columns.kodPocztowy]),
+    normalizeCell(raw[columns.miasto]),
+  );
+  const miasto = normalizeCityFromSheet(normalizeCell(raw[columns.miasto]));
   const numerBudynku = normalizeCell(raw[columns.numerBudynku]);
+  const ulicaRaw = stripTrailingHouseNumberFromStreet(
+    normalizeCell(raw[columns.ulica]),
+    numerBudynku,
+  );
+  const ulica = normalizeStreetFromSheet(ulicaRaw, miasto);
 
   return {
     sourceRowIndex,
@@ -144,6 +206,7 @@ export function mapRawRowToSheetRow(
     kodPocztowy,
     miasto,
     ulica,
+    ulicaRaw,
     numerBudynku,
     gmina: normalizeCell(raw[columns.gmina]),
     numerPlomby: normalizeCell(raw[columns.numerPlomby]),

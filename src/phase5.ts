@@ -4,12 +4,35 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { normalizeCityForCompare, normalizeCityFromSheet } from './cityNormalize.js';
+import { nominatimAsciiQueryVariant } from './polishText.js';
 import type { AddressGroup } from './phase3.js';
 import type { SheetRow } from './sheets.js';
+import {
+  legacyDuplicateNumberCacheKey,
+  migrateCacheEntries,
+  purgeLegacyAbbreviationCacheKeys,
+  resolveCacheEntry,
+} from './cacheMigrate.js';
+import {
+  getOsiedleCoreName,
+  isHamletPlaceStreet,
+  isOsiedleStreet,
+  needsStreetPrefixQueryVariants,
+  normalizeStreetForCompare,
+  streetTitleAbbreviationQueryVariants,
+  stripStreetPrefix,
+} from './streetNormalize.js';
+
+import { polishAsciiFold } from './polishText.js';
+
+export { stripStreetPrefix } from './streetNormalize.js';
 
 interface NominatimResult {
   lat?: string;
   lon?: string;
+  type?: string;
+  class?: string;
   address?: {
     state?: string;
     county?: string;
@@ -20,6 +43,8 @@ interface NominatimResult {
     municipality?: string;
     hamlet?: string;
     suburb?: string;
+    place?: string;
+    isolated_dwelling?: string;
     road?: string;
     pedestrian?: string;
     house_number?: string;
@@ -95,31 +120,7 @@ function normalize(value: string | undefined): string {
 }
 
 function normalizeForCompare(value: string | undefined): string {
-  return normalize(value)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-/** Prefiksy ulic do ujednolicenia (ul., os., al. itd.) – porównanie i zapytania. P6. */
-const STREET_PREFIX_PATTERN = /^\s*(ul\.?|ulica|os\.?|osiedle|al\.?|aleja|alei|rondo|r\.|pl\.?|plac|bulw\.?|bulwar|skwer|park|droga|dl\.?)\s+/iu;
-
-/** Zwraca nazwę ulicy bez dopisku (ul., os., al. itd.) – do zapytań i porównań. */
-export function stripStreetPrefix(street: string | undefined): string {
-  const s = normalize(street);
-  return s.replace(STREET_PREFIX_PATTERN, '').trim();
-}
-
-/** Ulica znormalizowana do porównania: bez diakrytyków, bez prefiksu ul./os./al. */
-function normalizeStreetForCompare(street: string | undefined): string {
-  const base = normalizeForCompare(street);
-  const withoutPrefix = base.replace(
-    /^(ul|ulica|os|osiedle|al|aleja|alei|rondo|pl|plac|bulwar|skwer|park|droga|dl)\s+/,
-    '',
-  );
-  return withoutPrefix.trim();
+  return polishAsciiFold(normalize(value));
 }
 
 /** Min. długość krótszej nazwy przy dopasowaniu „zawiera”, żeby uniknąć np. Park vs Parkowa. */
@@ -143,15 +144,6 @@ function streetNamesMatch(expected: string, candidate: string): boolean {
     return false;
   }
   return longer.includes(shorter);
-}
-
-function normalizeForStrictCityCompare(value: string | undefined): string {
-  const trimmed = normalize(value);
-  const withoutParenthesis = trimmed.replace(/\s*\([^)]*\)\s*$/gu, '').trim();
-  return withoutParenthesis
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
 }
 
 /** Zwraca część przed "/" (np. 10/10 → 10) – do zapytań i porównań numeru budynku. */
@@ -178,13 +170,95 @@ function isMissingStreet(street: string): boolean {
   return s.length === 0 || s === 'brak';
 }
 
-function normalizeCityForGeocoding(city: string): string {
-  let normalized = normalize(city);
-  normalized = normalized.replace(/\s*\([^)]*\)\s*$/gu, '').trim();
-  if (normalized.toUpperCase() === 'WROCŁAW-FABRYCZNA') {
-    return 'Wrocław';
+/**
+ * Adres wiejski bez ulicy: w arkuszu w kolumnie „Ulica” jest nazwa miejscowości (ew. z numerem),
+ * a nie nazwa drogi. OSM używa wtedy addr:place — zapytania i scoring jak przy braku ulicy.
+ */
+export function isVillagePlaceAddress(row: Pick<SheetRow, 'ulica' | 'miasto' | 'numerBudynku'>): boolean {
+  const ulica = normalize(row.ulica);
+  if (isMissingStreet(ulica)) {
+    return false;
   }
-  return normalized;
+
+  const city = normalizeForCompare(normalizeCityForGeocoding(row.miasto));
+  const street = normalizeStreetForCompare(ulica);
+  const number = normalizeForCompare(stripAfterSlash(row.numerBudynku));
+  if (!city || !street) {
+    return false;
+  }
+
+  if (street === city) {
+    return true;
+  }
+  if (number && street === `${city} ${number}`) {
+    return true;
+  }
+  if (street.startsWith(`${city} `)) {
+    const rest = street.slice(city.length + 1).trim();
+    if (!rest || (number && rest === number)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasRealStreet(row: SheetRow): boolean {
+  return !isMissingStreet(row.ulica) && !isPlaceOnlyAddress(row);
+}
+
+function treatAsMissingStreet(row: SheetRow): boolean {
+  return isMissingStreet(row.ulica) || isPlaceOnlyAddress(row);
+}
+
+function normalizeCityForGeocoding(city: string): string {
+  return normalizeCityFromSheet(city);
+}
+
+/** W kolumnie Ulica jest nazwa przysiółka/wsi w obrębie miasta z kolumny Miasto. */
+export function isHamletPlaceAddress(row: Pick<SheetRow, 'ulica' | 'miasto' | 'numerBudynku'>): boolean {
+  return isHamletPlaceStreet(row.ulica, row.miasto);
+}
+
+function isPlaceOnlyAddress(row: Pick<SheetRow, 'ulica' | 'miasto' | 'numerBudynku'>): boolean {
+  return isVillagePlaceAddress(row) || isHamletPlaceAddress(row);
+}
+
+/** Duże miasta — w arkuszu często mylone kody pocztowe; przy dopasowaniu ulicy ignorujemy rozbieżność kodu. */
+const LARGE_CITY_LOOKUP_KEYS = new Set(
+  [
+    'Warszawa',
+    'Kraków',
+    'Łódź',
+    'Wrocław',
+    'Poznań',
+    'Gdańsk',
+    'Gdynia',
+    'Szczecin',
+    'Bydgoszcz',
+    'Lublin',
+    'Białystok',
+    'Katowice',
+    'Częstochowa',
+    'Radom',
+    'Sosnowiec',
+    'Toruń',
+    'Kielce',
+    'Rzeszów',
+    'Gliwice',
+    'Zabrze',
+    'Olsztyn',
+    'Bielsko-Biała',
+    'Bytom',
+    'Ruda Śląska',
+    'Rybnik',
+    'Tychy',
+    'Opole',
+  ].map((city) => normalizeForCompare(city)),
+);
+
+export function isLargeCity(city: string): boolean {
+  return LARGE_CITY_LOOKUP_KEYS.has(normalizeForCompare(normalizeCityForGeocoding(city)));
 }
 
 export function buildGeocodingQuery(row: SheetRow): string {
@@ -195,7 +269,7 @@ export function buildGeocodingQuery(row: SheetRow): string {
   const numer = stripAfterSlash(row.numerBudynku);
 
   const parts: string[] = [kod, miasto];
-  if (!isMissingStreet(ulica)) {
+  if (!treatAsMissingStreet(row)) {
     parts.push(ulicaBezPrefiksu);
   }
   parts.push(numer);
@@ -232,17 +306,91 @@ function pushQuery(target: string[], query: string): void {
   }
 }
 
+function appendNominatimAsciiQueryVariants(queries: string[]): void {
+  const snapshot = [...queries];
+  for (const query of snapshot) {
+    const variant = nominatimAsciiQueryVariant(query);
+    if (variant) {
+      pushQuery(queries, variant);
+    }
+  }
+}
+
+function appendStreetAbbreviationQueryVariants(
+  queries: string[],
+  kod: string,
+  miasto: string,
+  ulica: string,
+  numer: string,
+  ulicaRaw = '',
+): void {
+  for (const streetVariant of streetTitleAbbreviationQueryVariants(ulica, ulicaRaw)) {
+    const core = stripStreetPrefix(streetVariant) || streetVariant;
+    pushQuery(queries, `${miasto} ${core} ${numer}, Polska`);
+    pushQuery(queries, `${core} ${numer} ${miasto}, Polska`);
+    pushQuery(queries, `${kod} ${miasto} ${core} ${numer}, Polska`);
+    pushQuery(queries, `${kod} ${miasto} ul. ${core} ${numer}, Polska`);
+  }
+}
+
+function pushStreetPrefixQueryVariants(
+  queries: string[],
+  kod: string,
+  miasto: string,
+  ulica: string,
+  numer: string,
+): void {
+  if (!needsStreetPrefixQueryVariants(ulica, miasto)) {
+    return;
+  }
+
+  const trimmedUlica = ulica.trim();
+  const hadAlejaPrefix = /^Aleja\s+/iu.test(trimmedUlica);
+  const hadPlacPrefix = /^Plac\s+/iu.test(trimmedUlica);
+  const core = stripStreetPrefix(ulica) || ulica;
+  pushQuery(queries, `${kod} ${miasto} ul. ${core} ${numer}, Polska`);
+  pushQuery(queries, `${miasto} ul. ${core} ${numer}, Polska`);
+
+  if (!/^\s*(al\.?|aleja|alei)\s+/iu.test(ulica) && !/^Aleja\s+/iu.test(core) && !hadAlejaPrefix) {
+    pushQuery(queries, `${kod} ${miasto} al. ${core} ${numer}, Polska`);
+  }
+  if (!/^\s*(pl\.?|plac)\s+/iu.test(ulica) && !/^Plac\s+/iu.test(core) && !hadPlacPrefix) {
+    pushQuery(queries, `${kod} ${miasto} plac ${core} ${numer}, Polska`);
+  }
+  if (hadAlejaPrefix || /^Aleja\s+/iu.test(core)) {
+    const withoutAleja = hadAlejaPrefix ? core : core.replace(/^Aleja\s+/iu, '').trim();
+    pushQuery(queries, `${kod} ${miasto} ${withoutAleja} ${numer}, Polska`);
+    pushQuery(queries, `${kod} ${miasto} al. ${withoutAleja} ${numer}, Polska`);
+  }
+  if (hadPlacPrefix || /^Plac\s+/iu.test(core)) {
+    const withoutPlac = hadPlacPrefix ? core : core.replace(/^Plac\s+/iu, '').trim();
+    pushQuery(queries, `${kod} ${miasto} ${withoutPlac} ${numer}, Polska`);
+  }
+}
+
 export function buildGeocodingQueries(row: SheetRow): string[] {
   const kod = normalize(row.kodPocztowy);
   const miasto = normalizeCityForGeocoding(row.miasto);
   const ulica = normalize(row.ulica);
   const numer = stripAfterSlash(row.numerBudynku);
   const gmina = normalizeGmina(row.gmina);
-  const missingStreet = isMissingStreet(ulica);
+  const missingStreet = treatAsMissingStreet(row);
 
   const queries: string[] = [];
 
   if (missingStreet) {
+    if (isVillagePlaceAddress(row)) {
+      const place = normalizeCityForGeocoding(row.miasto);
+      pushQuery(queries, `${kod} ${place} ${numer}, Polska`);
+      pushQuery(queries, `${place} ${numer}, Polska`);
+      pushQuery(queries, `${kod} ${place}, Polska`);
+    }
+    if (isHamletPlaceAddress(row)) {
+      const hamlet = stripStreetPrefix(ulica) || ulica;
+      pushQuery(queries, `${kod} ${hamlet} ${numer}, Polska`);
+      pushQuery(queries, `${kod} ${miasto} ${hamlet} ${numer}, Polska`);
+      pushQuery(queries, `${hamlet} ${numer} ${miasto}, Polska`);
+    }
     pushQuery(queries, `${kod} ${miasto} ${numer}, Polska`);
     pushQuery(queries, `${kod} ${gmina} ${numer}, Polska`);
     pushQuery(queries, `${kod} ${miasto}, Polska`);
@@ -252,6 +400,12 @@ export function buildGeocodingQueries(row: SheetRow): string[] {
     // Warianty bez kodu na początku – Nominatim lepiej zwraca budynki przy "miasto ulica numer" / "ulica numer miasto". Kod i tak weryfikujemy w scoreCandidate.
     pushQuery(queries, `${miasto} ${ulicaBezPrefiksu} ${numer}, Polska`);
     pushQuery(queries, `${ulicaBezPrefiksu} ${numer} ${miasto}, Polska`);
+    if (isOsiedleStreet(ulica)) {
+      const osiedleCore = getOsiedleCoreName(ulica);
+      pushQuery(queries, `${kod} ${miasto} osiedle ${osiedleCore} ${numer}, Polska`);
+      pushQuery(queries, `${miasto} osiedle ${osiedleCore} ${numer}, Polska`);
+      pushQuery(queries, `${kod} ${miasto} ${ulicaBezPrefiksu} ${numer}, Polska`);
+    }
     pushQuery(queries, `${kod} ${miasto}, Polska`);
     pushQuery(queries, `${kod} ${miasto} ${numer}, Polska`);
     pushQuery(queries, `${kod} ${gmina} ${numer}, Polska`);
@@ -265,10 +419,13 @@ export function buildGeocodingQueries(row: SheetRow): string[] {
     pushQuery(queries, `${kod} ${gmina} ${ulicaBezPrefiksu} ${numer}, Polska`);
     pushQuery(queries, `${kod} ${miasto} ${ulicaBezPrefiksu}, Polska`);
     pushQuery(queries, `${kod} ${gmina} ${ulicaBezPrefiksu}, Polska`);
+    pushStreetPrefixQueryVariants(queries, kod, miasto, ulica, numer);
+    appendStreetAbbreviationQueryVariants(queries, kod, miasto, ulica, numer, row.ulicaRaw);
   }
 
   // Dodatkowy fallback - nadal z kodem pocztowym, żeby nie "uciekać" do złego regionu.
   pushQuery(queries, `${kod} ${row.address}, Polska`);
+  appendNominatimAsciiQueryVariants(queries);
   return queries;
 }
 
@@ -302,6 +459,23 @@ function shouldRetrySuspiciousCacheEntry(entry: CacheEntry): boolean {
   return woj.startsWith('powiat ') || woj.startsWith('gmina ') || woj.length === 0;
 }
 
+function shouldRetryUncertainCache(cached: CacheEntry): boolean {
+  return cached.status === 'uncertain';
+}
+
+function shouldRetryCityOnlyVillageCache(cached: CacheEntry, row: SheetRow | undefined): boolean {
+  return cached.status === 'city_only' && row !== undefined && isPlaceOnlyAddress(row);
+}
+
+function shouldRetryCityOnlyLargeCityCache(cached: CacheEntry, row: SheetRow | undefined): boolean {
+  return (
+    cached.status === 'city_only' &&
+    row !== undefined &&
+    hasRealStreet(row) &&
+    isLargeCity(row.miasto)
+  );
+}
+
 function getCandidateLocality(result: NominatimResult): string {
   return (
     result.address?.city ??
@@ -310,16 +484,157 @@ function getCandidateLocality(result: NominatimResult): string {
     result.address?.municipality ??
     result.address?.hamlet ??
     result.address?.suburb ??
+    result.address?.city_district ??
     result.address?.county ??
     ''
   );
+}
+
+function stripLeadingGmina(name: string): string {
+  return name.replace(/^gmina\s+/iu, '').trim();
+}
+
+/** Dopasowanie miejscowości dla wsi / przysiółka (OSM: village, hamlet, gmina X itd.). */
+function placeLocalityMatches(row: Pick<SheetRow, 'miasto' | 'ulica' | 'numerBudynku'>, result: NominatimResult): boolean {
+  const expectedNames = new Set<string>();
+  const parent = normalizeForCompare(normalizeCityForGeocoding(row.miasto));
+  if (parent) {
+    expectedNames.add(parent);
+  }
+  if (isPlaceOnlyAddress(row)) {
+    const place = normalizeStreetForCompare(row.ulica);
+    if (place) {
+      expectedNames.add(place);
+    }
+  }
+
+  if (expectedNames.size === 0) {
+    return false;
+  }
+
+  const addr = result.address;
+  if (!addr) {
+    return false;
+  }
+
+  const fields = [
+    addr.city,
+    addr.town,
+    addr.village,
+    addr.municipality,
+    addr.hamlet,
+    addr.suburb,
+    addr.city_district,
+    addr.place,
+    addr.isolated_dwelling,
+  ];
+
+  for (const raw of fields) {
+    const candidate = normalizeForCompare(stripLeadingGmina(normalize(raw)));
+    if (!candidate) {
+      continue;
+    }
+    for (const expected of expectedNames) {
+      if (candidate === expected || candidate.includes(expected) || expected.includes(candidate)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function getCandidateStreet(result: NominatimResult): string {
   return result.address?.road ?? result.address?.pedestrian ?? '';
 }
 
+/** OSM zapisuje osiedla w neighbourhood/quarter, nie w road. */
+function osiedleNamesMatch(ulica: string, result: NominatimResult): boolean {
+  const core = normalizeForCompare(getOsiedleCoreName(ulica));
+  if (!core) {
+    return false;
+  }
+
+  const fields = [
+    result.address?.neighbourhood,
+    result.address?.quarter,
+    result.address?.suburb,
+    result.address?.road,
+    result.address?.pedestrian,
+  ];
+
+  for (const raw of fields) {
+    const normalized = normalizeForCompare(raw);
+    if (!normalized) {
+      continue;
+    }
+    const withoutOsiedlePrefix = normalized.replace(/^osiedle\s+/, '').trim();
+    if (withoutOsiedlePrefix === core || normalized === core) {
+      return true;
+    }
+    if (streetNamesMatch(core, withoutOsiedlePrefix)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** Nominatim zwrócił konkretny budynek (nie centroid kodu / miejscowości). */
+function isBuildingLevelResult(result: NominatimResult): boolean {
+  const type = normalize(result.type).toLowerCase();
+  const klass = normalize(result.class).toLowerCase();
+  if (type === 'house' || type === 'building' || type === 'isolated_dwelling') {
+    return true;
+  }
+  if (klass === 'building' && normalize(result.address?.house_number).length > 0) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Wieś / przysiółek: zgodny kod (lub prefix) + numer budynku + wynik na poziomie budynku.
+ * OSM często nie zwraca nazwy miejscowości w polach address mimo trafnego punktu.
+ */
+function placeOnlyPreciseBuildingMatch(row: SheetRow, result: NominatimResult): boolean {
+  if (!isPlaceOnlyAddress(row) || !isBuildingLevelResult(result)) {
+    return false;
+  }
+
+  const expectedNumber = normalizeForCompare(stripAfterSlash(row.numerBudynku));
+  const candidateNumber = normalizeForCompare(stripAfterSlash(result.address?.house_number));
+  if (!expectedNumber || expectedNumber !== candidateNumber) {
+    return false;
+  }
+
+  const expectedPostcode = normalizePostcodeForCompare(row.kodPocztowy);
+  const candidatePostcode = normalizePostcodeForCompare(result.address?.postcode);
+  if (expectedPostcode.length >= 5 && candidatePostcode === expectedPostcode) {
+    return true;
+  }
+
+  const expectedPrefix = first3DigitsOfPostcode(row.kodPocztowy);
+  const candidatePrefix = first3DigitsOfPostcode(result.address?.postcode);
+  return (
+    expectedPrefix.length >= 3 &&
+    candidatePrefix.length >= 3 &&
+    expectedPrefix === candidatePrefix
+  );
+}
+
 const CONFIDENCE_SCORE_THRESHOLD = 6;
+
+function resolvePlaceLocalityMatch(row: SheetRow, result: NominatimResult): boolean {
+  if (placeLocalityMatches(row, result)) {
+    return true;
+  }
+  return placeOnlyPreciseBuildingMatch(row, result);
+}
+
+function isPostcodeCentroidResult(result: NominatimResult): boolean {
+  return normalize(result.type).toLowerCase() === 'postcode';
+}
 
 /** Limit kandydatów zwracanych przez Nominatim (więcej = lepsze dopasowanie przy wielu wynikach). */
 export const NOMINATIM_CANDIDATE_LIMIT = 15;
@@ -334,23 +649,31 @@ interface CandidateScore {
 
 function scoreCandidate(result: NominatimResult, row: SheetRow): CandidateScore {
   const expectedPostcode = normalizePostcodeForCompare(row.kodPocztowy);
-  const expectedCity = normalizeForStrictCityCompare(normalizeCityForGeocoding(row.miasto));
-  const expectedStreet = normalizeStreetForCompare(row.ulica);
+  const expectedCity = normalizeCityForCompare(row.miasto);
+  const expectedStreet = normalizeStreetForCompare(row.ulica, row.miasto);
   const expectedNumber = normalizeForCompare(stripAfterSlash(row.numerBudynku));
-  const hasStreet = !isMissingStreet(row.ulica);
+  const hasStreet = hasRealStreet(row);
+  const villagePlace = isVillagePlaceAddress(row);
+  const hamletPlace = isHamletPlaceAddress(row);
+  const placeOnly = villagePlace || hamletPlace;
+  const osiedleStreet = isOsiedleStreet(row.ulica);
 
   const candidatePostcode = normalizePostcodeForCompare(result.address?.postcode);
-  const candidateCity = normalizeForStrictCityCompare(getCandidateLocality(result));
-  const candidateStreet = normalizeStreetForCompare(getCandidateStreet(result));
+  const candidateCity = normalizeCityForCompare(getCandidateLocality(result));
+  const candidateStreet = normalizeStreetForCompare(getCandidateStreet(result), row.miasto);
   const candidateNumber = normalizeForCompare(stripAfterSlash(result.address?.house_number));
 
-  const cityMatch = Boolean(expectedCity && candidateCity && expectedCity === candidateCity);
-  const streetMatch = Boolean(
-    hasStreet &&
-      expectedStreet &&
-      candidateStreet &&
-      streetNamesMatch(expectedStreet, candidateStreet),
-  );
+  const cityMatch = placeOnly
+    ? resolvePlaceLocalityMatch(row, result)
+    : Boolean(expectedCity && candidateCity && expectedCity === candidateCity);
+  const streetMatch = osiedleStreet
+    ? osiedleNamesMatch(row.ulica, result)
+    : Boolean(
+        hasStreet &&
+          expectedStreet &&
+          candidateStreet &&
+          streetNamesMatch(expectedStreet, candidateStreet),
+      );
   const numberMatch = Boolean(expectedNumber && candidateNumber && expectedNumber === candidateNumber);
 
   if (expectedPostcode.length >= 5 && candidatePostcode !== expectedPostcode) {
@@ -364,7 +687,7 @@ function scoreCandidate(result: NominatimResult, row: SheetRow): CandidateScore 
       (!hasStreet || streetMatch)
     ) {
       return {
-        score: 4 + (streetMatch ? 3 : 0),
+        score: 4 + (streetMatch ? 3 : 0) + (placeOnly && numberMatch ? 2 : 0),
         postcodeMatched: true,
         streetMatch,
         postcodePresentInResult: true,
@@ -380,6 +703,22 @@ function scoreCandidate(result: NominatimResult, row: SheetRow): CandidateScore 
         postcodeMatched: true,
         streetMatch,
         postcodePresentInResult: false,
+      };
+    }
+    if (isLargeCity(row.miasto) && cityMatch && streetMatch) {
+      return {
+        score: 4 + 3 + (numberMatch ? 2 : 0),
+        postcodeMatched: true,
+        streetMatch,
+        postcodePresentInResult: true,
+      };
+    }
+    if (placeOnly && cityMatch && numberMatch) {
+      return {
+        score: CONFIDENCE_SCORE_THRESHOLD,
+        postcodeMatched: expectedPrefix.length >= 3 && expectedPrefix === candidatePrefix,
+        streetMatch: false,
+        postcodePresentInResult: candidatePostcode.length >= 3,
       };
     }
     return {
@@ -400,6 +739,9 @@ function scoreCandidate(result: NominatimResult, row: SheetRow): CandidateScore 
   if (numberMatch) {
     score += 2;
   }
+  if (placeOnly && numberMatch) {
+    score = Math.max(score, CONFIDENCE_SCORE_THRESHOLD);
+  }
 
   return {
     score,
@@ -414,12 +756,48 @@ type CandidateClassification = 'ok' | 'ok_no_postcode' | 'uncertain' | 'city_onl
 interface CandidatePickResult {
   bestCandidate?: NominatimResult;
   status: CandidateClassification;
+  bestScore: number;
+}
+
+function classificationStatusRank(status: CandidateClassification): number {
+  if (status === 'ok') {
+    return 5;
+  }
+  if (status === 'ok_no_postcode') {
+    return 4;
+  }
+  if (status === 'city_only') {
+    return 3;
+  }
+  if (status === 'uncertain') {
+    return 2;
+  }
+  return 0;
+}
+
+function isBetterPick(
+  next: CandidatePickResult,
+  current: CandidatePickResult | undefined,
+): boolean {
+  if (!current) {
+    return next.status !== 'bad';
+  }
+  const nextRank = classificationStatusRank(next.status);
+  const currentRank = classificationStatusRank(current.status);
+  if (nextRank !== currentRank) {
+    return nextRank > currentRank;
+  }
+  return next.bestScore > current.bestScore;
 }
 
 /** Score 6+ = ok (pewne), 4 = tylko kod+miasto (city_only), inaczej uncertain. */
 function pickBestCandidate(payload: NominatimResult[], row: SheetRow): CandidatePickResult {
+  const hasStreet = hasRealStreet(row);
   const withCoords = payload.filter((item) => {
     if (!item.lat || !item.lon) {
+      return false;
+    }
+    if (hasStreet && isPostcodeCentroidResult(item)) {
       return false;
     }
     const lat = Number(item.lat);
@@ -429,10 +807,10 @@ function pickBestCandidate(payload: NominatimResult[], row: SheetRow): Candidate
   if (withCoords.length === 0) {
     return {
       status: 'bad',
+      bestScore: -1,
     };
   }
 
-  const hasStreet = !isMissingStreet(row.ulica);
   let best: NominatimResult | undefined;
   let bestScore = -1;
   let bestPostcodeMatched = false;
@@ -452,6 +830,7 @@ function pickBestCandidate(payload: NominatimResult[], row: SheetRow): Candidate
   if (!best || !bestPostcodeMatched) {
     return {
       status: 'bad',
+      bestScore: -1,
     };
   }
 
@@ -465,13 +844,20 @@ function pickBestCandidate(payload: NominatimResult[], row: SheetRow): Candidate
       status = 'ok';
     }
   } else if (bestScore === 4) {
-    status = 'city_only';
+    if (isVillagePlaceAddress(row)) {
+      status = 'ok';
+    } else if (isHamletPlaceAddress(row)) {
+      status = 'city_only';
+    } else {
+      status = 'city_only';
+    }
   } else {
     status = 'uncertain';
   }
   return {
     bestCandidate: best,
     status,
+    bestScore,
   };
 }
 
@@ -543,7 +929,8 @@ async function loadCache(
       const sanitized = toCacheEntry(entry);
       if (sanitized) result[address] = sanitized;
     }
-    return result;
+    const migrated = migrateCacheEntries(result).entries;
+    return purgeLegacyAbbreviationCacheKeys(migrated).entries;
   } catch {
     return {};
   }
@@ -677,10 +1064,28 @@ export async function executePhase5(
 
     for (const [_groupKey, group] of batch) {
       const address = group.address;
-      const cached = cacheEntries[address];
+      let cached = resolveCacheEntry(cacheEntries, address);
+      if (cached && !cacheEntries[address]) {
+        cacheEntries[address] = cached;
+        const legacyKey = legacyDuplicateNumberCacheKey(address);
+        if (legacyKey && legacyKey !== address) {
+          delete cacheEntries[legacyKey];
+        }
+      }
       if (cached) {
+        const sampleRowForCache = group.rows[0];
+        const retryVillageCityOnly = shouldRetryCityOnlyVillageCache(cached, sampleRowForCache);
+        const retryLargeCityCityOnly = shouldRetryCityOnlyLargeCityCache(cached, sampleRowForCache);
+        const retryUncertain = shouldRetryUncertainCache(cached);
+
         if (shouldRetrySuspiciousCacheEntry(cached)) {
           logger?.info?.('Phase 5: retrying suspicious cache entry for address: %s', address);
+        } else if (retryUncertain) {
+          logger?.info?.('Phase 5: retrying uncertain cache for address: %s', address);
+        } else if (retryVillageCityOnly) {
+          logger?.info?.('Phase 5: retrying city_only village-place cache for address: %s', address);
+        } else if (retryLargeCityCityOnly) {
+          logger?.info?.('Phase 5: retrying city_only large-city cache for address: %s', address);
         } else if (cached.status === 'ok' && typeof cached.lat === 'number' && typeof cached.lng === 'number') {
           geocoded.push({
             address,
@@ -759,6 +1164,9 @@ export async function executePhase5(
 
         if (
           !shouldRetrySuspiciousCacheEntry(cached) &&
+          !retryUncertain &&
+          !retryVillageCityOnly &&
+          !retryLargeCityCityOnly &&
           (cached.status === 'ok' ||
             cached.status === 'ok_no_postcode' ||
             cached.status === 'uncertain' ||
@@ -774,7 +1182,7 @@ export async function executePhase5(
       try {
         const sampleRow = group.rows[0];
         const queries = buildGeocodingQueries(sampleRow);
-        let success = false;
+        let bestPick: CandidatePickResult | undefined;
 
         for (const query of queries) {
           const url = buildNominatimUrl(query);
@@ -822,58 +1230,70 @@ export async function executePhase5(
 
           const payload = (await response.json()) as NominatimResult[];
           const picked = pickBestCandidate(payload, sampleRow);
-          const best = picked.bestCandidate;
-          if (!best || !best.lat || !best.lon || picked.status === 'bad') {
+          if (picked.status === 'bad') {
             await sleepFn(rateLimitMs);
             continue;
           }
-
-          const lat = Number(best.lat);
-          const lng = Number(best.lon);
-          if (Number.isNaN(lat) || Number.isNaN(lng)) {
-            await sleepFn(rateLimitMs);
-            continue;
+          if (isBetterPick(picked, bestPick)) {
+            bestPick = picked;
           }
-
-          const wojewodztwo = extractVoivodeship(best);
-          const geocodedItem: GeocodedAddress = {
-            address,
-            count: group.count,
-            lat,
-            lng,
-            wojewodztwo,
-            zbiorka: aggregateZbiorka(group.rows),
-            rows: group.rows,
-          };
           if (picked.status === 'ok') {
-            geocoded.push(geocodedItem);
-          } else if (picked.status === 'ok_no_postcode') {
-            geocodedNoPostcode.push(geocodedItem);
-          } else if (picked.status === 'city_only') {
-            cityOnlyGeocoded.push(geocodedItem);
-          } else {
-            uncertainGeocoded.push(geocodedItem);
-            rowsNiepewneWyniki.push(...group.rows);
-            groupedNiepewneAdresy.push({
-              address,
-              liczbaWystapien: group.count,
-              przykladoweLat: lat,
-              przykladoweLng: lng,
-              wojewodztwo,
-            });
+            break;
           }
-          cacheEntries[address] = {
-            status: picked.status,
-            lat,
-            lng,
-            wojewodztwo,
-            updatedAt: new Date().toISOString(),
-          };
-          success = true;
-          break;
+          await sleepFn(rateLimitMs);
         }
 
-        if (!success) {
+        if (bestPick && bestPick.bestCandidate && bestPick.status !== 'bad') {
+          const best = bestPick.bestCandidate;
+          const lat = Number(best.lat);
+          const lng = Number(best.lon);
+          if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+            const wojewodztwo = extractVoivodeship(best);
+            const geocodedItem: GeocodedAddress = {
+              address,
+              count: group.count,
+              lat,
+              lng,
+              wojewodztwo,
+              zbiorka: aggregateZbiorka(group.rows),
+              rows: group.rows,
+            };
+            if (bestPick.status === 'ok') {
+              geocoded.push(geocodedItem);
+            } else if (bestPick.status === 'ok_no_postcode') {
+              geocodedNoPostcode.push(geocodedItem);
+            } else if (bestPick.status === 'city_only') {
+              cityOnlyGeocoded.push(geocodedItem);
+            } else {
+              uncertainGeocoded.push(geocodedItem);
+              rowsNiepewneWyniki.push(...group.rows);
+              groupedNiepewneAdresy.push({
+                address,
+                liczbaWystapien: group.count,
+                przykladoweLat: lat,
+                przykladoweLng: lng,
+                wojewodztwo,
+              });
+            }
+            cacheEntries[address] = {
+              status: bestPick.status,
+              lat,
+              lng,
+              wojewodztwo,
+              updatedAt: new Date().toISOString(),
+            };
+          } else {
+            rowsBledneAdresy.push(...group.rows);
+            groupedBledneAdresy.push({
+              address,
+              liczbaWystapien: group.count,
+            });
+            cacheEntries[address] = {
+              status: 'bad',
+              updatedAt: new Date().toISOString(),
+            };
+          }
+        } else {
           rowsBledneAdresy.push(...group.rows);
           groupedBledneAdresy.push({
             address,

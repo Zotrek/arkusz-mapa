@@ -21,6 +21,7 @@ function makeRow(raw: string[]): SheetRow {
     kodPocztowy: '',
     miasto: '',
     ulica: '',
+    ulicaRaw: '',
     numerBudynku: '',
     gmina: '',
     numerPlomby: '',

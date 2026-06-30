@@ -19,6 +19,7 @@ function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
     kodPocztowy: overrides.kodPocztowy ?? '62-320',
     miasto: overrides.miasto ?? 'Miłosław',
     ulica: overrides.ulica ?? 'os. Władysława Łokietka',
+    ulicaRaw: overrides.ulicaRaw ?? overrides.ulica ?? 'os. Władysława Łokietka',
     numerBudynku: overrides.numerBudynku ?? '18',
     gmina: overrides.gmina ?? 'Września',
     numerPlomby: overrides.numerPlomby ?? '111',
