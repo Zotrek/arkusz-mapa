@@ -2,6 +2,8 @@
  * Faza 2: odczyt i parsowanie danych z Google Sheets.
  */
 
+import http from 'node:http';
+import https from 'node:https';
 import { readFile } from 'node:fs/promises';
 import { google, type sheets_v4 } from 'googleapis';
 import { DEFAULT_SHEET_COLUMN_MAP, DEFAULT_ADDRESS_ALIASES_PATH } from './config.js';
@@ -325,10 +327,23 @@ export async function loadSourceRows(
   };
 }
 
+/** Workaround: Node 24.17+ + google-auth-library v9 → OAuth „Premature close” przy keep-alive. */
+const httpAgentNoKeepAlive = new http.Agent({ keepAlive: false });
+const httpsAgentNoKeepAlive = new https.Agent({ keepAlive: false });
+
+export function googleAuthNoKeepAliveAgent(parsedURL: URL): http.Agent | https.Agent {
+  return parsedURL.protocol === 'https:' ? httpsAgentNoKeepAlive : httpAgentNoKeepAlive;
+}
+
 export function createSheetsClient(credentialsPath: string): sheets_v4.Sheets {
   const auth = new google.auth.GoogleAuth({
     keyFile: credentialsPath,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    clientOptions: {
+      transporterOptions: {
+        agent: googleAuthNoKeepAliveAgent,
+      },
+    },
   });
 
   return google.sheets({

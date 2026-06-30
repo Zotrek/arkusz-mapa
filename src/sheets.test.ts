@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import https from 'node:https';
 import {
   applyAddressAliases,
   buildAddress,
@@ -20,6 +21,7 @@ import {
   buildSheetRange,
   fetchSourceSheetValues,
   loadSourceRows,
+  googleAuthNoKeepAliveAgent,
 } from './sheets';
 import {
   COL_KOD_POCZTOWY,
@@ -415,6 +417,14 @@ describe('sheets phase 2', () => {
       expect(result.rows[0].address).toBe('62-320 Miłosław os. Władysławs Łokietka 18');
       expect(result.columnMap.kodPocztowy).toBe(COL_KOD_POCZTOWY);
       expect(result.columnMap.dataZamknieciaWorka).toBe(COL_DATA_ZAMKNIECIA_WORKA);
+    });
+  });
+
+  describe('googleAuthNoKeepAliveAgent', () => {
+    it('test_googleAuthNoKeepAliveAgent_should_return_https_agent_for_oauth_token_url', () => {
+      const agent = googleAuthNoKeepAliveAgent(new URL('https://oauth2.googleapis.com/token'));
+      expect(agent).toBeDefined();
+      expect((agent as https.Agent).keepAlive).toBe(false);
     });
   });
 });

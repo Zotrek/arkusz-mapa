@@ -78,7 +78,8 @@ jobs:
       # cache: npm — patrz komentarz w arkusz-mapa-ci.yml
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          # 24.17.x: regresja keep-alive → OAuth „Premature close” (google-auth-library v9).
+          node-version: '22'
           cache: npm
           cache-dependency-path: package-lock.json
 
