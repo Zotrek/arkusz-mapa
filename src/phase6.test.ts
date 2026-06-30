@@ -474,6 +474,9 @@ describe('phase6', () => {
         ],
       });
       expect(html).toContain('docxtemplater@3.50.0');
+      expect(html).toContain('ensureDocxLibrariesLoaded');
+      expect(html).toContain('prewarmDocxTemplateCache');
+      expect(html).toContain('rebuildDocPreparedLists');
       expect(html).toContain('Generuj dokument');
       expect(html).toContain('PODWYKOLISTA');
       expect(html).toContain('Janex');

@@ -548,13 +548,6 @@ export function buildMapHtml(
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
   const transportApiEnabled = wordEnabled && transportWebAppUrl.length > 0;
 
-  const wordHeadScripts = wordEnabled
-    ? `  <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.min.js" crossorigin=""></script>
-  <script src="https://unpkg.com/docxtemplater@3.50.0/build/docxtemplater.js" crossorigin=""></script>
-  <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js" crossorigin=""></script>
-`
-    : '';
-
   const wordModal = wordEnabled
     ? `  <div id="doc-modal" class="doc-modal-overlay" style="display:none" aria-hidden="true">
     <div class="doc-modal-panel" role="dialog" aria-labelledby="doc-modal-title">
@@ -615,7 +608,7 @@ export function buildMapHtml(
   <title>Mapa adresów</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-${wordHeadScripts}  <style>
+  <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; }
     #map { width: 100%; height: 100vh; }
@@ -873,7 +866,7 @@ ${wordModal}  <script>
           return Date.UTC(parseInt(iso[1], 10), month - 1, day);
         }
       }
-      var dmy = s.match(/^(\\d{1,2})[./](\\d{1,2})[./](\\d{2,4})\\b/);
+      var dmy = s.match(/^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4})\\b/);
       if (dmy) {
         var day2 = parseInt(dmy[1], 10);
         var month2 = parseInt(dmy[2], 10);
@@ -917,7 +910,7 @@ ${wordModal}  <script>
       if (iso) {
         return String(parseInt(iso[2], 10)).padStart(2, '0') + '-' + String(parseInt(iso[3], 10)).padStart(2, '0');
       }
-      var dmy = s.match(/^(\\d{1,2})[./](\\d{1,2})[./](\\d{2,4})\\b/);
+      var dmy = s.match(/^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4})\\b/);
       if (dmy) {
         return String(parseInt(dmy[2], 10)).padStart(2, '0') + '-' + String(parseInt(dmy[1], 10)).padStart(2, '0');
       }
@@ -974,8 +967,7 @@ ${wordModal}  <script>
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
     }
-    function buildListaPlombOoxmlFromSealRows(sealRows) {
-      var lines = buildListaPlombFromSealRows(sealRows);
+    function buildListaPlombOoxmlFromLines(lines) {
       var rpr = '<w:rPr><w:sz w:val="' + DOC_LISTA_PLOMB_HP + '"/><w:szCs w:val="' + DOC_LISTA_PLOMB_HP + '"/></w:rPr>';
       if (lines.length === 0) {
         return '<w:p><w:r>' + rpr + '<w:t></w:t></w:r></w:p>';
@@ -984,12 +976,18 @@ ${wordModal}  <script>
         return '<w:p><w:r>' + rpr + '<w:t xml:space="preserve">' + escapeXmlForWordTextMap(line) + '</w:t></w:r></w:p>';
       }).join('');
     }
+    function buildListaPlombOoxmlFromSealRows(sealRows) {
+      return buildListaPlombOoxmlFromLines(buildListaPlombFromSealRows(sealRows));
+    }
     function buildDocListsFromSealRows(sealRows) {
       var lines = buildListaPlombFromSealRows(sealRows);
       return {
         lista_plomb: lines.join('\\n'),
-        lista_plomb_xml: buildListaPlombOoxmlFromSealRows(sealRows)
+        lista_plomb_xml: buildListaPlombOoxmlFromLines(lines)
       };
+    }
+    function rebuildDocPreparedLists(sealRows) {
+      window.__docPreparedLists = buildDocListsFromSealRows(sealRows || []);
     }
     function formatYmdToDisplay(ymd) {
       if (!ymd) return '';
@@ -1031,39 +1029,51 @@ ${wordModal}  <script>
     function loadDocModalData(pointIdx) {
       var p = adresy[pointIdx];
       window.__docCutoffMs = null;
+      window.__docModalDataReady = false;
+      window.__docPreviewNumer = '';
       window.__docFilteredSeals = (p && p.sealRows) ? p.sealRows.slice() : [];
       var filterInfo = document.getElementById('doc-filter-info');
+      var okBtn = document.getElementById('doc-btn-ok');
       if (filterInfo) filterInfo.textContent = 'Ładowanie danych transportu…';
+      if (okBtn) okBtn.disabled = true;
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
+      function finishLoading() {
+        window.__docModalDataReady = true;
+        if (okBtn) okBtn.disabled = false;
+      }
       if (!transportApiEnabled) {
         if (numEl) numEl.value = '';
         updateDocFilterInfo(window.__docFilteredSeals.length, window.__docFilteredSeals.length, null);
+        rebuildDocPreparedLists(window.__docFilteredSeals);
+        finishLoading();
         return Promise.resolve();
       }
       var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
-      return Promise.all([
-        fetchTransportGet({ action: 'previewNumber' }),
-        fetchTransportGet({ action: 'lastTransportDate', podmiot: podmiot, adres: p.adres })
-      ]).then(function (results) {
-        var numResp = results[0];
-        var dateResp = results[1];
-        if (numResp && numResp.ok && numEl) numEl.value = String(numResp.numer || '');
+      return fetchTransportGet({ action: 'modalData', podmiot: podmiot, adres: p.adres }).then(function (resp) {
+        if (resp && resp.ok && numEl) {
+          numEl.value = String(resp.numer || '');
+          window.__docPreviewNumer = String(resp.numer || '');
+        }
         var cutoffMs = null;
         var cutoffYmd = null;
-        if (dateResp && dateResp.ok && dateResp.lastTransportDateMs != null) {
-          cutoffMs = dateResp.lastTransportDateMs;
-          cutoffYmd = dateResp.lastTransportDateYmd || null;
+        if (resp && resp.ok && resp.lastTransportDateMs != null) {
+          cutoffMs = resp.lastTransportDateMs;
+          cutoffYmd = resp.lastTransportDateYmd || null;
         }
         window.__docCutoffMs = cutoffMs;
         var all = p.sealRows || [];
         window.__docFilteredSeals = filterSealRowsByMinDate(all, cutoffMs);
         updateDocFilterInfo(all.length, window.__docFilteredSeals.length, cutoffYmd);
+        rebuildDocPreparedLists(window.__docFilteredSeals);
       }).catch(function (err) {
         console.error(err);
         if (filterInfo) {
           filterInfo.textContent = 'Nie udało się pobrać danych transportu — użyto wszystkich worków.';
         }
         window.__docFilteredSeals = (p.sealRows || []).slice();
+        rebuildDocPreparedLists(window.__docFilteredSeals);
+      }).then(function () {
+        finishLoading();
       });
     }
     function findPodwykoIdxByLabel(label) {
@@ -1263,6 +1273,8 @@ ${wordModal}  <script>
       if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
       if (numEl) numEl.value = '';
+      ensureDocxLibrariesLoaded();
+      prewarmDocxTemplateCache();
       loadDocModalData(pointIdx);
       m.style.display = 'flex';
       m.setAttribute('aria-hidden', 'false');
@@ -1279,6 +1291,49 @@ ${wordModal}  <script>
       var u = new Uint8Array(n);
       for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
       return u;
+    }
+    var wordTemplateBytesCache = null;
+    function getWordTemplateBytes() {
+      if (!wordTemplateBytesCache) {
+        wordTemplateBytesCache = b64ToUint8(WORD_TEMPLATE_B64);
+      }
+      return wordTemplateBytesCache;
+    }
+    function prewarmDocxTemplateCache() {
+      if (!wordDocEnabled || !WORD_TEMPLATE_B64) return;
+      try { getWordTemplateBytes(); } catch (e) { console.warn(e); }
+    }
+    var docxLibsPromise = null;
+    function loadScriptOnce(src) {
+      return new Promise(function (resolve, reject) {
+        var existing = document.querySelector('script[src="' + src + '"]');
+        if (existing) {
+          if (existing.getAttribute('data-loaded') === '1') {
+            resolve();
+            return;
+          }
+          existing.addEventListener('load', function () { resolve(); });
+          existing.addEventListener('error', function () { reject(new Error('script: ' + src)); });
+          return;
+        }
+        var s = document.createElement('script');
+        s.src = src;
+        s.crossOrigin = '';
+        s.onload = function () { s.setAttribute('data-loaded', '1'); resolve(); };
+        s.onerror = function () { reject(new Error('script: ' + src)); };
+        document.head.appendChild(s);
+      });
+    }
+    function ensureDocxLibrariesLoaded() {
+      if (typeof PizZip !== 'undefined' && typeof docxtemplater !== 'undefined' && typeof saveAs !== 'undefined') {
+        return Promise.resolve();
+      }
+      if (!docxLibsPromise) {
+        docxLibsPromise = loadScriptOnce('https://unpkg.com/pizzip@3.1.7/dist/pizzip.min.js')
+          .then(function () { return loadScriptOnce('https://unpkg.com/docxtemplater@3.50.0/build/docxtemplater.js'); })
+          .then(function () { return loadScriptOnce('https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js'); });
+      }
+      return docxLibsPromise;
     }
     function sanitizeFileNamePart(text) {
       return String(text)
@@ -1299,15 +1354,15 @@ ${wordModal}  <script>
       }
       return base + '.docx';
     }
-    function renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals) {
-      var zip = new PizZip(b64ToUint8(WORD_TEMPLATE_B64));
+    function renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists) {
+      var lists = preparedLists || buildDocListsFromSealRows(filteredSeals);
+      var zip = new PizZip(getWordTemplateBytes());
       var Doc = window.docxtemplater;
       var doc = new Doc(zip, {
         paragraphLoop: true,
         linebreaks: true,
         delimiters: { start: '{{', end: '}}' },
       });
-      var lists = buildDocListsFromSealRows(filteredSeals);
       doc.render({
         miejsce_zaladunku: p.doc.miejsce_zaladunku,
         lista_plomb: lists.lista_plomb,
@@ -1326,7 +1381,16 @@ ${wordModal}  <script>
       saveAs(out, safeName);
       closeDocModal();
     }
+    function isManualTransportNumer(inputValue, previewNumer) {
+      var v = String(inputValue || '').trim();
+      if (!v) return false;
+      return v !== String(previewNumer || '');
+    }
     function runDocGenerate() {
+      if (transportApiEnabled && !window.__docModalDataReady) {
+        alert('Poczekaj na załadowanie danych transportu (numer i filtr worków).');
+        return;
+      }
       var idx = window.__currentDocPointIdx;
       if (idx == null || idx < 0 || !adresy[idx]) {
         alert('Błąd: brak punktu.');
@@ -1384,23 +1448,36 @@ ${wordModal}  <script>
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
       var okBtn = document.getElementById('doc-btn-ok');
       if (okBtn) okBtn.disabled = true;
+      if (!window.__docPreparedLists) {
+        rebuildDocPreparedLists(filteredSeals);
+      }
+      var preparedLists = window.__docPreparedLists;
       function finishWithNumber(numerZlecenia) {
-        try {
-          if (!numerZlecenia) {
-            alert('Brak numeru zlecenia transportowego.');
-            return;
+        ensureDocxLibrariesLoaded().then(function () {
+          try {
+            if (!numerZlecenia) {
+              alert('Brak numeru zlecenia transportowego.');
+              return;
+            }
+            renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists);
+          } catch (err) {
+            console.error(err);
+            alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.');
+          } finally {
+            if (okBtn) okBtn.disabled = false;
           }
-          renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals);
-        } catch (err) {
+        }).catch(function (err) {
           console.error(err);
-          alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.');
-        } finally {
+          alert('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.');
           if (okBtn) okBtn.disabled = false;
-        }
+        });
       }
       if (transportApiEnabled) {
         var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
-        appendTransportRow({
+        var numerWpisany = numEl ? String(numEl.value).trim() : '';
+        var manualNumer = isManualTransportNumer(numerWpisany, window.__docPreviewNumer);
+        var transportPayload = {
+          numer: manualNumer ? numerWpisany : '',
           adresSklepu: p.adres,
           podmiotHandlowy: podmiot,
           sklep: p.sklep || '',
@@ -1409,13 +1486,25 @@ ${wordModal}  <script>
           miejsceZrzutu: mdOpt.label,
           rodzajZbiorki: p.rodzaj_zbiorki || '',
           iloscWorkow: filteredSeals.length
-        }).then(function (resp) {
+        };
+        if (manualNumer) {
+          finishWithNumber(numerWpisany);
+          appendTransportRow(transportPayload).then(function (resp) {
+            if (!resp || !resp.ok) {
+              alert('Dokument pobrany, ale zapis w arkuszu nie powiódł się: ' + (resp && resp.error ? resp.error : 'błąd API'));
+            }
+          }).catch(function (err) {
+            console.error(err);
+            alert('Dokument pobrany, ale nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App.');
+          });
+          return;
+        }
+        appendTransportRow(transportPayload).then(function (resp) {
           if (!resp || !resp.ok) {
             alert('Nie udało się zapisać transportu w arkuszu: ' + (resp && resp.error ? resp.error : 'błąd API'));
             if (okBtn) okBtn.disabled = false;
             return;
           }
-          if (numEl) numEl.value = String(resp.numer || '');
           finishWithNumber(String(resp.numer || ''));
         }).catch(function (err) {
           console.error(err);

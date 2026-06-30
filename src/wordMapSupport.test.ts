@@ -177,6 +177,10 @@ describe('wordMapSupport', () => {
     expect(filtered).toHaveLength(0);
   });
 
+  it('test_parseDataZamknieciaWorkaToSortMs_when_dmy_with_dash_should_parse', () => {
+    expect(parseDataZamknieciaWorkaToSortMs('20-06-2026')).toBe(Date.UTC(2026, 5, 20));
+  });
+
   it('test_sealRowsFromSheetRows_and_first_fields_should_extract_from_sheet_rows', () => {
     const rows = [
       makeSheetRow({ podmiotHandlowy: 'PH', sklep: 'S1', numerPlomby: 'P1', dataZamknieciaWorka: '2026-02-01' }),

@@ -52,7 +52,7 @@ export function formatDataZamknieciaWorkaAsMmDd(raw: string): string {
     }
   }
 
-  const dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})\b/);
+  const dmy = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/);
   if (dmy) {
     const day = Number.parseInt(dmy[1], 10);
     const month = Number.parseInt(dmy[2], 10);
@@ -101,7 +101,7 @@ export function parseDataZamknieciaWorkaToSortMs(raw: string): number {
     }
   }
 
-  const dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})\b/);
+  const dmy = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/);
   if (dmy) {
     const day = Number.parseInt(dmy[1], 10);
     const month = Number.parseInt(dmy[2], 10);
