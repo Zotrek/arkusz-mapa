@@ -252,6 +252,100 @@ export interface MapPointDocPayload {
   plomby: string[];
 }
 
+export interface MapPointDocPayload {
+  miejsce_zaladunku: string;
+  lista_plomb: string;
+  /**
+   * OOXML pod `{{@lista_plomb_xml}}` (osobny akapit tylko ze znacznikiem) — lista 14 pt.
+   * Zwykły `{{lista_plomb}}` nadal dostaje ten sam tekst, lecz bez wymuszenia 14 pt.
+   */
+  lista_plomb_xml: string;
+  /** Numery plomb (do ewentualnego debugu / przyszłych pól) */
+  plomby: string[];
+}
+
+/** Minimalny wiersz plomby osadzany w mapie HTML (filtrowanie w przeglądarce). */
+export interface SealRowLite {
+  numerPlomby: string;
+  dataZamknieciaWorka: string;
+  zbiorka: string;
+}
+
+export function sealRowsFromSheetRows(rows: SheetRow[]): SealRowLite[] {
+  return rows.map((r) => ({
+    numerPlomby: r.numerPlomby.trim(),
+    dataZamknieciaWorka: r.dataZamknieciaWorka,
+    zbiorka: r.zbiorka,
+  }));
+}
+
+export function firstPodmiotHandlowyFromRows(rows: SheetRow[]): string {
+  for (const r of rows) {
+    const t = r.podmiotHandlowy.trim();
+    if (t.length > 0) {
+      return t;
+    }
+  }
+  return '';
+}
+
+export function firstSklepFromRows(rows: SheetRow[]): string {
+  for (const r of rows) {
+    const t = r.sklep.trim();
+    if (t.length > 0) {
+      return t;
+    }
+  }
+  return '';
+}
+
+/**
+ * Zostawia plomby z datą zamknięcia worka >= minDateMs (włącznie).
+ * minDateMs === null → bez filtra. Nieparsowalne daty przy aktywnym filtrze → pomijane.
+ */
+export function filterSealRowsByMinClosureDate(
+  rows: SealRowLite[],
+  minDateMs: number | null,
+): SealRowLite[] {
+  if (minDateMs === null || !Number.isFinite(minDateMs)) {
+    return rows;
+  }
+  return rows.filter((r) => {
+    const ms = parseDataZamknieciaWorkaToSortMs(r.dataZamknieciaWorka);
+    if (!Number.isFinite(ms) || ms === Number.NEGATIVE_INFINITY) {
+      return false;
+    }
+    return ms >= minDateMs;
+  });
+}
+
+/** Buduje payload Word z lekkich wierszy plomb (po filtrze w przeglądarce). */
+export function buildMapPointDocPayloadFromSealRows(
+  sealRows: SealRowLite[],
+  miejsceZaladunku: string,
+): MapPointDocPayload {
+  const asSheetRows = sealRows.map(
+    (s) =>
+      ({
+        numerPlomby: s.numerPlomby,
+        dataZamknieciaWorka: s.dataZamknieciaWorka,
+        zbiorka: s.zbiorka,
+        podmiotHandlowy: '',
+        address: '',
+      }) as SheetRow,
+  );
+  const ordered = sortRowsForListaPlomb(asSheetRows);
+  const plomby = ordered
+    .map((r) => r.numerPlomby.trim())
+    .filter((n) => n.length > 0);
+  return {
+    miejsce_zaladunku: miejsceZaladunku,
+    lista_plomb: buildListaPlombNumbered(ordered),
+    lista_plomb_xml: buildListaPlombOoxml(ordered),
+    plomby,
+  };
+}
+
 export function buildMapPointDocPayload(rows: SheetRow[]): MapPointDocPayload {
   const ordered = sortRowsForListaPlomb(rows);
   const plomby = ordered

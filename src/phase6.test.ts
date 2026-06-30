@@ -488,12 +488,53 @@ describe('phase6', () => {
       expect(html).toContain('id="doc-inp-numer-zlecenia"');
       expect(html).toContain('numer_zlecenia_transportowego');
       expect(html).toContain('defaultDateZaladunkuYmd');
-      expect(html).toContain('DOC_SS_NUMER_ZLECENIA');
-      expect(html).toContain('sessionStorage.setItem(storageKey, value)');
-      expect(html).toContain('incrementDocNumberValue');
-      expect(html).toContain('text.match(/^(.*?)(\\d+)(\\D.*)?$/);');
-      expect(html).toContain('numEl.value = getNextDocNumberValue()');
+      expect(html).toContain('loadDocModalData');
+      expect(html).toContain('appendTransportRow');
+      expect(html).toContain('filterSealRowsByMinDate');
+      expect(html).toContain('buildDocListsFromSealRows');
+      expect(html).toContain('doc-filter-info');
+      expect(html).toContain('transportApiEnabled');
       expect(html).toContain('var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;');
+    });
+
+    it('test_buildMapHtml_when_transport_url_given_should_embed_api_and_enable_flag', () => {
+      const html = buildMapHtml(
+        sampleGeocoded(),
+        [],
+        'https://example.com/woj.json',
+        [],
+        [],
+        { templateBase64: 'UEsDBA==', podwykoOptions: [] },
+        'https://script.google.com/macros/s/test/exec',
+      );
+      expect(html).toContain('const transportApiEnabled = true');
+      expect(html).toContain('https://script.google.com/macros/s/test/exec');
+      expect(html).toContain('TRANSPORT_WEBAPP_URL');
+    });
+
+    it('test_buildMapHtml_when_geocoded_has_rows_should_embed_sealRows_and_podmiot', () => {
+      const geocoded: GeocodedAddress[] = [
+        {
+          address: '62-320 Miłosław Leśna 1',
+          count: 2,
+          lat: 52.2,
+          lng: 17.4,
+          wojewodztwo: 'Wielkopolskie',
+          rows: [
+            makeSheetRow({
+              podmiotHandlowy: 'PH Sp.',
+              sklep: 'Sklep A',
+              numerPlomby: '7001',
+              dataZamknieciaWorka: '2026-06-10',
+            }),
+          ],
+        },
+      ];
+      const html = buildMapHtml(geocoded, [], 'https://example.com/woj.json');
+      expect(html).toContain('"podmiotHandlowy":"PH Sp."');
+      expect(html).toContain('"sklep":"Sklep A"');
+      expect(html).toContain('"sealRows"');
+      expect(html).toContain('"numerPlomby":"7001"');
     });
   });
 

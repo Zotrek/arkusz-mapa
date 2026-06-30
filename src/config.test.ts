@@ -13,6 +13,9 @@ import {
   getConfig,
   getOptionalWordMapAssetPaths,
   getPhase5CacheFilePath,
+  getTransportWebAppUrl,
+  getTransportSheetsId,
+  DEFAULT_TRANSPORT_SHEETS_ID,
   COL_NIP,
   COL_PODMIOT_HANDLOWY,
   COL_SKLEP,
@@ -176,6 +179,23 @@ describe('config', () => {
         templatePath: '/custom/t.docx',
         podwykoPath: '/custom/l.ods',
       });
+    });
+  });
+
+  describe('transport sheet config', () => {
+    it('should return empty transport web app url when env unset', () => {
+      delete process.env.TRANSPORT_WEBAPP_URL;
+      expect(getTransportWebAppUrl()).toBe('');
+    });
+
+    it('should return transport web app url from env', () => {
+      process.env.TRANSPORT_WEBAPP_URL = ' https://script.google.com/exec ';
+      expect(getTransportWebAppUrl()).toBe('https://script.google.com/exec');
+    });
+
+    it('should default transport sheets id when env unset', () => {
+      delete process.env.GOOGLE_TRANSPORT_SHEETS_ID;
+      expect(getTransportSheetsId()).toBe(DEFAULT_TRANSPORT_SHEETS_ID);
     });
   });
 

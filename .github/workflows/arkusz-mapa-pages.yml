@@ -7,6 +7,7 @@
 # Wymagane sekrety:
 #   GOOGLE_SHEETS_ID              — ID arkusza z URL Google Sheets
 #   GOOGLE_SERVICE_ACCOUNT_JSON   — cały plik JSON klucza Service Account
+#   TRANSPORT_WEBAPP_URL          — URL Web App (Apps Script) rejestru transportów
 #
 # W repo muszą być (domyślnie):
 #   docs/pusty.docx
@@ -100,6 +101,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.ci-credentials.json
           OUTPUT_DIR: ${{ github.workspace }}/site/maps
           PHASE5_CACHE_PATH: ${{ github.workspace }}/.cache/phase5-cache.json
+          TRANSPORT_WEBAPP_URL: ${{ secrets.TRANSPORT_WEBAPP_URL }}
         run: |
           if [ -z "$GOOGLE_SHEETS_ID" ]; then
             echo "::error::Brak sekretu GOOGLE_SHEETS_ID"

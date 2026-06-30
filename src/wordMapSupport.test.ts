@@ -4,7 +4,12 @@ import {
   buildListaPlombNumbered,
   buildListaPlombOoxml,
   buildMapPointDocPayload,
+  buildMapPointDocPayloadFromSealRows,
   buildMiejsceZaladunkuText,
+  filterSealRowsByMinClosureDate,
+  firstPodmiotHandlowyFromRows,
+  firstSklepFromRows,
+  sealRowsFromSheetRows,
   escapeXmlForWordText,
   formatDataZamknieciaWorkaAsMmDd,
   parseDataZamknieciaWorkaToSortMs,
@@ -145,6 +150,51 @@ describe('wordMapSupport', () => {
     expect(p.lista_plomb).toBe('1.\t12-31\tB\tautomatyczna\n2.\t01-01\tA\tręczna');
     expect(p.lista_plomb_xml).toContain('1.\t12-31\tB\tautomatyczna');
     expect(p.lista_plomb_xml).toContain('2.\t01-01\tA\tręczna');
+  });
+
+  it('test_filterSealRowsByMinClosureDate_when_cutoff_june10_should_keep_june10_and_later', () => {
+    const rows = [
+      { numerPlomby: 'old', dataZamknieciaWorka: '2026-06-09', zbiorka: '' },
+      { numerPlomby: 'cutoff', dataZamknieciaWorka: '2026-06-10', zbiorka: '' },
+      { numerPlomby: 'new', dataZamknieciaWorka: '2026-06-15', zbiorka: '' },
+    ];
+    const cutoff = Date.UTC(2026, 5, 10);
+    const filtered = filterSealRowsByMinClosureDate(rows, cutoff);
+    expect(filtered.map((r) => r.numerPlomby)).toEqual(['cutoff', 'new']);
+  });
+
+  it('test_filterSealRowsByMinClosureDate_when_no_cutoff_should_keep_all', () => {
+    const rows = [
+      { numerPlomby: 'a', dataZamknieciaWorka: '2026-01-01', zbiorka: '' },
+      { numerPlomby: 'b', dataZamknieciaWorka: '', zbiorka: '' },
+    ];
+    expect(filterSealRowsByMinClosureDate(rows, null)).toHaveLength(2);
+  });
+
+  it('test_filterSealRowsByMinClosureDate_when_unparseable_date_and_cutoff_should_exclude', () => {
+    const rows = [{ numerPlomby: 'x', dataZamknieciaWorka: '???', zbiorka: '' }];
+    const filtered = filterSealRowsByMinClosureDate(rows, Date.UTC(2026, 0, 1));
+    expect(filtered).toHaveLength(0);
+  });
+
+  it('test_sealRowsFromSheetRows_and_first_fields_should_extract_from_sheet_rows', () => {
+    const rows = [
+      makeSheetRow({ podmiotHandlowy: 'PH', sklep: 'S1', numerPlomby: 'P1', dataZamknieciaWorka: '2026-02-01' }),
+    ];
+    expect(firstPodmiotHandlowyFromRows(rows)).toBe('PH');
+    expect(firstSklepFromRows(rows)).toBe('S1');
+    expect(sealRowsFromSheetRows(rows)).toEqual([
+      { numerPlomby: 'P1', dataZamknieciaWorka: '2026-02-01', zbiorka: '' },
+    ]);
+  });
+
+  it('test_buildMapPointDocPayloadFromSealRows_should_build_lista', () => {
+    const payload = buildMapPointDocPayloadFromSealRows(
+      [{ numerPlomby: 'Z', dataZamknieciaWorka: '2026-03-15', zbiorka: 'Ręczna' }],
+      'PH adres',
+    );
+    expect(payload.miejsce_zaladunku).toBe('PH adres');
+    expect(payload.lista_plomb).toBe('1.\t03-15\tZ');
   });
 
   it('test_buildListaPlombOoxml_should_escape_xml_and_use_14pt_half_points', () => {

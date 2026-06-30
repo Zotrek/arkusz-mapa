@@ -94,6 +94,22 @@ export function getConfig(): AppConfig {
  * Domyślnie: `docs/pusty.docx` oraz `docs/podwyko lista.xlsx`.
  * Nadpisanie: WORD_TEMPLATE_PATH, PODWYKOLISTA_ODS_PATH (nazwa historyczna — działa też dla .xlsx).
  */
+/** ID arkusza rejestru transportów (osobny od GOOGLE_SHEETS_ID z plomb). */
+export const DEFAULT_TRANSPORT_SHEETS_ID = '1hvSvy9c069SefhYH3rCUDtCViRhAoRQ6DDj_EIlmWNk';
+
+/**
+ * URL Web App (Google Apps Script) do zapisu transportów z mapy HTML.
+ * Pusty → generowanie protokołu bez zapisu do arkusza.
+ */
+export function getTransportWebAppUrl(): string {
+  return process.env.TRANSPORT_WEBAPP_URL?.trim() ?? '';
+}
+
+/** ID arkusza transportów — opcjonalnie do walidacji / dokumentacji. */
+export function getTransportSheetsId(): string {
+  return process.env.GOOGLE_TRANSPORT_SHEETS_ID?.trim() ?? DEFAULT_TRANSPORT_SHEETS_ID;
+}
+
 export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoPath: string } {
   const templatePath =
     process.env.WORD_TEMPLATE_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'pusty.docx');

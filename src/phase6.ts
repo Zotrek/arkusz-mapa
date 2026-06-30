@@ -5,7 +5,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getOptionalWordMapAssetPaths } from './config.js';
+import { getOptionalWordMapAssetPaths, getTransportWebAppUrl } from './config.js';
 import type { GeocodedAddress } from './phase5.js';
 import type { SheetRow } from './sheets.js';
 import {
@@ -15,6 +15,10 @@ import {
   readWordTemplateAsBase64ForMap,
   type MapPointDocPayload,
   type PodwykoOption,
+  firstPodmiotHandlowyFromRows,
+  firstSklepFromRows,
+  sealRowsFromSheetRows,
+  type SealRowLite,
 } from './wordMapSupport.js';
 
 /** Kolor pinezki dla 15+ wystąpień (wyróżnienie dużych zbiórek). */
@@ -294,6 +298,12 @@ type MapPoint = {
   searchLabels: string[];
   /** Unikalne wartości kolumny A (podmiot handlowy) — popup na mapie. */
   podmiotyHandlowe: string[];
+  /** Pierwszy podmiot handlowy z grupy — klucz historii transportów. */
+  podmiotHandlowy: string;
+  /** Pierwszy sklep z grupy — zapis w rejestrze transportów. */
+  sklep: string;
+  /** Wiersze plomb do filtrowania w protokole (data zamknięcia worka). */
+  sealRows: SealRowLite[];
   /** Zbiórka: Ręczna / Maszyna (z kolumny L) */
   zbiorka?: string;
   /** Do {{rodzaj_zbiorki}} w Word: ręczna | automatyczna | ręczna i automatyczna */
@@ -498,6 +508,9 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     confidence,
     searchLabels: uniqueSearchLabelsFromRows(item.rows),
     podmiotyHandlowe: uniquePodmiotyHandloweFromRows(item.rows),
+    podmiotHandlowy: firstPodmiotHandlowyFromRows(item.rows),
+    sklep: firstSklepFromRows(item.rows),
+    sealRows: sealRowsFromSheetRows(item.rows),
     zbiorka: item.zbiorka,
     rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
     doc: buildMapPointDocPayload(item.rows),
@@ -515,6 +528,7 @@ export function buildMapHtml(
   cityOnlyGeocoded: GeocodedAddress[] = [],
   geocodedNoPostcode: GeocodedAddress[] = [],
   wordEmbed: WordMapHtmlEmbed | null = null,
+  transportWebAppUrl: string = '',
 ): string {
   const rawPoints: MapPoint[] = [
     ...geocoded.map((item) => toMapPoint(item, 'ok')),
@@ -532,6 +546,7 @@ export function buildMapHtml(
   const hasAnyPoints = points.length > 0;
   const showZbiorkaFilter = points.some((p) => classifyMapPointZbiorka(p.zbiorka) !== 'unknown');
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
+  const transportApiEnabled = wordEnabled && transportWebAppUrl.length > 0;
 
   const wordHeadScripts = wordEnabled
     ? `  <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.min.js" crossorigin=""></script>
@@ -559,7 +574,8 @@ export function buildMapHtml(
       <label for="doc-inp-data-zaladunku">Data załadunku</label>
       <input type="date" id="doc-inp-data-zaladunku" />
       <label for="doc-inp-numer-zlecenia">Numer dokumentu (zlecenie transportowe)</label>
-      <input type="text" id="doc-inp-numer-zlecenia" maxlength="120" placeholder="np. 1460/2026" autocomplete="off" spellcheck="false" />
+      <input type="text" id="doc-inp-numer-zlecenia" maxlength="120" placeholder="np. 1460" autocomplete="off" spellcheck="false" />
+      <p id="doc-filter-info" class="doc-filter-info" aria-live="polite"></p>
       <div class="doc-modal-actions">
         <button type="button" id="doc-btn-cancel">Anuluj</button>
         <button type="button" id="doc-btn-ok">Pobierz .docx</button>
@@ -586,6 +602,7 @@ export function buildMapHtml(
     .doc-combobox-list li.doc-combobox-empty:hover { background: transparent; }
     .doc-modal-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .doc-modal-actions button { padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; border: 1px solid #ccc; background: #f8f9fa; }
+    .doc-filter-info { font-size: 12px; color: #555; margin: 8px 0 0; min-height: 1.2em; }
     #doc-btn-ok { background: #198754; border-color: #198754; color: #fff; }
 `
     : '';
@@ -644,6 +661,8 @@ ${wordModal}  <script>
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
     const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
     const wordDocEnabled = ${JSON.stringify(wordEnabled)};
+    const transportApiEnabled = ${JSON.stringify(transportApiEnabled)};
+    const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
 
@@ -838,36 +857,214 @@ ${wordModal}  <script>
     }
     var DOC_LS_PRZEWOZNIK = 'arkusz-mapa-doc-last-przewoznik-label';
     var DOC_LS_MIEJSCE = 'arkusz-mapa-doc-last-miejsce-label';
-    var DOC_SS_NUMER_ZLECENIA = 'arkusz-mapa-doc-last-numer-zlecenia';
+    var DOC_LISTA_PLOMB_HP = '28';
     function saveDocComboboxLastLabel(storageKey, label) {
       if (!storageKey || !label) return;
       try { localStorage.setItem(storageKey, label); } catch (e) {}
     }
-    function saveDocSessionValue(storageKey, value) {
-      if (!storageKey) return;
-      try {
-        if (value) sessionStorage.setItem(storageKey, value);
-        else sessionStorage.removeItem(storageKey);
-      } catch (e) {}
+    function parseSealClosureDateMs(raw) {
+      var s = String(raw || '').trim();
+      if (!s) return Number.NEGATIVE_INFINITY;
+      var iso = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:\\b|T)/);
+      if (iso) {
+        var month = parseInt(iso[2], 10);
+        var day = parseInt(iso[3], 10);
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          return Date.UTC(parseInt(iso[1], 10), month - 1, day);
+        }
+      }
+      var dmy = s.match(/^(\\d{1,2})[./](\\d{1,2})[./](\\d{2,4})\\b/);
+      if (dmy) {
+        var day2 = parseInt(dmy[1], 10);
+        var month2 = parseInt(dmy[2], 10);
+        var y = parseInt(dmy[3], 10);
+        if (y < 100) y = y >= 70 ? 1900 + y : 2000 + y;
+        if (month2 >= 1 && month2 <= 12 && day2 >= 1 && day2 <= 31) {
+          return Date.UTC(y, month2 - 1, day2);
+        }
+      }
+      if (/^\\d{5,6}$/.test(s)) {
+        var serial = parseInt(s, 10);
+        if (serial >= 20000 && serial <= 80000) {
+          var ms = (serial - 25569) * 86400000;
+          var d = new Date(ms);
+          if (!isNaN(d.getTime())) {
+            return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+          }
+        }
+      }
+      var parsed = Date.parse(s);
+      if (!isNaN(parsed)) {
+        var d2 = new Date(parsed);
+        return Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+      }
+      return Number.NEGATIVE_INFINITY;
     }
-    function readDocSessionValue(storageKey) {
-      if (!storageKey) return '';
-      try { return sessionStorage.getItem(storageKey) || ''; } catch (e) {}
+    function filterSealRowsByMinDate(sealRows, minDateMs) {
+      if (minDateMs == null || !isFinite(minDateMs)) {
+        return (sealRows || []).slice();
+      }
+      return (sealRows || []).filter(function (r) {
+        var ms = parseSealClosureDateMs(r.dataZamknieciaWorka);
+        if (!isFinite(ms) || ms === Number.NEGATIVE_INFINITY) return false;
+        return ms >= minDateMs;
+      });
+    }
+    function formatSealDateMmDd(raw) {
+      var s = String(raw || '').trim();
+      if (!s) return '';
+      var iso = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:\\b|T)/);
+      if (iso) {
+        return String(parseInt(iso[2], 10)).padStart(2, '0') + '-' + String(parseInt(iso[3], 10)).padStart(2, '0');
+      }
+      var dmy = s.match(/^(\\d{1,2})[./](\\d{1,2})[./](\\d{2,4})\\b/);
+      if (dmy) {
+        return String(parseInt(dmy[2], 10)).padStart(2, '0') + '-' + String(parseInt(dmy[1], 10)).padStart(2, '0');
+      }
       return '';
     }
-    function incrementDocNumberValue(value) {
-      var text = String(value || '').trim();
-      if (!text) return '';
-      var match = text.match(/^(.*?)(\\d+)(\\D.*)?$/);
-      if (!match) return text;
-      var prefix = match[1] || '';
-      var numberText = match[2] || '';
-      var suffix = match[3] || '';
-      var nextNumber = String(parseInt(numberText, 10) + 1).padStart(numberText.length, '0');
-      return prefix + nextNumber + suffix;
+    function formatRodzajZbiorkiSeal(zbiorka) {
+      var raw = String(zbiorka || '').trim();
+      if (!raw) return '';
+      var lower = raw.toLowerCase();
+      var segments = lower.split('/').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+      var toScan = segments.length > 0 ? segments : [lower];
+      var hasReczna = false, hasMaszyna = false;
+      for (var i = 0; i < toScan.length; i++) {
+        var seg = toScan[i];
+        if (seg.indexOf('ręcz') !== -1 || seg.indexOf('recz') !== -1 || seg === 'r') hasReczna = true;
+        else if (seg.indexOf('maszyn') !== -1 || seg === 'm' || seg.indexOf('automat') !== -1) hasMaszyna = true;
+      }
+      if (hasReczna && hasMaszyna) return 'ręczna i automatyczna';
+      if (hasReczna) return 'ręczna';
+      if (hasMaszyna) return 'automatyczna';
+      return '';
     }
-    function getNextDocNumberValue() {
-      return incrementDocNumberValue(readDocSessionValue(DOC_SS_NUMER_ZLECENIA));
+    function sortSealRowsForDoc(sealRows) {
+      return (sealRows || []).slice().sort(function (a, b) {
+        return parseSealClosureDateMs(b.dataZamknieciaWorka) - parseSealClosureDateMs(a.dataZamknieciaWorka);
+      });
+    }
+    function buildListaPlombFromSealRows(sealRows) {
+      var ordered = sortSealRowsForDoc(sealRows);
+      var rodzaje = {};
+      ordered.forEach(function (r) {
+        var rodzaj = formatRodzajZbiorkiSeal(r.zbiorka);
+        if (rodzaj === 'ręczna' || rodzaj === 'automatyczna') rodzaje[rodzaj] = true;
+      });
+      var shouldAppend = Object.keys(rodzaje).length > 1;
+      var lines = [];
+      var i = 0;
+      ordered.forEach(function (r) {
+        var n = String(r.numerPlomby || '').trim();
+        if (!n) return;
+        i += 1;
+        var mmdd = formatSealDateMmDd(r.dataZamknieciaWorka);
+        var rodzajWorka = shouldAppend ? formatRodzajZbiorkiSeal(r.zbiorka) : '';
+        var line = mmdd.length > 0 ? (i + '.\\t' + mmdd + '\\t' + n) : (i + '.\\t' + n);
+        if (rodzajWorka) line += '\\t' + rodzajWorka;
+        lines.push(line);
+      });
+      return lines;
+    }
+    function escapeXmlForWordTextMap(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    function buildListaPlombOoxmlFromSealRows(sealRows) {
+      var lines = buildListaPlombFromSealRows(sealRows);
+      var rpr = '<w:rPr><w:sz w:val="' + DOC_LISTA_PLOMB_HP + '"/><w:szCs w:val="' + DOC_LISTA_PLOMB_HP + '"/></w:rPr>';
+      if (lines.length === 0) {
+        return '<w:p><w:r>' + rpr + '<w:t></w:t></w:r></w:p>';
+      }
+      return lines.map(function (line) {
+        return '<w:p><w:r>' + rpr + '<w:t xml:space="preserve">' + escapeXmlForWordTextMap(line) + '</w:t></w:r></w:p>';
+      }).join('');
+    }
+    function buildDocListsFromSealRows(sealRows) {
+      var lines = buildListaPlombFromSealRows(sealRows);
+      return {
+        lista_plomb: lines.join('\\n'),
+        lista_plomb_xml: buildListaPlombOoxmlFromSealRows(sealRows)
+      };
+    }
+    function formatYmdToDisplay(ymd) {
+      if (!ymd) return '';
+      var p = String(ymd).split('-');
+      if (p.length !== 3) return String(ymd);
+      return p[2] + '.' + p[1] + '.' + p[0];
+    }
+    function updateDocFilterInfo(total, filtered, cutoffYmd) {
+      var el = document.getElementById('doc-filter-info');
+      if (!el) return;
+      if (filtered === total) {
+        el.textContent = 'Worki w protokole: ' + filtered;
+        return;
+      }
+      var extra = cutoffYmd ? (' (od ostatniego transportu ' + formatYmdToDisplay(cutoffYmd) + ')') : '';
+      el.textContent = 'Worki w protokole: ' + filtered + ' z ' + total + extra;
+    }
+    function transportApiUrl(params) {
+      var q = params || {};
+      var parts = [];
+      Object.keys(q).forEach(function (k) {
+        if (q[k] != null && q[k] !== '') {
+          parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(String(q[k])));
+        }
+      });
+      var sep = TRANSPORT_WEBAPP_URL.indexOf('?') >= 0 ? '&' : '?';
+      return TRANSPORT_WEBAPP_URL + (parts.length ? sep + parts.join('&') : '');
+    }
+    function fetchTransportGet(params) {
+      return fetch(transportApiUrl(params)).then(function (res) { return res.json(); });
+    }
+    function appendTransportRow(payload) {
+      return fetch(TRANSPORT_WEBAPP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      }).then(function (res) { return res.json(); });
+    }
+    function loadDocModalData(pointIdx) {
+      var p = adresy[pointIdx];
+      window.__docCutoffMs = null;
+      window.__docFilteredSeals = (p && p.sealRows) ? p.sealRows.slice() : [];
+      var filterInfo = document.getElementById('doc-filter-info');
+      if (filterInfo) filterInfo.textContent = 'Ładowanie danych transportu…';
+      var numEl = document.getElementById('doc-inp-numer-zlecenia');
+      if (!transportApiEnabled) {
+        if (numEl) numEl.value = '';
+        updateDocFilterInfo(window.__docFilteredSeals.length, window.__docFilteredSeals.length, null);
+        return Promise.resolve();
+      }
+      var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
+      return Promise.all([
+        fetchTransportGet({ action: 'previewNumber' }),
+        fetchTransportGet({ action: 'lastTransportDate', podmiot: podmiot, adres: p.adres })
+      ]).then(function (results) {
+        var numResp = results[0];
+        var dateResp = results[1];
+        if (numResp && numResp.ok && numEl) numEl.value = String(numResp.numer || '');
+        var cutoffMs = null;
+        var cutoffYmd = null;
+        if (dateResp && dateResp.ok && dateResp.lastTransportDateMs != null) {
+          cutoffMs = dateResp.lastTransportDateMs;
+          cutoffYmd = dateResp.lastTransportDateYmd || null;
+        }
+        window.__docCutoffMs = cutoffMs;
+        var all = p.sealRows || [];
+        window.__docFilteredSeals = filterSealRowsByMinDate(all, cutoffMs);
+        updateDocFilterInfo(all.length, window.__docFilteredSeals.length, cutoffYmd);
+      }).catch(function (err) {
+        console.error(err);
+        if (filterInfo) {
+          filterInfo.textContent = 'Nie udało się pobrać danych transportu — użyto wszystkich worków.';
+        }
+        window.__docFilteredSeals = (p.sealRows || []).slice();
+      });
     }
     function findPodwykoIdxByLabel(label) {
       if (!label) return -1;
@@ -1065,7 +1262,8 @@ ${wordModal}  <script>
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
-      if (numEl) numEl.value = getNextDocNumberValue();
+      if (numEl) numEl.value = '';
+      loadDocModalData(pointIdx);
       m.style.display = 'flex';
       m.setAttribute('aria-hidden', 'false');
     }
@@ -1101,6 +1299,33 @@ ${wordModal}  <script>
       }
       return base + '.docx';
     }
+    function renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals) {
+      var zip = new PizZip(b64ToUint8(WORD_TEMPLATE_B64));
+      var Doc = window.docxtemplater;
+      var doc = new Doc(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: '{{', end: '}}' },
+      });
+      var lists = buildDocListsFromSealRows(filteredSeals);
+      doc.render({
+        miejsce_zaladunku: p.doc.miejsce_zaladunku,
+        lista_plomb: lists.lista_plomb,
+        lista_plomb_xml: lists.lista_plomb_xml,
+        przewoznik: pr,
+        miejsce_dostawy: md,
+        data_zaladunku: dz,
+        numer_zlecenia_transportowego: numerZlecenia,
+        rodzaj_zbiorki: p.rodzaj_zbiorki ? (' ' + p.rodzaj_zbiorki) : ''
+      });
+      var out = doc.getZip().generate({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      });
+      var safeName = buildDocxDownloadName(prOpt.label, dzPlik, p.adres);
+      saveAs(out, safeName);
+      closeDocModal();
+    }
     function runDocGenerate() {
       var idx = window.__currentDocPointIdx;
       if (idx == null || idx < 0 || !adresy[idx]) {
@@ -1130,59 +1355,77 @@ ${wordModal}  <script>
       var pr = prOpt.dane;
       var md = mdOpt.dane;
       var p = adresy[idx];
-      try {
-        var zip = new PizZip(b64ToUint8(WORD_TEMPLATE_B64));
-        var Doc = window.docxtemplater;
-        var doc = new Doc(zip, {
-          paragraphLoop: true,
-          linebreaks: true,
-          delimiters: { start: '{{', end: '}}' },
-        });
-        var dateEl = document.getElementById('doc-inp-data-zaladunku');
-        var ymd = dateEl ? String(dateEl.value).trim() : '';
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(ymd)) {
-          alert('Wybierz datę załadunku (kalendarz).');
-          return;
-        }
-        var pe = ymd.split('-');
-        var y = parseInt(pe[0], 10);
-        var mo = parseInt(pe[1], 10) - 1;
-        var d = parseInt(pe[2], 10);
-        var chk = new Date(y, mo, d);
-        if (chk.getFullYear() !== y || chk.getMonth() !== mo || chk.getDate() !== d) {
-          alert('Nieprawidłowa data załadunku.');
-          return;
-        }
-        var dd = String(d).padStart(2, '0');
-        var mm = String(mo + 1).padStart(2, '0');
-        var yyyy = String(y);
-        var rr = yyyy.slice(-2);
-        var dz = dd + '.' + mm + '.' + yyyy;
-        var dzPlik = dd + '.' + mm + '.' + rr;
-        var numEl = document.getElementById('doc-inp-numer-zlecenia');
-        var numerZlecenia = numEl ? String(numEl.value).trim() : '';
-        doc.render({
-          miejsce_zaladunku: p.doc.miejsce_zaladunku,
-          lista_plomb: p.doc.lista_plomb,
-          lista_plomb_xml: p.doc.lista_plomb_xml,
-          przewoznik: pr,
-          miejsce_dostawy: md,
-          data_zaladunku: dz,
-          numer_zlecenia_transportowego: numerZlecenia,
-          rodzaj_zbiorki: p.rodzaj_zbiorki ? (' ' + p.rodzaj_zbiorki) : ''
-        });
-        var out = doc.getZip().generate({
-          type: 'blob',
-          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        });
-        var safeName = buildDocxDownloadName(prOpt.label, dzPlik, p.adres);
-        saveAs(out, safeName);
-        if (numerZlecenia) saveDocSessionValue(DOC_SS_NUMER_ZLECENIA, numerZlecenia);
-        closeDocModal();
-      } catch (err) {
-        console.error(err);
-        alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.');
+      var dateEl = document.getElementById('doc-inp-data-zaladunku');
+      var ymd = dateEl ? String(dateEl.value).trim() : '';
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(ymd)) {
+        alert('Wybierz datę załadunku (kalendarz).');
+        return;
       }
+      var pe = ymd.split('-');
+      var y = parseInt(pe[0], 10);
+      var mo = parseInt(pe[1], 10) - 1;
+      var d = parseInt(pe[2], 10);
+      var chk = new Date(y, mo, d);
+      if (chk.getFullYear() !== y || chk.getMonth() !== mo || chk.getDate() !== d) {
+        alert('Nieprawidłowa data załadunku.');
+        return;
+      }
+      var dd = String(d).padStart(2, '0');
+      var mm = String(mo + 1).padStart(2, '0');
+      var yyyy = String(y);
+      var rr = yyyy.slice(-2);
+      var dz = dd + '.' + mm + '.' + yyyy;
+      var dzPlik = dd + '.' + mm + '.' + rr;
+      var filteredSeals = window.__docFilteredSeals || p.sealRows || [];
+      if (filteredSeals.length === 0) {
+        alert('Brak worków do protokołu po filtrze dat (od ostatniego transportu).');
+        return;
+      }
+      var numEl = document.getElementById('doc-inp-numer-zlecenia');
+      var okBtn = document.getElementById('doc-btn-ok');
+      if (okBtn) okBtn.disabled = true;
+      function finishWithNumber(numerZlecenia) {
+        try {
+          if (!numerZlecenia) {
+            alert('Brak numeru zlecenia transportowego.');
+            return;
+          }
+          renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals);
+        } catch (err) {
+          console.error(err);
+          alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.');
+        } finally {
+          if (okBtn) okBtn.disabled = false;
+        }
+      }
+      if (transportApiEnabled) {
+        var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
+        appendTransportRow({
+          adresSklepu: p.adres,
+          podmiotHandlowy: podmiot,
+          sklep: p.sklep || '',
+          dataOdbioru: dz,
+          ktoOdbiera: prOpt.label,
+          miejsceZrzutu: mdOpt.label,
+          rodzajZbiorki: p.rodzaj_zbiorki || '',
+          iloscWorkow: filteredSeals.length
+        }).then(function (resp) {
+          if (!resp || !resp.ok) {
+            alert('Nie udało się zapisać transportu w arkuszu: ' + (resp && resp.error ? resp.error : 'błąd API'));
+            if (okBtn) okBtn.disabled = false;
+            return;
+          }
+          if (numEl) numEl.value = String(resp.numer || '');
+          finishWithNumber(String(resp.numer || ''));
+        }).catch(function (err) {
+          console.error(err);
+          alert('Nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App (TRANSPORT_WEBAPP_URL).');
+          if (okBtn) okBtn.disabled = false;
+        });
+        return;
+      }
+      var numerManual = numEl ? String(numEl.value).trim() : '';
+      finishWithNumber(numerManual);
     }
 
     if (wordDocEnabled) {
@@ -1455,6 +1698,8 @@ export interface ExecutePhase6Input {
   wordMapEmbed?: WordMapHtmlEmbed;
   /** Nadpisuje domyślne ścieżki docs/pusty.docx i docs/podwyko lista.xlsx */
   wordMapPaths?: { templatePath: string; podwykoPath: string };
+  /** URL Web App rejestru transportów (nadpisuje TRANSPORT_WEBAPP_URL z env). */
+  transportWebAppUrl?: string;
   now?: () => Date;
   mkdirFn?: (path: string, options: { recursive: true }) => Promise<unknown>;
   writeFileFn?: (path: string, content: string, encoding: BufferEncoding) => Promise<unknown>;
@@ -1478,6 +1723,7 @@ export async function executePhase6(input: ExecutePhase6Input): Promise<ExecuteP
   const fileName = buildMapFileName(now());
   const filePath = join(input.outputDir, fileName);
   const wordEmbed = await resolveWordMapHtmlEmbed(input);
+  const transportWebAppUrl = input.transportWebAppUrl ?? getTransportWebAppUrl();
   const htmlContent = buildMapHtml(
     input.geocoded,
     input.uncertainGeocoded,
@@ -1485,6 +1731,7 @@ export async function executePhase6(input: ExecutePhase6Input): Promise<ExecuteP
     input.cityOnlyGeocoded ?? [],
     input.geocodedNoPostcode ?? [],
     wordEmbed,
+    transportWebAppUrl,
   );
 
   await mkdirFn(input.outputDir, { recursive: true });
