@@ -9,7 +9,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { SheetRow } from './sheets';
 import type { Phase7Deps } from './phase7';
-import { runPhase7Pipeline, runPhase7Cli } from './phase7';
+import { runPhase7Pipeline, runPhase7Cli, isRetryableGoogleApiError } from './phase7';
 
 function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
   return {
@@ -180,6 +180,83 @@ describe('phase7 pipeline', () => {
     };
 
     await expect(runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>)).rejects.toThrow('load failed');
+  });
+
+  it('test_runPhase7Pipeline_when_loadSourceRows_fails_transiently_should_retry_and_succeed', async () => {
+    const rows = [makeRow()];
+    const grouped = new Map<string, { address: string; count: number; rows: SheetRow[] }>();
+    grouped.set(rows[0].address, { address: rows[0].address, count: 1, rows });
+
+    let loadAttempts = 0;
+    const deps = {
+      getConfig: vi.fn(() => ({
+        sheetsId: 'sheet-id',
+        credentialsPath: '/tmp/sa.json',
+        outputDir: '/tmp/out',
+        geoJsonUrl: 'https://example.com/woj.json',
+      })),
+      createSheetsClient: vi.fn(() => ({ client: true })),
+      loadSourceRows: vi.fn(async () => {
+        loadAttempts += 1;
+        if (loadAttempts < 2) {
+          throw new Error(
+            'Invalid response body while trying to fetch https://www.googleapis.com/oauth2/v4/token: Premature close',
+          );
+        }
+        return { sheetTitle: 'Arkusz1', headers: ['A'], rows };
+      }),
+      executePhase3: vi.fn(() => ({
+        rowsDuplikatyPlomb: [],
+        rowsBezDuplikatow: rows,
+        groupedByAddress: grouped,
+      })),
+      executePhase5: vi.fn(async () => ({
+        geocoded: [],
+        geocodedNoPostcode: [],
+        uncertainGeocoded: [],
+        cityOnlyGeocoded: [],
+        rowsBledneAdresy: [],
+        rowsNiepewneWyniki: [],
+        groupedNiepewneAdresy: [],
+        groupedBledneAdresy: [],
+        totalBatches: 0,
+        geocodedUniqueAddresses: 0,
+        geocodedNoPostcodeUniqueAddresses: 0,
+        uncertainUniqueAddresses: 0,
+        cityOnlyUniqueAddresses: 0,
+        badUniqueAddresses: 0,
+      })),
+      executePhase4: vi.fn(async () => undefined),
+      executePhase6: vi.fn(async () => ({
+        fileName: 'mapa.html',
+        filePath: '/tmp/out/mapa.html',
+        htmlContent: '<html></html>',
+      })),
+      logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+    };
+
+    await runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>);
+
+    expect(loadAttempts).toBe(2);
+    expect(deps.createSheetsClient).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('isRetryableGoogleApiError', () => {
+  it('test_isRetryableGoogleApiError_when_premature_close_should_return_true', () => {
+    expect(
+      isRetryableGoogleApiError(
+        new Error(
+          'Invalid response body while trying to fetch https://www.googleapis.com/oauth2/v4/token: Premature close',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('test_isRetryableGoogleApiError_when_auth_error_should_return_false', () => {
+    expect(isRetryableGoogleApiError(new Error('private_key and client_email are required.'))).toBe(
+      false,
+    );
   });
 });
 

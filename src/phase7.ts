@@ -12,6 +12,58 @@ import { executePhase6 } from './phase6.js';
 interface LoggerLike {
   info: (message: string, ...args: unknown[]) => void;
   error: (message: string, ...args: unknown[]) => void;
+  warn?: (message: string, ...args: unknown[]) => void;
+}
+
+/** Próby przy chwilowych błędach OAuth / sieci (typowe na GitHub Actions). */
+const GOOGLE_API_MAX_ATTEMPTS = 3;
+const GOOGLE_API_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
+
+export function isRetryableGoogleApiError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /Premature close/i.test(message) ||
+    /Invalid response body/i.test(message) ||
+    /ECONNRESET/i.test(message) ||
+    /ETIMEDOUT/i.test(message) ||
+    /socket hang up/i.test(message) ||
+    /fetch failed/i.test(message)
+  );
+}
+
+async function sleepMs(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function withGoogleApiRetry<T>(
+  label: string,
+  fn: () => Promise<T>,
+  logger: LoggerLike,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < GOOGLE_API_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const canRetry = isRetryableGoogleApiError(error) && attempt < GOOGLE_API_MAX_ATTEMPTS - 1;
+      if (!canRetry) {
+        throw error;
+      }
+      const delayMs = GOOGLE_API_RETRY_DELAYS_MS[attempt] ?? 10000;
+      const log = logger.warn ?? logger.info;
+      log(
+        'Google API %s failed (attempt %d/%d): %s — retry in %d ms',
+        label,
+        attempt + 1,
+        GOOGLE_API_MAX_ATTEMPTS,
+        error instanceof Error ? error.message : String(error),
+        delayMs,
+      );
+      await sleepMs(delayMs);
+    }
+  }
+  throw lastError;
 }
 
 interface RuntimeConfig {
@@ -65,9 +117,16 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   deps.logger.info('Pipeline start');
   const config = deps.getConfig();
   deps.logger.info('Config loaded, creating Sheets client');
-  const sheetsClient = deps.createSheetsClient(config.credentialsPath);
   deps.logger.info('Loading source rows from Google Sheets');
-  const source = await deps.loadSourceRows(sheetsClient, config.sheetsId);
+  let sheetsClient: ReturnType<Phase7Deps['createSheetsClient']>;
+  const source = await withGoogleApiRetry(
+    'loadSourceRows',
+    async () => {
+      sheetsClient = deps.createSheetsClient(config.credentialsPath);
+      return deps.loadSourceRows(sheetsClient, config.sheetsId);
+    },
+    deps.logger,
+  );
   const addressAliases = await loadAddressAliases();
   const rowsForPipeline = applyAddressAliases(source.rows, addressAliases);
   if (Object.keys(addressAliases).length > 0) {
@@ -92,18 +151,23 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   });
 
   deps.logger.info('Executing phase 4 (write tabs)');
-  await deps.executePhase4(sheetsClient, {
-    spreadsheetId: config.sheetsId,
-    headers: source.headers,
-    rowsDuplikatyPlomb: phase3.rowsDuplikatyPlomb,
-    rowsNiepewneWyniki: phase5.rowsNiepewneWyniki,
-    groupedNiepewneAdresy: phase5.groupedNiepewneAdresy,
-    groupedBledneAdresy: phase5.groupedBledneAdresy,
-    geocoded: phase5.geocoded,
-    geocodedNoPostcode: phase5.geocodedNoPostcode,
-    uncertainGeocoded: phase5.uncertainGeocoded,
-    cityOnlyGeocoded: phase5.cityOnlyGeocoded,
-  });
+  await withGoogleApiRetry(
+    'executePhase4',
+    () =>
+      deps.executePhase4(sheetsClient, {
+        spreadsheetId: config.sheetsId,
+        headers: source.headers,
+        rowsDuplikatyPlomb: phase3.rowsDuplikatyPlomb,
+        rowsNiepewneWyniki: phase5.rowsNiepewneWyniki,
+        groupedNiepewneAdresy: phase5.groupedNiepewneAdresy,
+        groupedBledneAdresy: phase5.groupedBledneAdresy,
+        geocoded: phase5.geocoded,
+        geocodedNoPostcode: phase5.geocodedNoPostcode,
+        uncertainGeocoded: phase5.uncertainGeocoded,
+        cityOnlyGeocoded: phase5.cityOnlyGeocoded,
+      }),
+    deps.logger,
+  );
 
   deps.logger.info('Executing phase 6 (generate map HTML)');
   const phase6 = await deps.executePhase6({
