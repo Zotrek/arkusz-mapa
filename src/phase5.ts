@@ -1,5 +1,6 @@
 /**
  * Faza 5: geokodowanie przez Nominatim + wyznaczanie błędnych adresów.
+ * Wpis w cache (dowolny status) ma pierwszeństwo — bez ponownego geokodowania.
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -11,7 +12,6 @@ import type { SheetRow } from './sheets.js';
 import {
   canonicalCacheKeyFromLegacy,
   legacyCacheKeyAliases,
-  legacyDuplicateNumberCacheKey,
   migrateCacheEntries,
   purgeLegacyAbbreviationCacheKeys,
   resolveCacheEntry,
@@ -110,7 +110,6 @@ export interface ExecutePhase5Options {
   requestRetries?: number;
   batchSize?: number;
   cacheFilePath?: string;
-  retryBadCache?: boolean;
   logger?: {
     info?: (message: string, ...args: unknown[]) => void;
     warn?: (message: string, ...args: unknown[]) => void;
@@ -454,31 +453,6 @@ export function extractVoivodeship(result: { address?: { state?: string; county?
     return 'Nieznane';
   }
   return withoutPrefix.charAt(0).toUpperCase() + withoutPrefix.slice(1);
-}
-
-function shouldRetrySuspiciousCacheEntry(entry: CacheEntry): boolean {
-  if (entry.status === 'bad') {
-    return false;
-  }
-  const woj = normalize(entry.wojewodztwo).toLowerCase();
-  return woj.startsWith('powiat ') || woj.startsWith('gmina ') || woj.length === 0;
-}
-
-function shouldRetryUncertainCache(cached: CacheEntry): boolean {
-  return cached.status === 'uncertain';
-}
-
-function shouldRetryCityOnlyVillageCache(cached: CacheEntry, row: SheetRow | undefined): boolean {
-  return cached.status === 'city_only' && row !== undefined && isPlaceOnlyAddress(row);
-}
-
-function shouldRetryCityOnlyLargeCityCache(cached: CacheEntry, row: SheetRow | undefined): boolean {
-  return (
-    cached.status === 'city_only' &&
-    row !== undefined &&
-    hasRealStreet(row) &&
-    isLargeCity(row.miasto)
-  );
 }
 
 function getCandidateLocality(result: NominatimResult): string {
@@ -1015,6 +989,7 @@ async function saveCache(
   entries: Record<string, CacheEntry>,
   writeFileFn: (path: string, content: string, encoding: BufferEncoding) => Promise<void>,
   mkdirFn: (path: string, options: { recursive: true }) => Promise<unknown>,
+  readFileFn: (path: string, encoding: BufferEncoding) => Promise<string>,
 ): Promise<void> {
   await mkdirFn(dirname(cacheFilePath), { recursive: true });
   const entriesForFile: Record<string, CacheEntry> = {};
@@ -1025,7 +1000,90 @@ async function saveCache(
     version: 2,
     entries: entriesForFile,
   };
-  await writeFileFn(cacheFilePath, JSON.stringify(payload, null, 2), 'utf-8');
+  const content = `${JSON.stringify(payload, null, 2)}\n`;
+  try {
+    const existing = await readFileFn(cacheFilePath, 'utf-8');
+    if (existing === content) {
+      return;
+    }
+  } catch {
+    // brak pliku — zapisz
+  }
+  await writeFileFn(cacheFilePath, content, 'utf-8');
+}
+
+/** Wpis w cache ma pierwszeństwo — bez ponownego geokodowania. */
+function applyGeocodingFromCache(
+  address: string,
+  group: AddressGroup,
+  cached: CacheEntry,
+  geocoded: GeocodedAddress[],
+  geocodedNoPostcode: GeocodedAddress[],
+  uncertainGeocoded: GeocodedAddress[],
+  cityOnlyGeocoded: GeocodedAddress[],
+  rowsBledneAdresy: SheetRow[],
+  rowsNiepewneWyniki: SheetRow[],
+  groupedNiepewneAdresy: GroupedNiepewnyAdres[],
+  groupedBledneAdresy: GroupedBlednyAdres[],
+): void {
+  const hasCoords = typeof cached.lat === 'number' && typeof cached.lng === 'number';
+  const base = {
+    address,
+    count: group.count,
+    zbiorka: aggregateZbiorka(group.rows),
+    rows: group.rows,
+  };
+
+  if (cached.status === 'ok' && hasCoords) {
+    geocoded.push({
+      ...base,
+      lat: cached.lat!,
+      lng: cached.lng!,
+      wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
+    });
+    return;
+  }
+  if (cached.status === 'ok_no_postcode' && hasCoords) {
+    geocodedNoPostcode.push({
+      ...base,
+      lat: cached.lat!,
+      lng: cached.lng!,
+      wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
+    });
+    return;
+  }
+  if (cached.status === 'uncertain' && hasCoords) {
+    uncertainGeocoded.push({
+      ...base,
+      lat: cached.lat!,
+      lng: cached.lng!,
+      wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
+    });
+    rowsNiepewneWyniki.push(...group.rows);
+    groupedNiepewneAdresy.push({
+      address,
+      liczbaWystapien: group.count,
+      przykladoweLat: cached.lat!,
+      przykladoweLng: cached.lng!,
+      wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
+    });
+    return;
+  }
+  if (cached.status === 'city_only' && hasCoords) {
+    cityOnlyGeocoded.push({
+      ...base,
+      lat: cached.lat!,
+      lng: cached.lng!,
+      wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
+    });
+    return;
+  }
+
+  rowsBledneAdresy.push(...group.rows);
+  groupedBledneAdresy.push({
+    address,
+    liczbaWystapien: group.count,
+  });
 }
 
 export async function executePhase5(
@@ -1039,7 +1097,6 @@ export async function executePhase5(
   const requestTimeoutMs = options.requestTimeoutMs ?? 15000;
   const requestRetries = options.requestRetries ?? 2;
   const batchSize = options.batchSize ?? 20;
-  const retryBadCache = options.retryBadCache ?? true;
   const logger = options.logger;
   const readFileFn =
     options.readFileFn ?? (async (path: string, encoding: BufferEncoding) => readFile(path, encoding));
@@ -1104,121 +1161,26 @@ export async function executePhase5(
 
     for (const [_groupKey, group] of batch) {
       const address = group.address;
-      let cached = protectedOverrideAddresses.has(address)
+      const cached = protectedOverrideAddresses.has(address)
         ? cacheEntries[address]
         : resolveCacheEntry(cacheEntries, address);
-      if (cached && !cacheEntries[address]) {
-        setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, cached);
-        const legacyKey = legacyDuplicateNumberCacheKey(address);
-        if (legacyKey && legacyKey !== address && !protectedOverrideAddresses.has(legacyKey)) {
-          delete cacheEntries[legacyKey];
-        }
-      }
       if (cached) {
-        const sampleRowForCache = group.rows[0];
-        const retryVillageCityOnly = shouldRetryCityOnlyVillageCache(cached, sampleRowForCache);
-        const retryLargeCityCityOnly = shouldRetryCityOnlyLargeCityCache(cached, sampleRowForCache);
-        const retryUncertain = shouldRetryUncertainCache(cached);
-
-        if (shouldRetrySuspiciousCacheEntry(cached)) {
-          logger?.info?.('Phase 5: retrying suspicious cache entry for address: %s', address);
-        } else if (retryUncertain) {
-          logger?.info?.('Phase 5: retrying uncertain cache for address: %s', address);
-        } else if (retryVillageCityOnly) {
-          logger?.info?.('Phase 5: retrying city_only village-place cache for address: %s', address);
-        } else if (retryLargeCityCityOnly) {
-          logger?.info?.('Phase 5: retrying city_only large-city cache for address: %s', address);
-        } else if (cached.status === 'ok' && typeof cached.lat === 'number' && typeof cached.lng === 'number') {
-          geocoded.push({
-            address,
-            count: group.count,
-            lat: cached.lat,
-            lng: cached.lng,
-            wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
-            zbiorka: aggregateZbiorka(group.rows),
-            rows: group.rows,
-          });
-        } else if (
-          cached.status === 'ok_no_postcode' &&
-          typeof cached.lat === 'number' &&
-          typeof cached.lng === 'number'
-        ) {
-          geocodedNoPostcode.push({
-            address,
-            count: group.count,
-            lat: cached.lat,
-            lng: cached.lng,
-            wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
-            zbiorka: aggregateZbiorka(group.rows),
-            rows: group.rows,
-          });
-        } else if (
-          cached.status === 'uncertain' &&
-          typeof cached.lat === 'number' &&
-          typeof cached.lng === 'number'
-        ) {
-          uncertainGeocoded.push({
-            address,
-            count: group.count,
-            lat: cached.lat,
-            lng: cached.lng,
-            wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
-            zbiorka: aggregateZbiorka(group.rows),
-            rows: group.rows,
-          });
-          rowsNiepewneWyniki.push(...group.rows);
-          groupedNiepewneAdresy.push({
-            address,
-            liczbaWystapien: group.count,
-            przykladoweLat: cached.lat,
-            przykladoweLng: cached.lng,
-            wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
-          });
-        } else if (
-          cached.status === 'city_only' &&
-          typeof cached.lat === 'number' &&
-          typeof cached.lng === 'number'
-        ) {
-          cityOnlyGeocoded.push({
-            address,
-            count: group.count,
-            lat: cached.lat,
-            lng: cached.lng,
-            wojewodztwo: cached.wojewodztwo ?? 'Nieznane',
-            zbiorka: aggregateZbiorka(group.rows),
-            rows: group.rows,
-          });
-        } else if (!retryBadCache) {
-          rowsBledneAdresy.push(...group.rows);
-          groupedBledneAdresy.push({
-            address,
-            liczbaWystapien: group.count,
-          });
-        } else {
-          logger?.info?.('Phase 5: retrying cached bad address: %s', address);
-          // kontynuuj do ponownego geokodowania
-          // (nie robimy "continue")
-          const forceRetry = true;
-          if (forceRetry) {
-            // no-op
-          }
-        }
-
-        if (
-          !shouldRetrySuspiciousCacheEntry(cached) &&
-          !retryUncertain &&
-          !retryVillageCityOnly &&
-          !retryLargeCityCityOnly &&
-          (cached.status === 'ok' ||
-            cached.status === 'ok_no_postcode' ||
-            cached.status === 'uncertain' ||
-            cached.status === 'city_only' ||
-            !retryBadCache)
-        ) {
-          logger?.info?.('Phase 5: cache hit for address: %s', address);
-          processedAddresses += 1;
-          continue;
-        }
+        applyGeocodingFromCache(
+          address,
+          group,
+          cached,
+          geocoded,
+          geocodedNoPostcode,
+          uncertainGeocoded,
+          cityOnlyGeocoded,
+          rowsBledneAdresy,
+          rowsNiepewneWyniki,
+          groupedNiepewneAdresy,
+          groupedBledneAdresy,
+        );
+        logger?.info?.('Phase 5: cache hit for address: %s', address);
+        processedAddresses += 1;
+        continue;
       }
 
       if (protectedOverrideAddresses.has(address)) {
@@ -1386,7 +1348,7 @@ export async function executePhase5(
     }
 
     if (options.cacheFilePath) {
-      await saveCache(options.cacheFilePath, cacheEntries, writeFileFn, mkdirFn);
+      await saveCache(options.cacheFilePath, cacheEntries, writeFileFn, mkdirFn, readFileFn);
       const geocodedUniqueAddresses = geocoded.length;
       const geocodedNoPostcodeUniqueAddresses = geocodedNoPostcode.length;
       const uncertainUniqueAddresses = uncertainGeocoded.length;

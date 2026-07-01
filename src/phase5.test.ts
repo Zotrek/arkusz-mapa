@@ -1282,7 +1282,7 @@ describe('phase5', () => {
       ]);
     });
 
-    it('test_executePhase5_when_cache_has_suspicious_ok_should_retry_and_replace_coordinates', async () => {
+    it('test_executePhase5_when_cache_has_suspicious_ok_should_use_cached_coordinates', async () => {
       const row = makeRow({
         kodPocztowy: '34-400',
         miasto: 'Nowy Targ',
@@ -1335,11 +1335,11 @@ describe('phase5', () => {
         mkdirFn: vi.fn().mockResolvedValue(undefined),
       });
 
-      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(fetchFn).not.toHaveBeenCalled();
       expect(result.geocoded).toHaveLength(1);
-      expect(result.geocoded[0].lat).toBe(49.4850902);
-      expect(result.geocoded[0].lng).toBe(20.0481726);
-      expect(result.geocoded[0].wojewodztwo).toBe('Małopolskie');
+      expect(result.geocoded[0].lat).toBe(53.9003502);
+      expect(result.geocoded[0].lng).toBe(19.1825854);
+      expect(result.geocoded[0].wojewodztwo).toBe('powiat sztumski');
       expect(result.groupedBledneAdresy).toEqual([]);
     });
 

@@ -9743,7 +9743,7 @@
       "lat": 51.61085043197812,
       "lng": 17.301306032581515,
       "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-07-01T20:09:17.506Z"
+      "updatedAt": "2026-07-01T20:10:00.000Z"
     },
     "66-600 Krosno odrzańskie Szklarka Radnicka 16": {
       "status": "ok",
@@ -9925,7 +9925,7 @@
       "lat": 49.603933,
       "lng": 21.2298574,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:05:37.105Z"
+      "updatedAt": "2026-07-01T20:21:02.090Z"
     },
     "39-451 Skopanie Aleja Generała Sikorskiego 11": {
       "status": "ok",
@@ -10058,7 +10058,7 @@
       "lat": 49.67345526186956,
       "lng": 20.989682739255844,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:09:17.506Z"
+      "updatedAt": "2026-07-01T20:10:00.000Z"
     },
     "97-318 Czarnocin Biskupia Wola 130": {
       "status": "city_only",
@@ -10163,14 +10163,14 @@
       "lat": 51.898298,
       "lng": 16.03966,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-07-01T20:05:25.502Z"
+      "updatedAt": "2026-07-01T20:20:50.548Z"
     },
     "74-304 Nowogrodek Pomorski Trzcinna 82": {
       "status": "uncertain",
       "lat": 52.8842985,
       "lng": 15.0106316,
       "wojewodztwo": "Zachodniopomorskie",
-      "updatedAt": "2026-07-01T20:05:55.600Z"
+      "updatedAt": "2026-07-01T20:21:20.586Z"
     },
     "27-400 OSTROWIEC ŚWIĘTOKRZYSKI 32 ul. Kilińskiego 27-400 OSTROWIEC ŚW 32": {
       "status": "city_only",
@@ -10205,7 +10205,7 @@
       "lat": 53.3500552,
       "lng": 14.4600882,
       "wojewodztwo": "Zachodniopomorskie",
-      "updatedAt": "2026-07-01T20:06:05.890Z"
+      "updatedAt": "2026-07-01T20:21:30.873Z"
     },
     "46-080 CHRÓŚCICE Powstańców śląskich 25": {
       "status": "ok",
@@ -10373,14 +10373,14 @@
       "lat": 51.94931976072873,
       "lng": 22.607395321564862,
       "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-01T20:09:17.506Z"
+      "updatedAt": "2026-07-01T20:10:00.000Z"
     },
     "34-407 Ciche 170": {
       "status": "ok",
       "lat": 49.38753943152643,
       "lng": 19.86946021984651,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:09:17.506Z"
+      "updatedAt": "2026-07-01T20:10:00.000Z"
     },
     "42-200 Częstochowa Łęczycka 55": {
       "status": "ok",
@@ -10557,26 +10557,75 @@
       "wojewodztwo": "Małopolskie",
       "updatedAt": "2026-07-01T19:57:45.227Z"
     },
-    "34-407 Ciche 170 170": {
+    "21-302 Brzozowica Duza 119c": {
       "status": "ok",
-      "lat": 49.38753943152643,
-      "lng": 19.86946021984651,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:09:17.506Z"
+      "lat": 51.94931976072873,
+      "lng": 22.607395321564862,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
     },
     "21-302 Brzozowica Duża 119c 119c": {
       "status": "ok",
       "lat": 51.94931976072873,
       "lng": 22.607395321564862,
       "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-01T20:09:17.506Z"
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "21-302 Brzozowica Duza 119c 119c": {
+      "status": "ok",
+      "lat": 51.94931976072873,
+      "lng": 22.607395321564862,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "21-302 Brzozowica Duża 119c 119c 119c": {
+      "status": "ok",
+      "lat": 51.94931976072873,
+      "lng": 22.607395321564862,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "33-331 POLNA STARA REMIZA OSP 1 1": {
+      "status": "ok",
+      "lat": 49.67345526186956,
+      "lng": 20.989682739255844,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "33-331 POLNA STARA REMIZA OSP 1 1 1": {
+      "status": "ok",
+      "lat": 49.67345526186956,
+      "lng": 20.989682739255844,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "34-407 Ciche 170 170": {
+      "status": "ok",
+      "lat": 49.38753943152643,
+      "lng": 19.86946021984651,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "34-407 Ciche 170 170 170": {
+      "status": "ok",
+      "lat": 49.38753943152643,
+      "lng": 19.86946021984651,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
     },
     "56-321 Pakoslawsko 48A 48A": {
       "status": "ok",
       "lat": 51.61085043197812,
       "lng": 17.301306032581515,
       "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-07-01T20:09:17.506Z"
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "56-321 Pakoslawsko 48A 48A 48A": {
+      "status": "ok",
+      "lat": 51.61085043197812,
+      "lng": 17.301306032581515,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
     }
   }
 }
