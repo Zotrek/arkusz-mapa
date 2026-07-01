@@ -9,6 +9,8 @@ import { nominatimAsciiQueryVariant } from './polishText.js';
 import type { AddressGroup } from './phase3.js';
 import type { SheetRow } from './sheets.js';
 import {
+  canonicalCacheKeyFromLegacy,
+  legacyCacheKeyAliases,
   legacyDuplicateNumberCacheKey,
   migrateCacheEntries,
   purgeLegacyAbbreviationCacheKeys,
@@ -941,6 +943,38 @@ async function loadCache(
 
 const ADDRESS_OVERRIDES_FILENAME = 'phase5-address-overrides.json';
 
+/** Ręczne współrzędne — nie nadpisywać geokodowaniem ani zapisem `bad`. */
+function stampAddressOverrideIntoCache(
+  cacheEntries: Record<string, CacheEntry>,
+  protectedAddresses: Set<string>,
+  address: string,
+  entry: CacheEntry,
+): void {
+  protectedAddresses.add(address);
+  cacheEntries[address] = entry;
+  const canonical = canonicalCacheKeyFromLegacy(address);
+  if (canonical && canonical !== address) {
+    protectedAddresses.add(canonical);
+    cacheEntries[canonical] = entry;
+  }
+  for (const alias of legacyCacheKeyAliases(address)) {
+    protectedAddresses.add(alias);
+    cacheEntries[alias] = entry;
+  }
+}
+
+function setCacheEntryUnlessProtected(
+  cacheEntries: Record<string, CacheEntry>,
+  protectedAddresses: Set<string>,
+  address: string,
+  entry: CacheEntry,
+): void {
+  if (protectedAddresses.has(address)) {
+    return;
+  }
+  cacheEntries[address] = entry;
+}
+
 async function loadAddressOverrides(
   cacheFilePath: string,
   readFileFn: (path: string, encoding: BufferEncoding) => Promise<string>,
@@ -1027,11 +1061,14 @@ export async function executePhase5(
   const cacheEntries: Record<string, CacheEntry> = options.cacheFilePath
     ? await loadCache(options.cacheFilePath, readFileFn)
     : {};
+  const protectedOverrideAddresses = new Set<string>();
   if (options.cacheFilePath) {
     const overrides = await loadAddressOverrides(options.cacheFilePath, readFileFn);
     const overrideCount = Object.keys(overrides).length;
     if (overrideCount > 0) {
-      Object.assign(cacheEntries, overrides);
+      for (const [address, entry] of Object.entries(overrides)) {
+        stampAddressOverrideIntoCache(cacheEntries, protectedOverrideAddresses, address, entry);
+      }
       logger?.info?.('Phase 5: applied %d address overrides from %s', overrideCount, ADDRESS_OVERRIDES_FILENAME);
     }
     logger?.info?.(
@@ -1067,11 +1104,13 @@ export async function executePhase5(
 
     for (const [_groupKey, group] of batch) {
       const address = group.address;
-      let cached = resolveCacheEntry(cacheEntries, address);
+      let cached = protectedOverrideAddresses.has(address)
+        ? cacheEntries[address]
+        : resolveCacheEntry(cacheEntries, address);
       if (cached && !cacheEntries[address]) {
-        cacheEntries[address] = cached;
+        setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, cached);
         const legacyKey = legacyDuplicateNumberCacheKey(address);
-        if (legacyKey && legacyKey !== address) {
+        if (legacyKey && legacyKey !== address && !protectedOverrideAddresses.has(legacyKey)) {
           delete cacheEntries[legacyKey];
         }
       }
@@ -1182,6 +1221,12 @@ export async function executePhase5(
         }
       }
 
+      if (protectedOverrideAddresses.has(address)) {
+        logger?.info?.('Phase 5: skipping geocoding for manual override: %s', address);
+        processedAddresses += 1;
+        continue;
+      }
+
       try {
         const sampleRow = group.rows[0];
         const queries = buildGeocodingQueries(sampleRow);
@@ -1278,23 +1323,23 @@ export async function executePhase5(
                 wojewodztwo,
               });
             }
-            cacheEntries[address] = {
+            setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
               status: bestPick.status,
               lat,
               lng,
               wojewodztwo,
               updatedAt: new Date().toISOString(),
-            };
+            });
           } else {
             rowsBledneAdresy.push(...group.rows);
             groupedBledneAdresy.push({
               address,
               liczbaWystapien: group.count,
             });
-            cacheEntries[address] = {
+            setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
               status: 'bad',
               updatedAt: new Date().toISOString(),
-            };
+            });
           }
         } else {
           rowsBledneAdresy.push(...group.rows);
@@ -1302,10 +1347,10 @@ export async function executePhase5(
             address,
             liczbaWystapien: group.count,
           });
-          cacheEntries[address] = {
+          setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
             status: 'bad',
             updatedAt: new Date().toISOString(),
-          };
+          });
         }
       } catch (error) {
         rowsBledneAdresy.push(...group.rows);
@@ -1313,10 +1358,10 @@ export async function executePhase5(
           address,
           liczbaWystapien: group.count,
         });
-        cacheEntries[address] = {
+        setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
           status: 'bad',
           updatedAt: new Date().toISOString(),
-        };
+        });
         logger?.warn?.('Phase 5: geocoding failed for address: %s (%s)', address, String(error));
       }
 
