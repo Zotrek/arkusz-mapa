@@ -22,6 +22,7 @@ var COL = {
 };
 
 var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
+var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
 
 function doGet(e) {
   try {
@@ -68,8 +69,13 @@ function doPost(e) {
 
 /** Jednorazowo: Extensions → Apps Script → wybierz rebuildTransportCounterFromSheet → Run */
 function rebuildTransportCounterFromSheet() {
-  var max = scanMaxNumberFromSheet_();
-  setStoredMaxNumber_(max);
+  var result = scanMaxNumberAndRowFromSheet_();
+  setStoredMaxNumber_(result.max);
+  if (result.row > 0) {
+    setStoredLastRow_(result.row);
+  } else {
+    clearStoredLastRow_();
+  }
 }
 
 function jsonResponse(obj, statusCode) {
@@ -107,6 +113,23 @@ function setStoredMaxNumber_(max) {
   PropertiesService.getScriptProperties().setProperty(TRANSPORT_MAX_NUM_KEY, String(max));
 }
 
+function getStoredLastRow_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(TRANSPORT_LAST_ROW_KEY);
+  if (raw == null || raw === '') {
+    return null;
+  }
+  var row = parseInt(raw, 10);
+  return isNaN(row) || row < 2 ? null : row;
+}
+
+function setStoredLastRow_(row) {
+  PropertiesService.getScriptProperties().setProperty(TRANSPORT_LAST_ROW_KEY, String(row));
+}
+
+function clearStoredLastRow_() {
+  PropertiesService.getScriptProperties().deleteProperty(TRANSPORT_LAST_ROW_KEY);
+}
+
 function parseNumberFromCell_(cell) {
   if (cell === '' || cell === null) {
     return null;
@@ -119,25 +142,69 @@ function parseNumberFromCell_(cell) {
   return isNaN(n) ? null : n;
 }
 
-function maxNumberInValues_(values) {
-  var max = 0;
-  for (var i = 0; i < values.length; i++) {
-    var n = parseNumberFromCell_(values[i][0]);
-    if (n != null && n > max) {
-      max = n;
-    }
-  }
-  return max;
-}
-
-function scanMaxNumberFromSheet_() {
+function scanMaxNumberAndRowFromSheet_() {
   var sheet = getDataSheet_();
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) {
-    return 0;
+    return { max: 0, row: 0 };
   }
   var values = sheet.getRange(2, COL.numer, lastRow, COL.numer).getValues();
-  return maxNumberInValues_(values);
+  var max = 0;
+  var maxRow = 0;
+  for (var i = 0; i < values.length; i++) {
+    var n = parseNumberFromCell_(values[i][0]);
+    if (n != null && n >= max) {
+      max = n;
+      maxRow = i + 2;
+    }
+  }
+  return { max: max, row: maxRow };
+}
+
+function scanMaxNumberFromSheet_() {
+  return scanMaxNumberAndRowFromSheet_().max;
+}
+
+function isNumberAtRow_(expected, row) {
+  var sheet = getDataSheet_();
+  if (row > sheet.getLastRow()) {
+    return false;
+  }
+  return parseNumberFromCell_(sheet.getRange(row, COL.numer).getValue()) === expected;
+}
+
+/** O(1): cache wiersza ostatniego zapisu; pełny skan tylko gdy brak cache (np. po migracji). */
+function isLastAssignedNumberStillInSheet_(stored) {
+  if (stored <= 0) {
+    return true;
+  }
+  var row = getStoredLastRow_();
+  if (row == null) {
+    row = findHighestRowWithNumber_(stored);
+    if (row != null) {
+      setStoredLastRow_(row);
+    }
+  }
+  if (row == null) {
+    return false;
+  }
+  return isNumberAtRow_(stored, row);
+}
+
+function findHighestRowWithNumber_(target) {
+  var sheet = getDataSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return null;
+  }
+  var values = sheet.getRange(2, COL.numer, lastRow, COL.numer).getValues();
+  var foundRow = null;
+  for (var i = 0; i < values.length; i++) {
+    if (parseNumberFromCell_(values[i][0]) === target) {
+      foundRow = i + 2;
+    }
+  }
+  return foundRow;
 }
 
 function ensureStoredMaxNumberSeeded_() {
@@ -145,20 +212,32 @@ function ensureStoredMaxNumberSeeded_() {
   if (stored != null) {
     return stored;
   }
-  var max = scanMaxNumberFromSheet_();
-  setStoredMaxNumber_(max);
-  return max;
+  var result = scanMaxNumberAndRowFromSheet_();
+  setStoredMaxNumber_(result.max);
+  if (result.row > 0) {
+    setStoredLastRow_(result.row);
+  }
+  return result.max;
+}
+
+function resolveNextTransportNumber_(increment) {
+  var stored = ensureStoredMaxNumberSeeded_();
+  if (isLastAssignedNumberStillInSheet_(stored)) {
+    var next = stored + 1;
+    if (increment) {
+      setStoredMaxNumber_(next);
+    }
+    return next;
+  }
+  return stored;
 }
 
 function getPreviewNumber_() {
-  return ensureStoredMaxNumberSeeded_() + 1;
+  return resolveNextTransportNumber_(false);
 }
 
 function allocateNextNumber_() {
-  var max = ensureStoredMaxNumberSeeded_();
-  var next = max + 1;
-  setStoredMaxNumber_(next);
-  return next;
+  return resolveNextTransportNumber_(true);
 }
 
 /** Ręczny numer z POST (body.numer) ma pierwszeństwo; pusty → kolejny automatyczny. */
@@ -194,24 +273,19 @@ function appendTransportRow_(numer, body) {
     body.rodzajZbiorki || '',
     body.iloscWorkow != null ? body.iloscWorkow : '',
   ]);
+  var parsed = parseNumberFromCell_(numer);
+  var stored = getStoredMaxNumber_();
+  if (parsed != null && stored != null && parsed === stored) {
+    setStoredLastRow_(sheet.getLastRow());
+  }
 }
 
-function rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres, allowAdresFallback) {
+function rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres) {
   var targetKey = buildTransportShopKey_(podmiot, adres);
   if (!targetKey || targetKey === '\0') {
     return false;
   }
-  if (buildTransportShopKey_(rowPodmiot, rowAdres) === targetKey) {
-    return true;
-  }
-  if (!allowAdresFallback) {
-    return false;
-  }
-  var targetAdres = normalizeTransportKeyPart_(adres);
-  if (!targetAdres) {
-    return false;
-  }
-  return normalizeTransportKeyPart_(rowAdres) === targetAdres;
+  return buildTransportShopKey_(rowPodmiot, rowAdres) === targetKey;
 }
 
 function findLastTransportDateMs_(podmiot, adres) {
@@ -226,29 +300,17 @@ function findLastTransportDateMs_(podmiot, adres) {
   var range = sheet.getRange(2, COL.adres, lastRow, COL.dataOdbioru);
   var rows = range.getValues();
   var maxMs = null;
-  var strictHits = 0;
 
-  for (var pass = 0; pass < 2; pass++) {
-    var allowAdresFallback = pass === 1;
-    for (var i = 0; i < rows.length; i++) {
-      var rowAdres = rows[i][0];
-      var rowPodmiot = rows[i][1];
-      var rowData = rows[i][3];
-      if (!rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres, allowAdresFallback)) {
-        continue;
-      }
-      if (!allowAdresFallback) {
-        strictHits += 1;
-      } else if (strictHits > 0) {
-        continue;
-      }
-      var ms = parseDateToMs_(rowData);
-      if (ms != null && (maxMs == null || ms > maxMs)) {
-        maxMs = ms;
-      }
+  for (var i = 0; i < rows.length; i++) {
+    var rowAdres = rows[i][0];
+    var rowPodmiot = rows[i][1];
+    var rowData = rows[i][3];
+    if (!rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres)) {
+      continue;
     }
-    if (strictHits > 0) {
-      break;
+    var ms = parseDateToMs_(rowData);
+    if (ms != null && (maxMs == null || ms > maxMs)) {
+      maxMs = ms;
     }
   }
   return maxMs;
