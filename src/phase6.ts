@@ -571,8 +571,15 @@ export function buildMapHtml(
       </div>
       <label for="doc-inp-data-zaladunku">Data załadunku</label>
       <input type="date" id="doc-inp-data-zaladunku" />
-      <label for="doc-inp-numer-zlecenia">Numer dokumentu (zlecenie transportowe)</label>
-      <input type="text" id="doc-inp-numer-zlecenia" maxlength="120" placeholder="np. 1460" autocomplete="off" spellcheck="false" />
+      <div id="doc-bulk-points-wrap" class="doc-bulk-points-wrap" hidden>
+        <p class="doc-bulk-points-title">Wybrane punkty</p>
+        <ul id="doc-bulk-points-list" class="doc-bulk-points-list"></ul>
+      </div>
+      <div id="doc-single-numer-wrap">
+        <label for="doc-inp-numer-zlecenia">Numer dokumentu (zlecenie transportowe)</label>
+        <input type="text" id="doc-inp-numer-zlecenia" maxlength="120" placeholder="np. 1460" autocomplete="off" spellcheck="false" />
+      </div>
+      <p id="doc-bulk-numer-info" class="doc-bulk-numer-info" hidden aria-live="polite"></p>
       <p id="doc-filter-info" class="doc-filter-info" aria-live="polite"></p>
       <div class="doc-modal-actions">
         <button type="button" id="doc-btn-cancel">Anuluj</button>
@@ -601,6 +608,18 @@ export function buildMapHtml(
     .doc-modal-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .doc-modal-actions button { padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; border: 1px solid #ccc; background: #f8f9fa; }
     .doc-filter-info { font-size: 12px; color: #555; margin: 8px 0 0; min-height: 1.2em; }
+    .doc-bulk-points-wrap { margin-top: 8px; max-height: 160px; overflow-y: auto; border: 1px solid #e8e8e8; border-radius: 6px; padding: 8px 10px; background: #fafafa; }
+    .doc-bulk-points-title { font-size: 12px; font-weight: 600; margin: 0 0 6px; color: #333; }
+    .doc-bulk-points-list { margin: 0; padding: 0 0 0 16px; font-size: 12px; color: #444; line-height: 1.45; }
+    .doc-bulk-numer-info { font-size: 12px; color: #0d6efd; margin: 8px 0 0; min-height: 1.2em; }
+    .popup-bulk-select { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; cursor: pointer; color: #333; }
+    .popup-bulk-select input { margin: 0; flex-shrink: 0; }
+    .map-bulk-panel { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .map-bulk-panel[hidden] { display: none !important; }
+    .map-bulk-count { font-size: 12px; color: #333; flex: 1; min-width: 120px; }
+    .map-bulk-generate { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #198754; background: #198754; color: #fff; cursor: pointer; }
+    .map-bulk-generate:hover { filter: brightness(1.05); }
+    .map-bulk-clear { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; }
     #doc-btn-ok { background: #198754; border-color: #198754; color: #fff; }
 `
     : '';
@@ -899,13 +918,82 @@ ${wordModal}  <script>
       var genDocBtn = wordDocEnabled
         ? '<div><button type="button" class="btn-gen-doc">Generuj dokument</button></div>'
         : '';
+      var bulkSelect = wordDocEnabled
+        ? '<label class="popup-bulk-select"><input type="checkbox" class="popup-bulk-cb" data-point-idx="' + pointIdx + '"' +
+          (window.__bulkSelectedPointIdxs && window.__bulkSelectedPointIdxs[pointIdx] ? ' checked' : '') +
+          ' /> Zaznacz do zbiorczego protokołu</label>'
+        : '';
       return '<div class="popup-address">' + p.adres + '</div>' +
         (podmiotLine || '') +
         buildPopupCountHtml(p) +
         (zbiorkaLine || '') +
         '<div class="popup-woj">' + p.woj + '</div>' +
         confidenceLabel +
+        bulkSelect +
         genDocBtn;
+    }
+    window.__bulkSelectedPointIdxs = window.__bulkSelectedPointIdxs || {};
+    function getBulkSelectedIndices() {
+      var out = [];
+      var sel = window.__bulkSelectedPointIdxs || {};
+      Object.keys(sel).forEach(function (k) {
+        if (sel[k]) {
+          var idx = parseInt(k, 10);
+          if (!isNaN(idx) && adresy[idx]) out.push(idx);
+        }
+      });
+      out.sort(function (a, b) { return a - b; });
+      return out;
+    }
+    function isBulkPointSelected(pointIdx) {
+      return !!(window.__bulkSelectedPointIdxs && window.__bulkSelectedPointIdxs[pointIdx]);
+    }
+    function setBulkPointSelected(pointIdx, selected) {
+      if (!window.__bulkSelectedPointIdxs) window.__bulkSelectedPointIdxs = {};
+      if (selected) {
+        window.__bulkSelectedPointIdxs[pointIdx] = true;
+      } else {
+        delete window.__bulkSelectedPointIdxs[pointIdx];
+      }
+      updateBulkSelectionUi();
+    }
+    function clearBulkSelection() {
+      window.__bulkSelectedPointIdxs = {};
+      updateBulkSelectionUi();
+    }
+    function updateBulkSelectionUi() {
+      var indices = getBulkSelectedIndices();
+      var panel = document.getElementById('map-bulk-panel');
+      var countEl = document.getElementById('map-bulk-count');
+      if (panel) panel.hidden = indices.length === 0;
+      if (countEl) {
+        countEl.textContent = indices.length === 1
+          ? '1 punkt zaznaczony'
+          : indices.length + ' punktów zaznaczonych';
+      }
+      if (typeof markerEntries !== 'undefined') {
+        markerEntries.forEach(function (entry) {
+          var selected = isBulkPointSelected(entry.pointIdx);
+          var inputEl = document.getElementById('map-address-search');
+          var raw = inputEl ? inputEl.value : '';
+          var hasSearchFilter = String(raw).trim().length > 0;
+          var sMatch = !hasSearchFilter || mapPointMatchesSearchMap(entry.p, raw);
+          var highlight = selected || (hasSearchFilter && sMatch);
+          entry.marker.setIcon(pinIcon(entry.kolor, highlight));
+        });
+      }
+    }
+    function wirePopupBulkCheckbox(marker, pointIdx) {
+      if (!wordDocEnabled) return;
+      var el = marker.getPopup().getElement();
+      if (!el) return;
+      var cb = el.querySelector('.popup-bulk-cb');
+      if (!cb) return;
+      cb.onchange = function () {
+        setBulkPointSelected(pointIdx, cb.checked);
+        marker.setPopupContent(buildPopupContent(adresy[pointIdx], pointIdx));
+        wirePopupBulkCheckbox(marker, pointIdx);
+      };
     }
     function refreshMarkerDisplay(entry) {
       var p = entry.p;
@@ -1137,6 +1225,110 @@ ${wordModal}  <script>
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       }).then(function (res) { return res.json(); });
+    }
+    function setDocModalMode(mode) {
+      window.__docModalMode = mode;
+      var isBulk = mode === 'bulk';
+      var titleEl = document.getElementById('doc-modal-title');
+      var bulkWrap = document.getElementById('doc-bulk-points-wrap');
+      var singleNumerWrap = document.getElementById('doc-single-numer-wrap');
+      var bulkNumerInfo = document.getElementById('doc-bulk-numer-info');
+      var okBtn = document.getElementById('doc-btn-ok');
+      if (titleEl) {
+        titleEl.textContent = isBulk
+          ? 'Generuj dokumenty Word (' + (window.__bulkDocPointIdxs || []).length + ' punktów)'
+          : 'Generuj dokument Word';
+      }
+      if (bulkWrap) bulkWrap.hidden = !isBulk;
+      if (singleNumerWrap) singleNumerWrap.hidden = isBulk;
+      if (bulkNumerInfo) bulkNumerInfo.hidden = !isBulk;
+      if (okBtn) okBtn.textContent = isBulk ? 'Pobierz wszystkie .docx' : 'Pobierz .docx';
+    }
+    function preparePointDocSeals(pointIdx) {
+      var p = adresy[pointIdx];
+      if (!p) return { filteredSeals: [], cutoffYmd: null, total: 0 };
+      var cutoffMs = transportApiEnabled && window.__transportDatesLoaded ? getPointTransportCutoff(p) : null;
+      var all = p.sealRows || [];
+      var filteredSeals = filterSealRowsByMinDate(all, cutoffMs);
+      var cutoffYmd = null;
+      if (cutoffMs != null) {
+        var d = new Date(cutoffMs);
+        cutoffYmd = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+      }
+      return { filteredSeals: filteredSeals, cutoffYmd: cutoffYmd, total: all.length };
+    }
+    function renderBulkPointsList(indices) {
+      var listEl = document.getElementById('doc-bulk-points-list');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+      indices.forEach(function (idx) {
+        var p = adresy[idx];
+        if (!p) return;
+        var prep = preparePointDocSeals(idx);
+        var li = document.createElement('li');
+        var suffix = prep.filteredSeals.length === prep.total
+          ? prep.filteredSeals.length + ' worków'
+          : prep.filteredSeals.length + ' z ' + prep.total + ' worków';
+        li.textContent = p.adres + ' — ' + suffix;
+        listEl.appendChild(li);
+      });
+    }
+    function loadBulkDocModalData(indices) {
+      window.__docModalDataReady = false;
+      window.__docBulkPointJobs = [];
+      var filterInfo = document.getElementById('doc-filter-info');
+      var bulkNumerInfo = document.getElementById('doc-bulk-numer-info');
+      var okBtn = document.getElementById('doc-btn-ok');
+      if (filterInfo) filterInfo.textContent = 'Przygotowywanie danych…';
+      if (bulkNumerInfo) bulkNumerInfo.textContent = '';
+      if (okBtn) okBtn.disabled = true;
+      renderBulkPointsList(indices);
+      indices.forEach(function (idx) {
+        var p = adresy[idx];
+        if (!p) return;
+        var prep = preparePointDocSeals(idx);
+        window.__docBulkPointJobs.push({
+          pointIdx: idx,
+          filteredSeals: prep.filteredSeals,
+          preparedLists: buildDocListsFromSealRows(prep.filteredSeals)
+        });
+      });
+      var totalWorkow = 0;
+      var skipped = 0;
+      window.__docBulkPointJobs.forEach(function (job) {
+        totalWorkow += job.filteredSeals.length;
+        if (job.filteredSeals.length === 0) skipped += 1;
+      });
+      if (filterInfo) {
+        var msg = indices.length + ' punktów · ' + totalWorkow + ' worków łącznie';
+        if (skipped > 0) msg += ' (' + skipped + ' bez worków — pominięte)';
+        filterInfo.textContent = msg;
+      }
+      function finishBulkLoading(previewNumer) {
+        if (bulkNumerInfo) {
+          if (transportApiEnabled && previewNumer) {
+            var validCount = window.__docBulkPointJobs.filter(function (j) { return j.filteredSeals.length > 0; }).length;
+            if (validCount <= 1) {
+              bulkNumerInfo.textContent = 'Numer zostanie nadany automatycznie.';
+            } else {
+              bulkNumerInfo.textContent = 'Numery zostaną nadane automatycznie kolejno (od ' + previewNumer + ').';
+            }
+          } else {
+            bulkNumerInfo.textContent = 'Każdy punkt otrzyma osobny numer zlecenia transportowego.';
+          }
+        }
+        window.__docModalDataReady = true;
+        if (okBtn) okBtn.disabled = false;
+      }
+      if (transportApiEnabled) {
+        return fetchTransportGet({ action: 'previewNumber' }).then(function (resp) {
+          finishBulkLoading(resp && resp.ok ? String(resp.numer || '') : '');
+        }).catch(function () {
+          finishBulkLoading('');
+        });
+      }
+      finishBulkLoading('');
+      return Promise.resolve();
     }
     function loadDocModalData(pointIdx) {
       var p = adresy[pointIdx];
@@ -1381,6 +1573,8 @@ ${wordModal}  <script>
     function openDocModal(pointIdx) {
       if (!wordDocEnabled) return;
       window.__currentDocPointIdx = pointIdx;
+      window.__bulkDocPointIdxs = [];
+      setDocModalMode('single');
       var m = document.getElementById('doc-modal');
       initDocComboboxes();
       restoreDocComboboxFromSavedLabel('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list', DOC_LS_PRZEWOZNIK);
@@ -1392,6 +1586,23 @@ ${wordModal}  <script>
       ensureDocxLibrariesLoaded();
       prewarmDocxTemplateCache();
       loadDocModalData(pointIdx);
+      m.style.display = 'flex';
+      m.setAttribute('aria-hidden', 'false');
+    }
+    function openBulkDocModal(indices) {
+      if (!wordDocEnabled || !indices || indices.length === 0) return;
+      window.__currentDocPointIdx = null;
+      window.__bulkDocPointIdxs = indices.slice();
+      setDocModalMode('bulk');
+      var m = document.getElementById('doc-modal');
+      initDocComboboxes();
+      restoreDocComboboxFromSavedLabel('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list', DOC_LS_PRZEWOZNIK);
+      restoreDocComboboxFromSavedLabel('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list', DOC_LS_MIEJSCE);
+      var dateEl = document.getElementById('doc-inp-data-zaladunku');
+      if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
+      ensureDocxLibrariesLoaded();
+      prewarmDocxTemplateCache();
+      loadBulkDocModalData(indices);
       m.style.display = 'flex';
       m.setAttribute('aria-hidden', 'false');
     }
@@ -1470,7 +1681,8 @@ ${wordModal}  <script>
       }
       return base + '.docx';
     }
-    function renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists) {
+    function renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists, options) {
+      var opts = options || {};
       var lists = preparedLists || buildDocListsFromSealRows(filteredSeals);
       var zip = new PizZip(getWordTemplateBytes());
       var Doc = window.docxtemplater;
@@ -1495,23 +1707,16 @@ ${wordModal}  <script>
       });
       var safeName = buildDocxDownloadName(prOpt.label, dzPlik, p.adres);
       saveAs(out, safeName);
-      closeDocModal();
+      if (opts.closeModal !== false) {
+        closeDocModal();
+      }
     }
     function isManualTransportNumer(inputValue, previewNumer) {
       var v = String(inputValue || '').trim();
       if (!v) return false;
       return v !== String(previewNumer || '');
     }
-    function runDocGenerate() {
-      if (transportApiEnabled && !window.__docModalDataReady) {
-        alert('Poczekaj na załadowanie danych transportu (numer i filtr worków).');
-        return;
-      }
-      var idx = window.__currentDocPointIdx;
-      if (idx == null || idx < 0 || !adresy[idx]) {
-        alert('Błąd: brak punktu.');
-        return;
-      }
+    function parseDocFormValues() {
       var prInput = document.getElementById('doc-sel-przewoznik');
       var mdInput = document.getElementById('doc-sel-miejsce');
       var prVal = document.getElementById('doc-val-przewoznik');
@@ -1522,7 +1727,7 @@ ${wordModal}  <script>
       var mdIdx = mdVal ? mdVal.value : '';
       if (prIdx === '' || mdIdx === '') {
         alert('Wybierz przewoźnika i miejsce dostawy (wpisz fragment nazwy lub danych i wybierz z listy).');
-        return;
+        return null;
       }
       var pi = parseInt(prIdx, 10);
       var mi = parseInt(mdIdx, 10);
@@ -1530,16 +1735,13 @@ ${wordModal}  <script>
       var mdOpt = PODWYKOLISTA[mi];
       if (!prOpt || !mdOpt) {
         alert('Błąd wyboru z listy.');
-        return;
+        return null;
       }
-      var pr = prOpt.dane;
-      var md = mdOpt.dane;
-      var p = adresy[idx];
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       var ymd = dateEl ? String(dateEl.value).trim() : '';
       if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(ymd)) {
         alert('Wybierz datę załadunku (kalendarz).');
-        return;
+        return null;
       }
       var pe = ymd.split('-');
       var y = parseInt(pe[0], 10);
@@ -1548,14 +1750,136 @@ ${wordModal}  <script>
       var chk = new Date(y, mo, d);
       if (chk.getFullYear() !== y || chk.getMonth() !== mo || chk.getDate() !== d) {
         alert('Nieprawidłowa data załadunku.');
-        return;
+        return null;
       }
       var dd = String(d).padStart(2, '0');
       var mm = String(mo + 1).padStart(2, '0');
       var yyyy = String(y);
       var rr = yyyy.slice(-2);
-      var dz = dd + '.' + mm + '.' + yyyy;
-      var dzPlik = dd + '.' + mm + '.' + rr;
+      return {
+        pr: prOpt.dane,
+        md: mdOpt.dane,
+        prOpt: prOpt,
+        mdOpt: mdOpt,
+        dz: dd + '.' + mm + '.' + yyyy,
+        dzPlik: dd + '.' + mm + '.' + rr
+      };
+    }
+    function updateTransportCutoffAfterAppend(p, dz) {
+      if (!window.__transportDateByKey) window.__transportDateByKey = {};
+      var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
+      var key = buildTransportShopKeyMap(podmiot, p.adres);
+      var ms = parseSealClosureDateMs(dz);
+      if (isFinite(ms) && ms !== Number.NEGATIVE_INFINITY) {
+        window.__transportDateByKey[key] = ms;
+      }
+    }
+    function delayMs(ms) {
+      return new Promise(function (resolve) { window.setTimeout(resolve, ms); });
+    }
+    function runBulkDocGenerate() {
+      if (transportApiEnabled && !window.__docModalDataReady) {
+        alert('Poczekaj na załadowanie danych transportu.');
+        return;
+      }
+      if (!transportApiEnabled) {
+        alert('Tryb zbiorczy wymaga połączenia z rejestrem transportów (TRANSPORT_WEBAPP_URL).');
+        return;
+      }
+      var form = parseDocFormValues();
+      if (!form) return;
+      var jobs = (window.__docBulkPointJobs || []).filter(function (job) {
+        return job.filteredSeals && job.filteredSeals.length > 0;
+      });
+      if (jobs.length === 0) {
+        alert('Brak worków do protokołu we wszystkich zaznaczonych punktach.');
+        return;
+      }
+      var okBtn = document.getElementById('doc-btn-ok');
+      var filterInfo = document.getElementById('doc-filter-info');
+      if (okBtn) okBtn.disabled = true;
+      ensureDocxLibrariesLoaded().then(function () {
+        var generated = 0;
+        var failed = 0;
+        var chain = Promise.resolve();
+        jobs.forEach(function (job, jobIdx) {
+          chain = chain.then(function () {
+            var p = adresy[job.pointIdx];
+            if (!p) return Promise.resolve();
+            if (filterInfo) {
+              filterInfo.textContent = 'Generowanie ' + (jobIdx + 1) + ' / ' + jobs.length + ': ' + p.adres;
+            }
+            var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
+            var transportPayload = {
+              numer: '',
+              adresSklepu: p.adres,
+              podmiotHandlowy: podmiot,
+              sklep: p.sklep || '',
+              dataOdbioru: form.dz,
+              ktoOdbiera: form.prOpt.label,
+              miejsceZrzutu: form.mdOpt.label,
+              rodzajZbiorki: p.rodzaj_zbiorki || '',
+              iloscWorkow: job.filteredSeals.length
+            };
+            return appendTransportRow(transportPayload).then(function (resp) {
+              if (!resp || !resp.ok) {
+                throw new Error(resp && resp.error ? resp.error : 'błąd API');
+              }
+              var numerZlecenia = String(resp.numer || '');
+              renderDocxAndDownload(p, form.pr, form.md, form.prOpt, form.dz, form.dzPlik, numerZlecenia, job.filteredSeals, job.preparedLists, { closeModal: false });
+              updateTransportCutoffAfterAppend(p, form.dz);
+              if (typeof markerEntries !== 'undefined') {
+                markerEntries.forEach(function (entry) {
+                  if (entry.pointIdx === job.pointIdx) refreshMarkerDisplay(entry);
+                });
+              }
+              generated += 1;
+              return delayMs(400);
+            });
+          }).catch(function (err) {
+            console.error(err);
+            failed += 1;
+          });
+        });
+        return chain.then(function () {
+          clearBulkSelection();
+          closeDocModal();
+          if (failed > 0) {
+            alert('Wygenerowano ' + generated + ' protokołów. Nie udało się: ' + failed + '.');
+          } else {
+            alert('Wygenerowano ' + generated + ' protokołów.');
+          }
+        });
+      }).catch(function (err) {
+        console.error(err);
+        alert('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.');
+      }).then(function () {
+        if (okBtn) okBtn.disabled = false;
+      });
+    }
+    function runDocGenerate() {
+      if (window.__docModalMode === 'bulk') {
+        runBulkDocGenerate();
+        return;
+      }
+      if (transportApiEnabled && !window.__docModalDataReady) {
+        alert('Poczekaj na załadowanie danych transportu (numer i filtr worków).');
+        return;
+      }
+      var idx = window.__currentDocPointIdx;
+      if (idx == null || idx < 0 || !adresy[idx]) {
+        alert('Błąd: brak punktu.');
+        return;
+      }
+      var form = parseDocFormValues();
+      if (!form) return;
+      var pr = form.pr;
+      var md = form.md;
+      var prOpt = form.prOpt;
+      var mdOpt = form.mdOpt;
+      var dz = form.dz;
+      var dzPlik = form.dzPlik;
+      var p = adresy[idx];
       var filteredSeals = window.__docFilteredSeals || p.sealRows || [];
       if (filteredSeals.length === 0) {
         alert('Brak worków do protokołu po filtrze dat (od ostatniego transportu).');
@@ -1672,6 +1996,7 @@ ${wordModal}  <script>
       marker.on('popupopen', function() {
         marker.setPopupContent(buildPopupContent(p, pointIdx));
         if (!wordDocEnabled) return;
+        wirePopupBulkCheckbox(marker, pointIdx);
         var el = marker.getPopup().getElement();
         if (!el) return;
         var btn = el.querySelector('.btn-gen-doc');
@@ -1701,6 +2026,13 @@ ${wordModal}  <script>
         '<label><input type="radio" name="map-zbiorka-filter" value="maszyna" /> Tylko maszynowa</label>' +
         '</div></div>'
       : '';
+    var bulkPanelHtml = wordDocEnabled
+      ? '<div id="map-bulk-panel" class="map-bulk-panel" hidden>' +
+        '<span id="map-bulk-count" class="map-bulk-count">0 punktów zaznaczonych</span>' +
+        '<button type="button" id="map-bulk-generate" class="map-bulk-generate">Generuj protokoły</button>' +
+        '<button type="button" id="map-bulk-clear" class="map-bulk-clear">Wyczyść</button>' +
+        '</div>'
+      : '';
 
     var searchControl = L.control({ position: 'topleft' });
     searchControl.onAdd = function() {
@@ -1714,7 +2046,8 @@ ${wordModal}  <script>
         '<button type="button" id="map-zoom-in" title="Powiększ" aria-label="Powiększ">+</button>' +
         '</div></div>' +
         '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>' +
-        zbiorkaFilterHtml;
+        zbiorkaFilterHtml +
+        bulkPanelHtml;
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
       var zIn = wrap.querySelector('#map-zoom-in');
@@ -1725,6 +2058,29 @@ ${wordModal}  <script>
         var zbiorkaRadios = wrap.querySelectorAll('input[name="map-zbiorka-filter"]');
         for (var zi = 0; zi < zbiorkaRadios.length; zi++) {
           zbiorkaRadios[zi].addEventListener('change', applyAddressSearch);
+        }
+      }
+      if (wordDocEnabled) {
+        var bulkGenBtn = wrap.querySelector('#map-bulk-generate');
+        var bulkClearBtn = wrap.querySelector('#map-bulk-clear');
+        if (bulkGenBtn) {
+          bulkGenBtn.onclick = function () {
+            var indices = getBulkSelectedIndices();
+            if (indices.length === 0) {
+              alert('Zaznacz co najmniej jeden punkt na mapie.');
+              return;
+            }
+            openBulkDocModal(indices);
+          };
+        }
+        if (bulkClearBtn) {
+          bulkClearBtn.onclick = function () {
+            clearBulkSelection();
+            markerEntries.forEach(function (entry) {
+              entry.marker.setPopupContent(buildPopupContent(entry.p, entry.pointIdx));
+            });
+            applyAddressSearch();
+          };
         }
       }
       return wrap;
@@ -1793,7 +2149,9 @@ ${wordModal}  <script>
         setMarkerClickable(entry.marker, true);
         entry.marker.setOpacity(hasSearchFilter && !sMatch ? 0.3 : 1);
         entry.marker.setZIndexOffset(hasSearchFilter && sMatch ? 800 : 0);
-        entry.marker.setIcon(pinIcon(entry.kolor, hasSearchFilter && sMatch));
+        var selected = isBulkPointSelected(entry.pointIdx);
+        var highlight = selected || (hasSearchFilter && sMatch);
+        entry.marker.setIcon(pinIcon(entry.kolor, highlight));
       });
       if (statusEl) {
         if (!hasSearchFilter) {

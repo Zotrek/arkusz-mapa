@@ -493,6 +493,12 @@ describe('phase6', () => {
       expect(html).toContain('numer_zlecenia_transportowego');
       expect(html).toContain('defaultDateZaladunkuYmd');
       expect(html).toContain('loadDocModalData');
+      expect(html).toContain('loadBulkDocModalData');
+      expect(html).toContain('runBulkDocGenerate');
+      expect(html).toContain('openBulkDocModal');
+      expect(html).toContain('map-bulk-panel');
+      expect(html).toContain('popup-bulk-cb');
+      expect(html).toContain('Zaznacz do zbiorczego protokołu');
       expect(html).toContain('appendTransportRow');
       expect(html).toContain('filterSealRowsByMinDate');
       expect(html).toContain('buildDocListsFromSealRows');
