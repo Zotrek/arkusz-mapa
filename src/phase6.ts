@@ -651,6 +651,8 @@ export function buildMapHtml(
     ? `
     .btn-gen-doc { margin-top: 8px; padding: 6px 12px; cursor: pointer; border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; font-size: 13px; width: 100%; }
     .btn-gen-doc:hover { filter: brightness(1.05); }
+    .btn-gen-doc:disabled { opacity: 0.45; cursor: not-allowed; filter: none; background: #adb5bd; border-color: #adb5bd; }
+    .btn-gen-doc:disabled:hover { filter: none; }
     .doc-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 20000; align-items: center; justify-content: center; }
     .doc-modal-panel { background: #fff; padding: 20px 22px; border-radius: 10px; max-width: 420px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
     .doc-modal-panel h3 { margin: 0 0 14px 0; font-size: 16px; }
@@ -995,13 +997,10 @@ ${
         return '<div class="popup-count">Liczba wystąpień: <strong>' + c.total + '</strong></div>';
       }
       var main = '<div class="popup-count">Worki do odebrania: <strong>' + c.filtered + '</strong></div>';
-      if (c.filtered === c.total) {
-        return main + '<div class="popup-count-detail">Wszystkie worki: ' + c.total + '</div>';
-      }
-      var extra = c.cutoffYmd ? (' (od transportu ' + formatYmdToDisplay(c.cutoffYmd) + ')') : '';
-      return main +
-        '<div class="popup-count-detail">Nie odebrane: ' + c.filtered +
-        ' · Wszystkie worki: ' + c.total + extra + '</div>';
+      var transportDate = c.cutoffYmd
+        ? '<div class="popup-count-detail">Ostatni transport: ' + formatYmdToDisplay(c.cutoffYmd) + '</div>'
+        : '';
+      return main + transportDate + '<div class="popup-count-detail">Wszystkie worki: ' + c.total + '</div>';
     }
     function buildPopupContent(p, pointIdx) {
       var confidenceLabel =
@@ -1019,8 +1018,10 @@ ${
         p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
           ? '<div class="popup-podmiot">Podmiot handlowy: ' + p.podmiotyHandlowe.join(', ') + '</div>'
           : '';
+      var bulkSelected = isBulkPointSelected(pointIdx);
       var genDocBtn = wordDocEnabled
-        ? '<div><button type="button" class="btn-gen-doc">Generuj dokument</button></div>'
+        ? '<div><button type="button" class="btn-gen-doc"' + (bulkSelected ? ' disabled' : '') +
+          '>Generuj dokument</button></div>'
         : '';
       var bulkSelect = wordDocEnabled
         ? '<label class="popup-bulk-select"><input type="checkbox" class="popup-bulk-cb" data-point-idx="' + pointIdx + '"' +
@@ -1085,16 +1086,23 @@ ${
         });
       }
     }
-    function wirePopupBulkCheckbox(marker, pointIdx) {
+    function wirePopupControls(marker, pointIdx) {
       if (!wordDocEnabled) return;
       var el = marker.getPopup().getElement();
       if (!el) return;
       var cb = el.querySelector('.popup-bulk-cb');
-      if (!cb) return;
-      cb.onchange = function () {
-        setBulkPointSelected(pointIdx, cb.checked);
-        marker.setPopupContent(buildPopupContent(adresy[pointIdx], pointIdx));
-        wirePopupBulkCheckbox(marker, pointIdx);
+      if (cb) {
+        cb.onchange = function () {
+          setBulkPointSelected(pointIdx, cb.checked);
+          marker.setPopupContent(buildPopupContent(adresy[pointIdx], pointIdx));
+          wirePopupControls(marker, pointIdx);
+        };
+      }
+      var btn = el.querySelector('.btn-gen-doc');
+      if (!btn || btn.disabled) return;
+      btn.onclick = function (ev) {
+        if (ev.stopPropagation) ev.stopPropagation();
+        openDocModal(pointIdx);
       };
     }
     function refreshMarkerDisplay(entry) {
@@ -2118,16 +2126,7 @@ ${
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
       marker.on('popupopen', function() {
         marker.setPopupContent(buildPopupContent(p, pointIdx));
-        if (!wordDocEnabled) return;
-        wirePopupBulkCheckbox(marker, pointIdx);
-        var el = marker.getPopup().getElement();
-        if (!el) return;
-        var btn = el.querySelector('.btn-gen-doc');
-        if (!btn) return;
-        btn.onclick = function(ev) {
-          if (ev.stopPropagation) ev.stopPropagation();
-          openDocModal(pointIdx);
-        };
+        wirePopupControls(marker, pointIdx);
       });
     });
 

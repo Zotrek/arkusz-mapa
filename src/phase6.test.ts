@@ -570,8 +570,11 @@ describe('phase6', () => {
       expect(html).toContain('Pobieranie danych transportu');
       expect(html).toContain('setTransportDatesLoading');
       expect(html).toContain('Worki do odebrania');
-      expect(html).toContain('Nie odebrane');
+      expect(html).toContain('Ostatni transport');
       expect(html).toContain('Wszystkie worki');
+      expect(html).not.toContain('Nie odebrane');
+      expect(html).toContain('btn-gen-doc:disabled');
+      expect(html).toContain('wirePopupControls');
     });
 
     it('test_buildMapHtml_when_transport_url_given_should_embed_api_and_enable_flag', () => {
