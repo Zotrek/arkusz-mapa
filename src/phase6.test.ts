@@ -29,10 +29,12 @@ import {
   findCloseMapPointPairs,
   buildCloseGeocodedAddressPairs,
   buildTransportShopKey,
+  resolveTransportCutoffMsForPoint,
   MAP_MARKER_CLUSTER_MAX_M,
   MAP_SEARCH_SINGLE_MATCH_ZOOM,
   MAP_SEARCH_FIT_PADDING,
 } from './phase6';
+import { filterSealRowsByMinClosureDate } from './wordMapSupport';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
   return {
@@ -516,6 +518,42 @@ describe('phase6', () => {
       expect(buildTransportShopKey('Żabka', 'Kraków')).toBe('zabka\u0000krakow');
     });
 
+    it('test_resolveTransportCutoffMsForPoint_when_podmiot_mismatch_should_return_null', () => {
+      const adres = '62-320 Miłosław ul. Leśna 1';
+      const byKey = {
+        [buildTransportShopKey('Inny Podmiot', adres)]: Date.UTC(2026, 5, 10),
+      };
+      expect(
+        resolveTransportCutoffMsForPoint({ podmiotHandlowy: 'PH SA', adres }, byKey),
+      ).toBeNull();
+    });
+
+    it('test_resolveTransportCutoffMsForPoint_when_multiple_podmioty_should_use_latest_transport', () => {
+      const adres = '00-001 Warszawa ul. Testowa 1';
+      const byKey = {
+        [buildTransportShopKey('Firma A', adres)]: Date.UTC(2026, 5, 1),
+        [buildTransportShopKey('Firma B', adres)]: Date.UTC(2026, 5, 10),
+      };
+      expect(
+        resolveTransportCutoffMsForPoint(
+          { podmiotHandlowy: 'Firma A', podmiotyHandlowe: ['Firma B'], adres },
+          byKey,
+        ),
+      ).toBe(Date.UTC(2026, 5, 10));
+    });
+
+    it('test_filterSealRows_when_last_transport_june10_should_keep_june10_and_later_dmy', () => {
+      const cutoff = Date.UTC(2026, 5, 10);
+      const rows = [
+        { numerPlomby: 'old1', dataZamknieciaWorka: '01.06.2026', zbiorka: '' },
+        { numerPlomby: 'old2', dataZamknieciaWorka: '05.06.2026', zbiorka: '' },
+        { numerPlomby: 'same', dataZamknieciaWorka: '10.06.2026', zbiorka: '' },
+        { numerPlomby: 'new', dataZamknieciaWorka: '15.06.2026', zbiorka: '' },
+      ];
+      const filtered = filterSealRowsByMinClosureDate(rows, cutoff);
+      expect(filtered.map((r) => r.numerPlomby)).toEqual(['same', 'new']);
+    });
+
     it('test_buildMapHtml_when_transport_url_given_should_embed_bulk_dates_loader', () => {
       const html = buildMapHtml(
         sampleGeocoded(),
@@ -528,6 +566,9 @@ describe('phase6', () => {
       );
       expect(html).toContain('loadBulkTransportDates');
       expect(html).toContain('bulkLastTransportDates');
+      expect(html).toContain('map-transport-loader');
+      expect(html).toContain('Pobieranie danych transportu');
+      expect(html).toContain('setTransportDatesLoading');
       expect(html).toContain('Worki do odebrania');
       expect(html).toContain('Nie odebrane');
       expect(html).toContain('Wszystkie worki');
@@ -546,6 +587,19 @@ describe('phase6', () => {
       expect(html).toContain('const transportApiEnabled = true');
       expect(html).toContain('https://script.google.com/macros/s/test/exec');
       expect(html).toContain('TRANSPORT_WEBAPP_URL');
+    });
+
+    it('test_buildMapHtml_when_no_transport_url_should_not_embed_transport_loader', () => {
+      const html = buildMapHtml(
+        sampleGeocoded(),
+        [],
+        'https://example.com/woj.json',
+        [],
+        [],
+        { templateBase64: 'UEsDBA==', podwykoOptions: [] },
+      );
+      expect(html).not.toContain('id="map-transport-loader"');
+      expect(html).toContain('const transportApiEnabled = false');
     });
 
     it('test_buildMapHtml_when_geocoded_has_rows_should_embed_sealRows_and_podmiot', () => {

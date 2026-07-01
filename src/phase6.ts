@@ -404,6 +404,60 @@ export function buildTransportShopKey(podmiot: string, adres: string): string {
   return `${normalizeForAddressSearch(podmiot)}\u0000${normalizeForAddressSearch(adres)}`;
 }
 
+export interface TransportCutoffPoint {
+  podmiotHandlowy?: string;
+  podmiotyHandlowe?: string[];
+  adres: string;
+}
+
+/**
+ * Ostatnia data transportu (ms UTC) dla punktu mapy.
+ * Wymaga dopasowania **podmiot + adres** — próbuje wszystkich podmiotów przypisanych do punktu.
+ */
+export function resolveTransportCutoffMsForPoint(
+  point: TransportCutoffPoint,
+  byKey: Record<string, number>,
+): number | null {
+  if (!byKey) {
+    return null;
+  }
+  const normAdres = normalizeForAddressSearch(point.adres);
+  if (normAdres.length === 0) {
+    return null;
+  }
+
+  const podmioty: string[] = [];
+  const addPodmiot = (raw: string | undefined): void => {
+    const t = String(raw ?? '').trim();
+    if (t.length === 0) {
+      return;
+    }
+    if (podmioty.some((existing) => normalizeForAddressSearch(existing) === normalizeForAddressSearch(t))) {
+      return;
+    }
+    podmioty.push(t);
+  };
+  addPodmiot(point.podmiotHandlowy);
+  if (point.podmiotyHandlowe) {
+    for (const p of point.podmiotyHandlowe) {
+      addPodmiot(p);
+    }
+  }
+  if (podmioty.length === 0) {
+    return null;
+  }
+
+  let best: number | null = null;
+  for (const podmiot of podmioty) {
+    const ms = byKey[buildTransportShopKey(podmiot, point.adres)];
+    if (ms != null && Number.isFinite(ms) && (best == null || ms > best)) {
+      best = ms;
+    }
+  }
+
+  return best;
+}
+
 /** Filtr warstwy zbiórki na mapie (domyślnie: wszystkie punkty). */
 export type ZbiorkaFilterMode = 'wszystkie' | 'obie' | 'reczna' | 'maszyna';
 
@@ -672,11 +726,30 @@ export function buildMapHtml(
     .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 4px; }
     .map-zbiorka-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-zbiorka-filter-options input { margin: 0; flex-shrink: 0; }
-${docStyles}  </style>
+${
+  transportApiEnabled
+    ? `    .map-transport-loader { position: fixed; z-index: 15000; left: 50%; top: 14px; transform: translateX(-50%); pointer-events: none; }
+    .map-transport-loader[hidden] { display: none !important; }
+    .map-transport-loader-panel { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.18); font-size: 13px; color: #333; border: 1px solid #dee2e6; }
+    .map-transport-loader-spinner { width: 18px; height: 18px; border: 2px solid #dee2e6; border-top-color: #0d6efd; border-radius: 50%; animation: map-transport-spin 0.75s linear infinite; flex-shrink: 0; }
+    @keyframes map-transport-spin { to { transform: rotate(360deg); } }
+`
+    : ''
+}${docStyles}  </style>
 </head>
 <body>
   <div id="map"></div>
-${wordModal}  <script>
+${
+  transportApiEnabled
+    ? `  <div id="map-transport-loader" class="map-transport-loader" role="status" aria-live="polite" aria-busy="true">
+    <div class="map-transport-loader-panel">
+      <span class="map-transport-loader-spinner" aria-hidden="true"></span>
+      <span>Pobieranie danych transportu…</span>
+    </div>
+  </div>
+`
+    : ''
+}${wordModal}  <script>
     const adresy = ${JSON.stringify(points)};
     const legendQualityItems = ${JSON.stringify(legendQualityItems)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
@@ -869,10 +942,28 @@ ${wordModal}  <script>
     function getPointTransportCutoff(p) {
       var byKey = window.__transportDateByKey;
       if (!byKey) return null;
-      var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
-      var key = buildTransportShopKeyMap(podmiot, p.adres);
-      var ms = byKey[key];
-      return ms != null ? ms : null;
+      if (!normalizeForAddressSearchMap(p.adres)) return null;
+      var podmioty = [];
+      function addPodmiot(raw) {
+        var t = String(raw || '').trim();
+        if (!t) return;
+        var nk = normalizeForAddressSearchMap(t);
+        for (var i = 0; i < podmioty.length; i++) {
+          if (normalizeForAddressSearchMap(podmioty[i]) === nk) return;
+        }
+        podmioty.push(t);
+      }
+      addPodmiot(p.podmiotHandlowy);
+      if (p.podmiotyHandlowe) {
+        for (var pi = 0; pi < p.podmiotyHandlowe.length; pi++) addPodmiot(p.podmiotyHandlowe[pi]);
+      }
+      if (podmioty.length === 0) return null;
+      var best = null;
+      for (var pj = 0; pj < podmioty.length; pj++) {
+        var ms = byKey[buildTransportShopKeyMap(podmioty[pj], p.adres)];
+        if (ms != null && isFinite(ms) && (best == null || ms > best)) best = ms;
+      }
+      return best;
     }
     function countSealRows(sealRows) {
       return (sealRows || []).length;
@@ -896,7 +987,11 @@ ${wordModal}  <script>
     }
     function buildPopupCountHtml(p) {
       var c = getPointSealCounts(p);
-      if (!transportApiEnabled || !window.__transportDatesLoaded) {
+      if (transportApiEnabled && !window.__transportDatesLoaded) {
+        return '<div class="popup-count">Worki do odebrania: <strong>…</strong></div>' +
+          '<div class="popup-count-detail">Trwa pobieranie danych transportu</div>';
+      }
+      if (!transportApiEnabled) {
         return '<div class="popup-count">Liczba wystąpień: <strong>' + c.total + '</strong></div>';
       }
       var main = '<div class="popup-count">Worki do odebrania: <strong>' + c.filtered + '</strong></div>';
@@ -1010,13 +1105,21 @@ ${wordModal}  <script>
       entry.marker.setIcon(markerDisplayIcon(entry, false));
       entry.marker.setPopupContent(buildPopupContent(p, entry.pointIdx));
     }
+    function setTransportDatesLoading(loading) {
+      var el = document.getElementById('map-transport-loader');
+      if (!el) return;
+      el.hidden = !loading;
+      el.setAttribute('aria-busy', loading ? 'true' : 'false');
+    }
     function loadBulkTransportDates() {
       window.__transportDateByKey = {};
       window.__transportDatesLoaded = false;
       if (!transportApiEnabled) {
         window.__transportDatesLoaded = true;
+        setTransportDatesLoading(false);
         return Promise.resolve();
       }
+      setTransportDatesLoading(true);
       return fetchTransportGet({ action: 'bulkLastTransportDates' }).then(function (resp) {
         var byKey = {};
         if (resp && resp.ok && resp.shops) {
@@ -1034,6 +1137,11 @@ ${wordModal}  <script>
       }).catch(function (err) {
         console.error(err);
         window.__transportDatesLoaded = true;
+        markerEntries.forEach(function (entry) {
+          refreshMarkerDisplay(entry);
+        });
+      }).then(function () {
+        setTransportDatesLoading(false);
       });
     }
     function podwykoOptionMatchesQuery(opt, query) {
@@ -1579,6 +1687,10 @@ ${wordModal}  <script>
     }
     function openDocModal(pointIdx) {
       if (!wordDocEnabled) return;
+      if (transportApiEnabled && !window.__transportDatesLoaded) {
+        alert('Poczekaj na pobranie danych transportu (w górnej części mapy).');
+        return;
+      }
       window.__currentDocPointIdx = pointIdx;
       window.__bulkDocPointIdxs = [];
       setDocModalMode('single');
@@ -1598,6 +1710,10 @@ ${wordModal}  <script>
     }
     function openBulkDocModal(indices) {
       if (!wordDocEnabled || !indices || indices.length === 0) return;
+      if (transportApiEnabled && !window.__transportDatesLoaded) {
+        alert('Poczekaj na pobranie danych transportu (w górnej części mapy).');
+        return;
+      }
       window.__currentDocPointIdx = null;
       window.__bulkDocPointIdxs = indices.slice();
       setDocModalMode('bulk');
