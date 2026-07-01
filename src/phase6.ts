@@ -27,6 +27,9 @@ const COLOR_15_PLUS = '#fd7e14';
 /** Kolor pinezki dla 10–14 wystąpień. */
 const COLOR_10_14 = '#ffc107';
 
+/** Kolor pinezki zaznaczonej do zbiorczego protokołu (poza paletą worków). */
+const COLOR_BULK_SELECTED = '#6f42c1';
+
 /** Maks. odległość między punktami (m), aby uznać je za „nakładające się” na mapie. */
 export const MAP_MARKER_CLUSTER_MAX_M = 20;
 
@@ -720,6 +723,7 @@ ${wordModal}  <script>
       cartoTileErrors = 0;
     });
 
+    var colorBulkSelected = ${JSON.stringify(COLOR_BULK_SELECTED)};
     function pinIcon(kolor, highlight) {
       var shadow = highlight
         ? '0 0 0 3px #ea3aed, 0 1px 4px rgba(0,0,0,0.45)'
@@ -731,6 +735,11 @@ ${wordModal}  <script>
         iconAnchor: [12, 12],
         popupAnchor: [0, -12]
       });
+    }
+    function markerDisplayIcon(entry, searchHighlight) {
+      var selected = isBulkPointSelected(entry.pointIdx);
+      var fill = selected ? colorBulkSelected : entry.kolor;
+      return pinIcon(fill, selected || searchHighlight);
     }
     function normalizeForAddressSearchMap(text) {
       var s = String(text).normalize('NFD').replace(/\\p{M}/gu, '');
@@ -973,13 +982,11 @@ ${wordModal}  <script>
       }
       if (typeof markerEntries !== 'undefined') {
         markerEntries.forEach(function (entry) {
-          var selected = isBulkPointSelected(entry.pointIdx);
           var inputEl = document.getElementById('map-address-search');
           var raw = inputEl ? inputEl.value : '';
           var hasSearchFilter = String(raw).trim().length > 0;
           var sMatch = !hasSearchFilter || mapPointMatchesSearchMap(entry.p, raw);
-          var highlight = selected || (hasSearchFilter && sMatch);
-          entry.marker.setIcon(pinIcon(entry.kolor, highlight));
+          entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
         });
       }
     }
@@ -1000,7 +1007,7 @@ ${wordModal}  <script>
       var displayCount = displayCountForPoint(p);
       var kolor = kolorPinezki(p.confidence, displayCount);
       entry.kolor = kolor;
-      entry.marker.setIcon(pinIcon(kolor, false));
+      entry.marker.setIcon(markerDisplayIcon(entry, false));
       entry.marker.setPopupContent(buildPopupContent(p, entry.pointIdx));
     }
     function loadBulkTransportDates() {
@@ -2149,9 +2156,7 @@ ${wordModal}  <script>
         setMarkerClickable(entry.marker, true);
         entry.marker.setOpacity(hasSearchFilter && !sMatch ? 0.3 : 1);
         entry.marker.setZIndexOffset(hasSearchFilter && sMatch ? 800 : 0);
-        var selected = isBulkPointSelected(entry.pointIdx);
-        var highlight = selected || (hasSearchFilter && sMatch);
-        entry.marker.setIcon(pinIcon(entry.kolor, highlight));
+        entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
       });
       if (statusEl) {
         if (!hasSearchFilter) {
@@ -2191,7 +2196,12 @@ ${wordModal}  <script>
           '<li><span class="legend-swatch" style="background:' + color15Plus + '"></span> 15+</li>' +
           '</ul></div>'
         : '';
-      div.innerHTML = qualityHtml + countHtml;
+      var bulkLegendHtml = wordDocEnabled
+        ? '<div class="legend-section"><h3>Zaznaczenie zbiorcze</h3><ul>' +
+          '<li><span class="legend-swatch" style="background:' + colorBulkSelected + '"></span> Punkt zaznaczony</li>' +
+          '</ul></div>'
+        : '';
+      div.innerHTML = qualityHtml + countHtml + bulkLegendHtml;
       return div;
     };
     legend.addTo(map);
