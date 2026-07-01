@@ -9922,10 +9922,10 @@
     },
     "38-307 SIARY 11 SIARY 11": {
       "status": "uncertain",
-      "lat": 49.6037374,
-      "lng": 21.2300082,
+      "lat": 49.603933,
+      "lng": 21.2298574,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-06-30T21:41:54.943Z"
+      "updatedAt": "2026-07-01T19:57:59.337Z"
     },
     "39-451 Skopanie Aleja Generała Sikorskiego 11": {
       "status": "ok",
@@ -10054,8 +10054,11 @@
       "updatedAt": "2026-06-30T13:11:42.257Z"
     },
     "33-331 POLNA STARA REMIZA OSP 1": {
-      "status": "bad",
-      "updatedAt": "2026-06-30T21:42:25.800Z"
+      "status": "ok",
+      "lat": 49.67345526186956,
+      "lng": 20.989682739255844,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:03:20.234Z"
     },
     "97-318 Czarnocin Biskupia Wola 130": {
       "status": "city_only",
@@ -10160,14 +10163,14 @@
       "lat": 51.898298,
       "lng": 16.03966,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-06-30T21:43:03.242Z"
+      "updatedAt": "2026-07-01T19:57:24.055Z"
     },
     "74-304 Nowogrodek Pomorski Trzcinna 82": {
       "status": "uncertain",
       "lat": 52.8842985,
       "lng": 15.0106316,
       "wojewodztwo": "Zachodniopomorskie",
-      "updatedAt": "2026-06-30T21:43:28.102Z"
+      "updatedAt": "2026-07-01T19:58:49.968Z"
     },
     "27-400 OSTROWIEC ŚWIĘTOKRZYSKI 32 ul. Kilińskiego 27-400 OSTROWIEC ŚW 32": {
       "status": "city_only",
@@ -10202,7 +10205,7 @@
       "lat": 53.3500552,
       "lng": 14.4600882,
       "wojewodztwo": "Zachodniopomorskie",
-      "updatedAt": "2026-06-30T21:43:39.803Z"
+      "updatedAt": "2026-07-01T19:59:02.363Z"
     },
     "46-080 CHRÓŚCICE Powstańców śląskich 25": {
       "status": "ok",
@@ -10490,6 +10493,90 @@
       "lng": 17.4872206,
       "wojewodztwo": "Wielkopolskie",
       "updatedAt": "2026-06-30T21:41:30.024Z"
+    },
+    "42-244 Jaźwiny JAŹWINY 5a": {
+      "status": "ok",
+      "lat": 50.81637,
+      "lng": 19.40576,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-07-01T19:56:12.917Z"
+    },
+    "34-407 Ciche 170 170": {
+      "status": "ok",
+      "lat": 49.38753943152643,
+      "lng": 19.86946021984651,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:03:20.234Z"
+    },
+    "31-236 Kraków Meiera 20B": {
+      "status": "ok",
+      "lat": 50.099069,
+      "lng": 19.9647674,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T19:56:31.757Z"
+    },
+    "21-302 Brzozowica Duża 119c 119c": {
+      "status": "ok",
+      "lat": 51.94931976072873,
+      "lng": 22.607395321564862,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-01T20:03:20.234Z"
+    },
+    "95-200 Pabianice Piłsudskiego 3F": {
+      "status": "ok",
+      "lat": 51.6657325,
+      "lng": 19.3584006,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-01T19:57:27.018Z"
+    },
+    "30-389 Kraków Kamieniecka 16": {
+      "status": "ok",
+      "lat": 50.001127,
+      "lng": 19.8984571,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T19:57:30.216Z"
+    },
+    "27-423 Bałtów Bałtów 169a": {
+      "status": "ok",
+      "lat": 51.0129371,
+      "lng": 21.551248,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-07-01T19:57:33.092Z"
+    },
+    "39-305 GLINY MAŁE GLINY MAŁE 71": {
+      "status": "ok",
+      "lat": 50.4088655,
+      "lng": 21.320136,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-01T19:57:36.433Z"
+    },
+    "97-200 TOMASZÓW MAZOWIECKI Ludwikowska 76": {
+      "status": "ok",
+      "lat": 51.5165275,
+      "lng": 20.0450535,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-01T19:57:39.132Z"
+    },
+    "39-304 Czermin Czermin 438A": {
+      "status": "ok",
+      "lat": 50.7674816,
+      "lng": 21.7879192,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-07-01T19:57:42.359Z"
+    },
+    "32-353 Trzyciąż Krakowska 8a": {
+      "status": "ok",
+      "lat": 50.3095049,
+      "lng": 19.7674833,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T19:57:45.227Z"
+    },
+    "56-321 Pakoslawsko 48A 48A": {
+      "status": "ok",
+      "lat": 51.61085043197812,
+      "lng": 17.301306032581515,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-01T20:03:20.234Z"
     }
   }
 }
