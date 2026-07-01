@@ -4,6 +4,7 @@
  *   Execute as: Me | Who has access: Anyone
  *
  * GET ?action=modalData&podmiot=…&adres=…  (zalecane — jeden request)
+ * GET ?action=bulkLastTransportDates  (ostatnie daty odbioru dla wszystkich sklepów — mapa)
  * GET ?action=previewNumber
  * GET ?action=lastTransportDate&podmiot=…&adres=…
  * POST (body JSON, Content-Type: text/plain) — append wiersza + atomowa numeracja
@@ -31,6 +32,9 @@ function doGet(e) {
       var podmiot = (e.parameter.podmiot || '').toString();
       var adres = (e.parameter.adres || '').toString();
       return jsonResponse(buildModalDataResponse_(podmiot, adres));
+    }
+    if (action === 'bulkLastTransportDates') {
+      return jsonResponse(buildBulkLastTransportDatesResponse_());
     }
     if (action === 'previewNumber') {
       return jsonResponse({ ok: true, numer: String(getPreviewNumber_()) });
@@ -286,6 +290,51 @@ function rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres) {
     return false;
   }
   return buildTransportShopKey_(rowPodmiot, rowAdres) === targetKey;
+}
+
+/** Jednorazowy skan arkusza: klucz sklepu → max data odbioru (ms). */
+function buildBulkLastTransportDatesMap_() {
+  var sheet = getDataSheet_();
+  var lastRow = sheet.getLastRow();
+  var result = {};
+  if (lastRow < 2) {
+    return result;
+  }
+  var range = sheet.getRange(2, COL.adres, lastRow, COL.dataOdbioru);
+  var rows = range.getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var rowAdres = rows[i][0];
+    var rowPodmiot = rows[i][1];
+    var rowData = rows[i][3];
+    var key = buildTransportShopKey_(rowPodmiot, rowAdres);
+    if (!key || key === '\0') {
+      continue;
+    }
+    var ms = parseDateToMs_(rowData);
+    if (ms == null) {
+      continue;
+    }
+    if (result[key] == null || ms > result[key]) {
+      result[key] = ms;
+    }
+  }
+  return result;
+}
+
+function buildBulkLastTransportDatesResponse_() {
+  var raw = buildBulkLastTransportDatesMap_();
+  var shops = [];
+  var keys = Object.keys(raw);
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var ms = raw[key];
+    shops.push({
+      key: key,
+      lastTransportDateMs: ms,
+      lastTransportDateYmd: formatYmdFromMs_(ms),
+    });
+  }
+  return { ok: true, shops: shops };
 }
 
 function findLastTransportDateMs_(podmiot, adres) {

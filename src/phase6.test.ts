@@ -28,6 +28,7 @@ import {
   spreadCloseMarkerPositions,
   findCloseMapPointPairs,
   buildCloseGeocodedAddressPairs,
+  buildTransportShopKey,
   MAP_MARKER_CLUSTER_MAX_M,
   MAP_SEARCH_SINGLE_MATCH_ZOOM,
   MAP_SEARCH_FIT_PADDING,
@@ -498,6 +499,30 @@ describe('phase6', () => {
       expect(html).toContain('doc-filter-info');
       expect(html).toContain('transportApiEnabled');
       expect(html).toContain('var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;');
+    });
+
+    it('test_buildTransportShopKey_when_podmiot_and_adres_given_should_normalize_like_transport_sheet', () => {
+      expect(buildTransportShopKey('Firma SA', '00-001 Warszawa ul. Testowa 1')).toBe(
+        'firma sa\u000000-001 warszawa ul. testowa 1',
+      );
+      expect(buildTransportShopKey('Żabka', 'Kraków')).toBe('zabka\u0000krakow');
+    });
+
+    it('test_buildMapHtml_when_transport_url_given_should_embed_bulk_dates_loader', () => {
+      const html = buildMapHtml(
+        sampleGeocoded(),
+        [],
+        'https://example.com/woj.json',
+        [],
+        [],
+        { templateBase64: 'UEsDBA==', podwykoOptions: [] },
+        'https://script.google.com/macros/s/test/exec',
+      );
+      expect(html).toContain('loadBulkTransportDates');
+      expect(html).toContain('bulkLastTransportDates');
+      expect(html).toContain('Worki do odebrania');
+      expect(html).toContain('Nie odebrane');
+      expect(html).toContain('Wszystkie worki');
     });
 
     it('test_buildMapHtml_when_transport_url_given_should_embed_api_and_enable_flag', () => {

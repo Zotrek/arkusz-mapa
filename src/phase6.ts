@@ -396,6 +396,11 @@ export function mapPointMatchesSearch(adres: string, searchLabels: string[], que
   return false;
 }
 
+/** Klucz sklepu w rejestrze transportów (podmiot + adres, ta sama normalizacja co Apps Script). */
+export function buildTransportShopKey(podmiot: string, adres: string): string {
+  return `${normalizeForAddressSearch(podmiot)}\u0000${normalizeForAddressSearch(adres)}`;
+}
+
 /** Filtr warstwy zbiórki na mapie (domyślnie: wszystkie punkty). */
 export type ZbiorkaFilterMode = 'wszystkie' | 'obie' | 'reczna' | 'maszyna';
 
@@ -617,6 +622,7 @@ export function buildMapHtml(
     .popup-address { font-weight: 600; margin-bottom: 6px; color: #1a1a1a; }
     .popup-podmiot { font-size: 0.92em; color: #333; margin-bottom: 6px; }
     .popup-count { color: #0d6efd; font-size: 1.05em; }
+    .popup-count-detail { font-size: 0.88em; color: #555; margin-top: 4px; }
     .popup-woj { font-size: 0.85em; color: #555; margin-top: 4px; }
     .popup-zbiorka { font-size: 0.85em; color: #0d6efd; margin-top: 4px; }
     .popup-confidence { font-size: 0.85em; color: #b02a37; margin-top: 4px; font-weight: 600; }
@@ -829,6 +835,112 @@ ${wordModal}  <script>
       return hexWithSaturation(kolorBazowy, 0.35);
     }
 
+    function buildTransportShopKeyMap(podmiot, adres) {
+      return normalizeForAddressSearchMap(podmiot) + '\\0' + normalizeForAddressSearchMap(adres);
+    }
+    function getPointTransportCutoff(p) {
+      var byKey = window.__transportDateByKey;
+      if (!byKey) return null;
+      var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
+      var key = buildTransportShopKeyMap(podmiot, p.adres);
+      var ms = byKey[key];
+      return ms != null ? ms : null;
+    }
+    function countSealRows(sealRows) {
+      return (sealRows || []).length;
+    }
+    function getPointSealCounts(p) {
+      var total = countSealRows(p.sealRows);
+      if (total === 0) total = p.count || 0;
+      var cutoffMs = transportApiEnabled && window.__transportDatesLoaded ? getPointTransportCutoff(p) : null;
+      var filtered = cutoffMs != null
+        ? filterSealRowsByMinDate(p.sealRows || [], cutoffMs).length
+        : total;
+      var cutoffYmd = null;
+      if (cutoffMs != null) {
+        var d = new Date(cutoffMs);
+        cutoffYmd = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+      }
+      return { total: total, filtered: filtered, cutoffMs: cutoffMs, cutoffYmd: cutoffYmd };
+    }
+    function displayCountForPoint(p) {
+      return getPointSealCounts(p).filtered;
+    }
+    function buildPopupCountHtml(p) {
+      var c = getPointSealCounts(p);
+      if (!transportApiEnabled || !window.__transportDatesLoaded) {
+        return '<div class="popup-count">Liczba wystąpień: <strong>' + c.total + '</strong></div>';
+      }
+      var main = '<div class="popup-count">Worki do odebrania: <strong>' + c.filtered + '</strong></div>';
+      if (c.filtered === c.total) {
+        return main + '<div class="popup-count-detail">Wszystkie worki: ' + c.total + '</div>';
+      }
+      var extra = c.cutoffYmd ? (' (od transportu ' + formatYmdToDisplay(c.cutoffYmd) + ')') : '';
+      return main +
+        '<div class="popup-count-detail">Nie odebrane: ' + c.filtered +
+        ' · Wszystkie worki: ' + c.total + extra + '</div>';
+    }
+    function buildPopupContent(p, pointIdx) {
+      var confidenceLabel =
+        p.confidence === 'uncertain'
+          ? '<div class="popup-confidence">Wynik niepewny</div>'
+          : p.confidence === 'city_only'
+            ? '<div class="popup-confidence">Tylko kod+miasto</div>'
+            : p.confidence === 'ok_no_postcode'
+              ? '<div class="popup-confidence">Bez kodu w wyniku</div>'
+              : '';
+      var zbiorkaLine = p.zbiorka
+        ? '<div class="popup-zbiorka">Zbiórka: ' + p.zbiorka + '</div>'
+        : '';
+      var podmiotLine =
+        p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
+          ? '<div class="popup-podmiot">Podmiot handlowy: ' + p.podmiotyHandlowe.join(', ') + '</div>'
+          : '';
+      var genDocBtn = wordDocEnabled
+        ? '<div><button type="button" class="btn-gen-doc">Generuj dokument</button></div>'
+        : '';
+      return '<div class="popup-address">' + p.adres + '</div>' +
+        (podmiotLine || '') +
+        buildPopupCountHtml(p) +
+        (zbiorkaLine || '') +
+        '<div class="popup-woj">' + p.woj + '</div>' +
+        confidenceLabel +
+        genDocBtn;
+    }
+    function refreshMarkerDisplay(entry) {
+      var p = entry.p;
+      var displayCount = displayCountForPoint(p);
+      var kolor = kolorPinezki(p.confidence, displayCount);
+      entry.kolor = kolor;
+      entry.marker.setIcon(pinIcon(kolor, false));
+      entry.marker.setPopupContent(buildPopupContent(p, entry.pointIdx));
+    }
+    function loadBulkTransportDates() {
+      window.__transportDateByKey = {};
+      window.__transportDatesLoaded = false;
+      if (!transportApiEnabled) {
+        window.__transportDatesLoaded = true;
+        return Promise.resolve();
+      }
+      return fetchTransportGet({ action: 'bulkLastTransportDates' }).then(function (resp) {
+        var byKey = {};
+        if (resp && resp.ok && resp.shops) {
+          resp.shops.forEach(function (s) {
+            if (s && s.key != null && s.lastTransportDateMs != null) {
+              byKey[s.key] = s.lastTransportDateMs;
+            }
+          });
+        }
+        window.__transportDateByKey = byKey;
+        window.__transportDatesLoaded = true;
+        markerEntries.forEach(function (entry) {
+          refreshMarkerDisplay(entry);
+        });
+      }).catch(function (err) {
+        console.error(err);
+        window.__transportDatesLoaded = true;
+      });
+    }
     function podwykoOptionMatchesQuery(opt, query) {
       var q = normalizeForAddressSearchMap(query);
       if (!q) return true;
@@ -1049,16 +1161,20 @@ ${wordModal}  <script>
         return Promise.resolve();
       }
       var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
+      var cachedCutoff = window.__transportDatesLoaded ? getPointTransportCutoff(p) : null;
       return fetchTransportGet({ action: 'modalData', podmiot: podmiot, adres: p.adres }).then(function (resp) {
         if (resp && resp.ok && numEl) {
           numEl.value = String(resp.numer || '');
           window.__docPreviewNumer = String(resp.numer || '');
         }
-        var cutoffMs = null;
+        var cutoffMs = cachedCutoff;
         var cutoffYmd = null;
-        if (resp && resp.ok && resp.lastTransportDateMs != null) {
+        if (cutoffMs == null && resp && resp.ok && resp.lastTransportDateMs != null) {
           cutoffMs = resp.lastTransportDateMs;
           cutoffYmd = resp.lastTransportDateYmd || null;
+        } else if (cutoffMs != null) {
+          var cd = new Date(cutoffMs);
+          cutoffYmd = cd.getUTCFullYear() + '-' + String(cd.getUTCMonth() + 1).padStart(2, '0') + '-' + String(cd.getUTCDate()).padStart(2, '0');
         }
         window.__docCutoffMs = cutoffMs;
         var all = p.sealRows || [];
@@ -1547,50 +1663,27 @@ ${wordModal}  <script>
 
     var markerEntries = [];
     adresy.forEach(function(p, pointIdx) {
-      var kolor = kolorPinezki(p.confidence, p.count);
-      const confidenceLabel =
-        p.confidence === 'uncertain'
-          ? '<div class="popup-confidence">Wynik niepewny</div>'
-          : p.confidence === 'city_only'
-            ? '<div class="popup-confidence">Tylko kod+miasto</div>'
-            : p.confidence === 'ok_no_postcode'
-              ? '<div class="popup-confidence">Bez kodu w wyniku</div>'
-              : '';
-      const zbiorkaLine = p.zbiorka
-        ? '<div class="popup-zbiorka">Zbiórka: ' + p.zbiorka + '</div>'
-        : '';
-      const podmiotLine =
-        p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
-          ? '<div class="popup-podmiot">Podmiot handlowy: ' + p.podmiotyHandlowe.join(', ') + '</div>'
-          : '';
-      const genDocBtn = wordDocEnabled
-        ? '<div><button type="button" class="btn-gen-doc">Generuj dokument</button></div>'
-        : '';
-      const popupContent =
-        '<div class="popup-address">' + p.adres + '</div>' +
-        (podmiotLine || '') +
-        '<div class="popup-count">Liczba wystąpień: <strong>' + p.count + '</strong></div>' +
-        (zbiorkaLine || '') +
-        '<div class="popup-woj">' + p.woj + '</div>' +
-        confidenceLabel +
-        genDocBtn;
+      var displayCount = displayCountForPoint(p);
+      var kolor = kolorPinezki(p.confidence, displayCount);
       var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false) })
         .addTo(map)
-        .bindPopup(popupContent);
+        .bindPopup(buildPopupContent(p, pointIdx));
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
-      if (wordDocEnabled) {
-        marker.on('popupopen', function() {
-          var el = marker.getPopup().getElement();
-          if (!el) return;
-          var btn = el.querySelector('.btn-gen-doc');
-          if (!btn) return;
-          btn.onclick = function(ev) {
-            if (ev.stopPropagation) ev.stopPropagation();
-            openDocModal(pointIdx);
-          };
-        });
-      }
+      marker.on('popupopen', function() {
+        marker.setPopupContent(buildPopupContent(p, pointIdx));
+        if (!wordDocEnabled) return;
+        var el = marker.getPopup().getElement();
+        if (!el) return;
+        var btn = el.querySelector('.btn-gen-doc');
+        if (!btn) return;
+        btn.onclick = function(ev) {
+          if (ev.stopPropagation) ev.stopPropagation();
+          openDocModal(pointIdx);
+        };
+      });
     });
+
+    loadBulkTransportDates();
 
     var allPointsBounds = null;
     if (adresy.length > 0) {
@@ -1731,8 +1824,9 @@ ${wordModal}  <script>
           }).join('') + '</ul></div>'
         : '';
       var okLight = paletteOk[0], okMed = paletteOk[1], okFull = paletteOk[2];
+      var countLegendTitle = transportApiEnabled ? 'Worki do odebrania' : 'Liczba wystąpień';
       var countHtml = hasCountLegend
-        ? '<div class="legend-section"><h3>Liczba wystąpień</h3><ul>' +
+        ? '<div class="legend-section"><h3>' + countLegendTitle + '</h3><ul>' +
           '<li><span class="legend-swatch" style="background:' + okLight + '"></span> 1–3</li>' +
           '<li><span class="legend-swatch" style="background:' + okMed + '"></span> 4–9</li>' +
           '<li><span class="legend-swatch" style="background:' + okFull + '"></span> 10–14</li>' +
