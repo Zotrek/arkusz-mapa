@@ -233,7 +233,13 @@ function resolveNextTransportNumber_(increment) {
     }
     return next;
   }
-  return stored;
+  // Usunięto ostatni numer (lub kilka z końca) — sync z arkuszem, bez wypełniania dziur w środku.
+  var result = scanMaxNumberAndRowFromSheet_();
+  var next = result.max + 1;
+  if (increment) {
+    setStoredMaxNumber_(next);
+  }
+  return next;
 }
 
 function getPreviewNumber_() {
