@@ -314,13 +314,6 @@ type MapPoint = {
   doc: MapPointDocPayload;
 };
 
-const LEGEND_QUALITY: Record<MapPoint['confidence'], { label: string; color: string }> = {
-  ok: { label: 'Adres OK', color: '#198754' },
-  ok_no_postcode: { label: 'Bez kodu w wyniku', color: '#ffc107' },
-  city_only: { label: 'Tylko kod + miasto', color: '#0d6efd' },
-  uncertain: { label: 'Wynik niepewny', color: '#D40418' },
-};
-
 /**
  * Normalizacja tekstu do porównań w wyszukiwarce mapy (małe litery, polskie znaki → ASCII, pozostałe diakrytyki przez NFD).
  * Wygenerowany skrypt HTML musi stosować tę samą logikę co `normalizeForAddressSearchMap` w szablonie.
@@ -579,9 +572,8 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
   };
 }
 
-/** Palety: jasny (1–3), ciemny (4–9), żółty (10–14). Dla 15+ używany COLOR_15_PLUS (pomarańczowy). */
-const PALETTE_OK = ['#97F0C7', '#198754', COLOR_10_14] as const;
-const PALETTE_UNCERTAIN = ['#D1A5A9', '#D40418', COLOR_10_14] as const;
+/** Paleta pinezek: jasny zielony (1–3), ciemny zielony (4–9), żółty (10–14). Dla 15+ używany COLOR_15_PLUS (pomarańczowy). */
+const PALETTE_PIN = ['#97F0C7', '#198754', COLOR_10_14] as const;
 
 export function buildMapHtml(
   geocoded: GeocodedAddress[],
@@ -600,11 +592,6 @@ export function buildMapHtml(
   ];
   const points: MapPoint[] = spreadCloseMarkerPositions(rawPoints);
 
-  const presentConfidences = [...new Set(points.map((p) => p.confidence))];
-  const legendQualityItems = presentConfidences.map((c) => ({
-    label: LEGEND_QUALITY[c].label,
-    color: LEGEND_QUALITY[c].color,
-  }));
   const hasAnyPoints = points.length > 0;
   const showZbiorkaFilter = points.some((p) => classifyMapPointZbiorka(p.zbiorka) !== 'unknown');
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
@@ -753,7 +740,6 @@ ${
     : ''
 }${wordModal}  <script>
     const adresy = ${JSON.stringify(points)};
-    const legendQualityItems = ${JSON.stringify(legendQualityItems)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
     const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
     const wordDocEnabled = ${JSON.stringify(wordEnabled)};
@@ -886,56 +872,12 @@ ${
       if (el) el.style.pointerEvents = clickable ? '' : 'none';
     }
 
-    function hexToRgb(hex) {
-      var n = parseInt(hex.slice(1), 16);
-      return [ (n >> 16) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255 ];
-    }
-    function rgbToHex(r, g, b) {
-      return '#' + [r,g,b].map(function(x) {
-        var v = Math.round(Math.max(0, Math.min(1, x)) * 255);
-        return (v < 16 ? '0' : '') + v.toString(16);
-      }).join('');
-    }
-    function hexWithSaturation(hex, satFactor) {
-      var rgb = hexToRgb(hex);
-      var r = rgb[0], g = rgb[1], b = rgb[2];
-      var max = Math.max(r, g, b), min = Math.min(r, g, b);
-      var l = (max + min) / 2, h, s;
-      if (max === min) { h = s = 0; }
-      else {
-        var d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        switch (max) {
-          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-          case g: h = ((b - r) / d + 2) / 6; break;
-          default: h = ((r - g) / d + 4) / 6;
-        }
-      }
-      s = Math.min(1, s * satFactor);
-      if (s === 0) return rgbToHex(l, l, l);
-      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      var p = 2 * l - q;
-      var hue2rgb = function(p, q, t) {
-        if (t < 0) t += 1; if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-      };
-      return rgbToHex(hue2rgb(p, q, h + 1/3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1/3));
-    }
-    var paletteOk = ${JSON.stringify([...PALETTE_OK])};
-    var paletteUncertain = ${JSON.stringify([...PALETTE_UNCERTAIN])};
+    var palettePin = ${JSON.stringify([...PALETTE_PIN])};
     var color15Plus = ${JSON.stringify(COLOR_15_PLUS)};
-    function kolorPinezki(confidence, count) {
+    function kolorPinezki(count) {
       if (count >= 15) return color15Plus;
       var idx = count >= 10 ? 2 : count >= 4 ? 1 : 0;
-      if (confidence === 'ok' || confidence === 'ok_no_postcode') return paletteOk[idx];
-      if (confidence === 'uncertain') return paletteUncertain[idx];
-      var kolorBazowy = '#0d6efd';
-      if (count >= 10) return ${JSON.stringify(COLOR_10_14)};
-      if (count >= 4) return kolorBazowy;
-      return hexWithSaturation(kolorBazowy, 0.35);
+      return palettePin[idx];
     }
 
     function buildTransportShopKeyMap(podmiot, adres) {
@@ -1108,7 +1050,7 @@ ${
     function refreshMarkerDisplay(entry) {
       var p = entry.p;
       var displayCount = displayCountForPoint(p);
-      var kolor = kolorPinezki(p.confidence, displayCount);
+      var kolor = kolorPinezki(displayCount);
       entry.kolor = kolor;
       entry.marker.setIcon(markerDisplayIcon(entry, false));
       entry.marker.setPopupContent(buildPopupContent(p, entry.pointIdx));
@@ -2119,7 +2061,7 @@ ${
     var markerEntries = [];
     adresy.forEach(function(p, pointIdx) {
       var displayCount = displayCountForPoint(p);
-      var kolor = kolorPinezki(p.confidence, displayCount);
+      var kolor = kolorPinezki(displayCount);
       var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false) })
         .addTo(map)
         .bindPopup(buildPopupContent(p, pointIdx));
@@ -2295,19 +2237,13 @@ ${
     var legend = L.control({ position: 'bottomright' });
     legend.onAdd = function() {
       var div = L.DomUtil.create('div', 'map-legend');
-      var qualityHtml = legendQualityItems.length > 0
-        ? '<div class="legend-section"><h3>Jakość adresu</h3><ul>' +
-          legendQualityItems.map(function(item) {
-            return '<li><span class="legend-swatch" style="background:' + item.color + '"></span> ' + item.label + '</li>';
-          }).join('') + '</ul></div>'
-        : '';
-      var okLight = paletteOk[0], okMed = paletteOk[1], okFull = paletteOk[2];
+      var pinLight = palettePin[0], pinMed = palettePin[1], pinFull = palettePin[2];
       var countLegendTitle = transportApiEnabled ? 'Worki do odebrania' : 'Liczba wystąpień';
       var countHtml = hasCountLegend
         ? '<div class="legend-section"><h3>' + countLegendTitle + '</h3><ul>' +
-          '<li><span class="legend-swatch" style="background:' + okLight + '"></span> 1–3</li>' +
-          '<li><span class="legend-swatch" style="background:' + okMed + '"></span> 4–9</li>' +
-          '<li><span class="legend-swatch" style="background:' + okFull + '"></span> 10–14</li>' +
+          '<li><span class="legend-swatch" style="background:' + pinLight + '"></span> 1–3</li>' +
+          '<li><span class="legend-swatch" style="background:' + pinMed + '"></span> 4–9</li>' +
+          '<li><span class="legend-swatch" style="background:' + pinFull + '"></span> 10–14</li>' +
           '<li><span class="legend-swatch" style="background:' + color15Plus + '"></span> 15+</li>' +
           '</ul></div>'
         : '';
@@ -2316,7 +2252,7 @@ ${
           '<li><span class="legend-swatch" style="background:' + colorBulkSelected + '"></span> Punkt zaznaczony</li>' +
           '</ul></div>'
         : '';
-      div.innerHTML = qualityHtml + countHtml + bulkLegendHtml;
+      div.innerHTML = countHtml + bulkLegendHtml;
       return div;
     };
     legend.addTo(map);

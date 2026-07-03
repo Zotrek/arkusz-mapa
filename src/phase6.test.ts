@@ -385,7 +385,7 @@ describe('phase6', () => {
       expect(html).toContain('"woj":"Wielkopolskie"');
       expect(html).toContain('"confidence":"uncertain"');
       expect(html).toContain('Wynik niepewny');
-      expect(html).toContain('#D40418');
+      expect(html).not.toContain('#D40418');
     });
 
     it('test_buildMapHtml_when_rows_have_podmiot_and_sklep_should_embed_searchLabels', () => {
@@ -417,12 +417,12 @@ describe('phase6', () => {
     it('test_buildMapHtml_when_ok_confidence_should_use_green_pin', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
       expect(html).toContain('"confidence":"ok"');
-      expect(html).toContain("confidence === 'ok'");
+      expect(html).toContain('function kolorPinezki(count)');
       expect(html).toContain('#198754');
-      expect(html).toContain('paletteOk');
+      expect(html).toContain('palettePin');
     });
 
-    it('test_buildMapHtml_when_ok_no_postcode_given_should_use_yellow_pin_and_label', () => {
+    it('test_buildMapHtml_when_ok_no_postcode_given_should_use_green_pin_and_status_in_popup', () => {
       const noPostcode = [
         {
           address: '62-320 Miłosław Leśna 10',
@@ -435,11 +435,11 @@ describe('phase6', () => {
       ];
       const html = buildMapHtml([], [], 'https://example.com/woj.json', [], noPostcode);
       expect(html).toContain('"confidence":"ok_no_postcode"');
-      expect(html).toContain('#ffc107');
+      expect(html).toContain('#97F0C7');
       expect(html).toContain('Bez kodu w wyniku');
     });
 
-    it('test_buildMapHtml_when_city_only_geocoded_given_should_use_blue_pin_and_label', () => {
+    it('test_buildMapHtml_when_city_only_geocoded_given_should_use_green_pin_and_status_in_popup', () => {
       const cityOnly = [
         {
           address: '00-001 Warszawa',
@@ -454,18 +454,20 @@ describe('phase6', () => {
       expect(html).toContain('"confidence":"city_only"');
       expect(html).toContain("p.confidence === 'city_only'");
       expect(html).toContain('Tylko kod+miasto');
-      expect(html).toContain('#0d6efd');
+      expect(html).toContain('#97F0C7');
+      expect(html).not.toContain('paletteUncertain');
     });
 
-    it('test_buildMapHtml_when_no_points_should_embed_empty_legend_quality_and_no_count_legend', () => {
+    it('test_buildMapHtml_when_no_points_should_embed_no_count_legend', () => {
       const html = buildMapHtml([], [], 'https://example.com/woj.json');
-      expect(html).toContain('const legendQualityItems = []');
+      expect(html).not.toContain('Jakość adresu');
       expect(html).toContain('const hasCountLegend = false');
     });
 
-    it('test_buildMapHtml_when_only_ok_points_should_embed_single_legend_quality_item', () => {
+    it('test_buildMapHtml_when_points_present_should_not_embed_address_quality_legend', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
-      expect(html).toContain('const legendQualityItems = [{"label":"Adres OK","color":"#198754"}]');
+      expect(html).not.toContain('Jakość adresu');
+      expect(html).toContain('const hasCountLegend = true');
     });
 
     it('test_buildMapHtml_when_word_embed_given_should_include_generuj_and_docxtemplater', () => {
