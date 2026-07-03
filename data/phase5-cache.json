@@ -10564,6 +10564,118 @@
       "wojewodztwo": "Lubelskie",
       "updatedAt": "2026-07-01T20:10:00.000Z"
     },
+    "31-566 Kraków Bajeczna 6": {
+      "status": "ok",
+      "lat": 50.0569067,
+      "lng": 19.9774856,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-03T15:21:40.759Z"
+    },
+    "83-441 Wiele Piątkowo 2": {
+      "status": "uncertain",
+      "lat": 53.9197172,
+      "lng": 17.8407343,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-03T15:22:09.067Z"
+    },
+    "32-010 Łuczyce Krakowska 21": {
+      "status": "ok",
+      "lat": 50.16502,
+      "lng": 20.0751406,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-03T15:22:11.682Z"
+    },
+    "31-087 Zielonki Galicyjska 39": {
+      "status": "ok",
+      "lat": 50.12349681573412,
+      "lng": 19.93605573585807,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-03T15:26:00.000Z"
+    },
+    "59-700 BOLESŁAWIEC KOŚCIUSZKI 27": {
+      "status": "ok",
+      "lat": 51.2856366,
+      "lng": 15.5715414,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-03T15:22:35.162Z"
+    },
+    "64-630 Ryczywół Kolejowa 11": {
+      "status": "uncertain",
+      "lat": 52.80904,
+      "lng": 16.83382,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-03T15:23:09.818Z"
+    },
+    "34-483 Lipnica Wielka Lipnica Wielka 376": {
+      "status": "ok",
+      "lat": 49.5035731,
+      "lng": 19.6015759,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-03T15:23:14.978Z"
+    },
+    "21-560 MIĘDZYRZEC PODLASKI MIECZYSŁAWA KALENIKA 1": {
+      "status": "ok",
+      "lat": 51.99723,
+      "lng": 22.76881,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-03T15:23:19.621Z"
+    },
+    "31-342 Kraków Radzikowskiego 138": {
+      "status": "ok",
+      "lat": 50.0835642,
+      "lng": 19.9036909,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-03T15:23:21.428Z"
+    },
+    "62-200 Gniezno Jolenty 7": {
+      "status": "ok",
+      "lat": 52.5401874,
+      "lng": 17.6030122,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-03T15:23:24.752Z"
+    },
+    "27-620 Dwikozy Spółdzielcza 12": {
+      "status": "ok",
+      "lat": 50.738511,
+      "lng": 21.7847978,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-07-03T15:23:26.174Z"
+    },
+    "39-308 WADOWICE GÓRNE WADOWICE GÓRNE 93": {
+      "status": "ok",
+      "lat": 50.2630168,
+      "lng": 21.2967239,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-03T15:23:29.285Z"
+    },
+    "65-058 ZIELONA GÓRA Kupiecka 63": {
+      "status": "ok",
+      "lat": 51.9418329,
+      "lng": 15.504496,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-07-03T15:23:32.110Z"
+    },
+    "62-090 Kaźmierz Jana pawła ii 26": {
+      "status": "ok",
+      "lat": 52.51280562080468,
+      "lng": 16.587111744092166,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-03T15:26:00.000Z"
+    },
+    "21-200 Parczew Jana Pawła II 86 A": {
+      "status": "ok",
+      "lat": 51.6338384,
+      "lng": 22.8928329,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-03T15:24:10.365Z"
+    },
+    "32-400 Myślenice Słowackiego 112a": {
+      "status": "ok",
+      "lat": 49.8370138,
+      "lng": 19.9612183,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-03T15:24:13.271Z"
+    },
     "21-302 Brzozowica Duża 119c 119c": {
       "status": "ok",
       "lat": 51.94931976072873,
