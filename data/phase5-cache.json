@@ -10738,6 +10738,20 @@
       "lng": 17.301306032581515,
       "wojewodztwo": "Dolnośląskie",
       "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "33-100 Tarnów Spokojna 65": {
+      "status": "ok",
+      "lat": 50.0363,
+      "lng": 20.9851911,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-06T11:12:36.998Z"
+    },
+    "32-052 Radziszów Brzegi 6": {
+      "status": "ok",
+      "lat": 49.9410702,
+      "lng": 19.8082609,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-06T11:12:40.295Z"
     }
   }
 }
