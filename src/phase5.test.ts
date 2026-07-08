@@ -20,6 +20,7 @@ import {
   isLargeCity,
   isHamletPlaceAddress,
   isVillagePlaceAddress,
+  isNumericDuplicateStreetNumber,
   stripStreetPrefix,
   stripAfterSlash,
 } from './phase5';
@@ -82,7 +83,7 @@ describe('phase5', () => {
       });
 
       const query = buildGeocodingQuery(row);
-      expect(query).toBe('26-660 Wierzchowiny 29, Polska');
+      expect(query).toBe('Wierzchowiny 29, 26-660, Polska');
     });
 
     it('test_buildGeocodingQuery_when_village_place_should_skip_duplicate_street', () => {
@@ -94,7 +95,7 @@ describe('phase5', () => {
         address: '33-390 ŁĄCKO ŁĄCKO 106A',
       });
 
-      expect(buildGeocodingQuery(row)).toBe('33-390 ŁĄCKO 106A, Polska');
+      expect(buildGeocodingQuery(row)).toBe('ŁĄCKO 106A, 33-390, Polska');
     });
 
     it('test_buildGeocodingQuery_when_city_is_wroclaw_fabryczna_should_normalize_to_wroclaw', () => {
@@ -145,8 +146,54 @@ describe('phase5', () => {
 
       const queries = buildGeocodingQueries(row);
 
-      expect(queries[0]).toBe('21-080 Bogucin 59A, Polska');
-      expect(queries.slice(0, 4).some((q) => q.match(/Bogucin Bogucin/))).toBe(false);
+      expect(queries[0]).toBe('Bogucin 59A, 21-080, Polska');
+      expect(queries.slice(0, 5).some((q) => q.match(/Bogucin Bogucin/))).toBe(false);
+    });
+
+    it('test_buildGeocodingQueries_when_numeric_duplicate_in_ulica_should_query_place_and_number', () => {
+      const cases = [
+        {
+          row: makeRow({
+            kodPocztowy: '34-407',
+            miasto: 'Ciche',
+            ulica: '170',
+            numerBudynku: '170',
+            address: '34-407 Ciche 170 170',
+          }),
+          expectedFirst: 'Ciche 170, 34-407, Polska',
+        },
+        {
+          row: makeRow({
+            kodPocztowy: '21-302',
+            miasto: 'Brzozowica Duża',
+            ulica: '119c',
+            numerBudynku: '119c',
+            address: '21-302 Brzozowica Duża 119c 119c',
+          }),
+          expectedFirst: 'Brzozowica Duża 119c, 21-302, Polska',
+        },
+        {
+          row: makeRow({
+            kodPocztowy: '56-321',
+            miasto: 'Pakoslawsko',
+            ulica: '48A',
+            numerBudynku: '48A',
+            address: '56-321 Pakoslawsko 48A 48A',
+          }),
+          expectedFirst: 'Pakoslawsko 48A, 56-321, Polska',
+        },
+      ];
+
+      for (const { row, expectedFirst } of cases) {
+        const queries = buildGeocodingQueries(row);
+        expect(queries[0]).toBe(expectedFirst);
+        expect(queries.slice(0, 5).some((q) => q.endsWith(', Polska') && !q.includes(row.kodPocztowy))).toBe(
+          false,
+        );
+        expect(queries.slice(0, 5).some((q) => q.includes(`${row.ulica} ${row.numerBudynku}`))).toBe(
+          false,
+        );
+      }
     });
 
     it('test_buildGeocodingQueries_when_osiedle_street_should_include_osiedle_variants', () => {
@@ -269,6 +316,21 @@ describe('phase5', () => {
       expect(isVillagePlaceAddress({ miasto: 'Wierzchowiny', ulica: 'brak', numerBudynku: '29' })).toBe(
         false,
       );
+    });
+  });
+
+  describe('isNumericDuplicateStreetNumber', () => {
+    it('test_isNumericDuplicateStreetNumber_when_ulica_equals_numer_should_return_true', () => {
+      expect(isNumericDuplicateStreetNumber({ ulica: '170', numerBudynku: '170' })).toBe(true);
+      expect(isNumericDuplicateStreetNumber({ ulica: '119c', numerBudynku: '119c' })).toBe(true);
+      expect(isNumericDuplicateStreetNumber({ ulica: '48A', numerBudynku: '48A' })).toBe(true);
+    });
+
+    it('test_isNumericDuplicateStreetNumber_when_real_street_should_return_false', () => {
+      expect(
+        isNumericDuplicateStreetNumber({ ulica: 'Winne-Podbukowina', numerBudynku: '11' }),
+      ).toBe(false);
+      expect(isNumericDuplicateStreetNumber({ ulica: 'brak', numerBudynku: '29' })).toBe(false);
     });
   });
 

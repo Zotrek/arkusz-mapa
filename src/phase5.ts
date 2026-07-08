@@ -174,6 +174,21 @@ function isMissingStreet(street: string): boolean {
   return s.length === 0 || s === 'brak';
 }
 
+/** W arkuszu numer budynku powtórzony w kolumnie „Ulica” (np. ulica=170, numer=170). */
+export function isNumericDuplicateStreetNumber(
+  row: Pick<SheetRow, 'ulica' | 'numerBudynku'>,
+): boolean {
+  const ulica = normalize(row.ulica);
+  if (isMissingStreet(ulica)) {
+    return false;
+  }
+  const number = normalizeForCompare(stripAfterSlash(row.numerBudynku));
+  if (!number) {
+    return false;
+  }
+  return normalizeForCompare(ulica) === number;
+}
+
 /**
  * Adres wiejski bez ulicy: w arkuszu w kolumnie „Ulica” jest nazwa miejscowości (ew. z numerem),
  * a nie nazwa drogi. OSM używa wtedy addr:place — zapytania i scoring jak przy braku ulicy.
@@ -225,7 +240,11 @@ export function isHamletPlaceAddress(row: Pick<SheetRow, 'ulica' | 'miasto' | 'n
 }
 
 function isPlaceOnlyAddress(row: Pick<SheetRow, 'ulica' | 'miasto' | 'numerBudynku'>): boolean {
-  return isVillagePlaceAddress(row) || isHamletPlaceAddress(row);
+  return (
+    isVillagePlaceAddress(row) ||
+    isHamletPlaceAddress(row) ||
+    isNumericDuplicateStreetNumber(row)
+  );
 }
 
 /** Duże miasta — w arkuszu często mylone kody pocztowe; przy dopasowaniu ulicy ignorujemy rozbieżność kodu. */
@@ -272,12 +291,11 @@ export function buildGeocodingQuery(row: SheetRow): string {
   const ulicaBezPrefiksu = stripStreetPrefix(ulica) || ulica;
   const numer = stripAfterSlash(row.numerBudynku);
 
-  const parts: string[] = [kod, miasto];
-  if (!treatAsMissingStreet(row)) {
-    parts.push(ulicaBezPrefiksu);
+  if (treatAsMissingStreet(row)) {
+    return `${miasto} ${numer}, ${kod}, Polska`.replace(/\s+/g, ' ').trim();
   }
-  parts.push(numer);
 
+  const parts: string[] = [kod, miasto, ulicaBezPrefiksu, numer];
   return `${parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()}, Polska`;
 }
 
@@ -383,10 +401,13 @@ export function buildGeocodingQueries(row: SheetRow): string[] {
   const queries: string[] = [];
 
   if (missingStreet) {
-    if (isVillagePlaceAddress(row)) {
-      const place = normalizeCityForGeocoding(row.miasto);
+    const place = normalizeCityForGeocoding(row.miasto);
+    if (numer) {
+      // Nominatim: wsi bez ulicy — „miejscowość numer, kod, Polska” (kod na początku zwykle nie działa).
+      pushQuery(queries, `${place} ${numer}, ${kod}, Polska`);
+    }
+    if (isVillagePlaceAddress(row) || isNumericDuplicateStreetNumber(row)) {
       pushQuery(queries, `${kod} ${place} ${numer}, Polska`);
-      pushQuery(queries, `${place} ${numer}, Polska`);
       pushQuery(queries, `${kod} ${place}, Polska`);
     }
     if (isHamletPlaceAddress(row)) {

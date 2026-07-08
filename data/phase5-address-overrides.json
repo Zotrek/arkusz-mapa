@@ -1,17 +1,17 @@
 {
   "21-302 Brzozowica Duża 119c": {
     "status": "ok",
-    "lat": 51.94931976072873,
-    "lng": 22.607395321564862,
+    "lat": 51.94919,
+    "lng": 22.60726,
     "wojewodztwo": "Lubelskie",
-    "updatedAt": "2026-07-01T20:10:00.000Z"
+    "updatedAt": "2026-07-08T11:10:33.068Z"
   },
   "21-302 Brzozowica Duża 119c 119c": {
     "status": "ok",
-    "lat": 51.94931976072873,
-    "lng": 22.607395321564862,
+    "lat": 51.94919,
+    "lng": 22.60726,
     "wojewodztwo": "Lubelskie",
-    "updatedAt": "2026-07-01T20:10:00.000Z"
+    "updatedAt": "2026-07-08T11:10:33.068Z"
   },
   "33-331 POLNA STARA REMIZA OSP 1": {
     "status": "ok",
@@ -22,30 +22,30 @@
   },
   "34-407 Ciche 170": {
     "status": "ok",
-    "lat": 49.38753943152643,
-    "lng": 19.86946021984651,
+    "lat": 49.3874,
+    "lng": 19.86947,
     "wojewodztwo": "Małopolskie",
-    "updatedAt": "2026-07-01T20:10:00.000Z"
+    "updatedAt": "2026-07-08T11:10:33.068Z"
   },
   "34-407 Ciche 170 170": {
     "status": "ok",
-    "lat": 49.38753943152643,
-    "lng": 19.86946021984651,
+    "lat": 49.3874,
+    "lng": 19.86947,
     "wojewodztwo": "Małopolskie",
-    "updatedAt": "2026-07-01T20:10:00.000Z"
+    "updatedAt": "2026-07-08T11:10:33.068Z"
   },
   "56-321 Pakoslawsko 48A": {
     "status": "ok",
-    "lat": 51.61085043197812,
-    "lng": 17.301306032581515,
+    "lat": 51.61068,
+    "lng": 17.30209,
     "wojewodztwo": "Dolnośląskie",
-    "updatedAt": "2026-07-01T20:10:00.000Z"
+    "updatedAt": "2026-07-08T11:10:33.068Z"
   },
   "56-321 Pakoslawsko 48A 48A": {
     "status": "ok",
-    "lat": 51.61085043197812,
-    "lng": 17.301306032581515,
+    "lat": 51.61068,
+    "lng": 17.30209,
     "wojewodztwo": "Dolnośląskie",
-    "updatedAt": "2026-07-01T20:10:00.000Z"
+    "updatedAt": "2026-07-08T11:10:33.068Z"
   }
 }

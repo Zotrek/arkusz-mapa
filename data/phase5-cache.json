@@ -9740,10 +9740,10 @@
     },
     "56-321 Pakoslawsko 48A": {
       "status": "ok",
-      "lat": 51.61085043197812,
-      "lng": 17.301306032581515,
+      "lat": 51.61068,
+      "lng": 17.30209,
       "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
+      "updatedAt": "2026-07-08T11:10:33.068Z"
     },
     "66-600 Krosno odrzańskie Szklarka Radnicka 16": {
       "status": "ok",
@@ -10370,17 +10370,17 @@
     },
     "21-302 Brzozowica Duża 119c": {
       "status": "ok",
-      "lat": 51.94931976072873,
-      "lng": 22.607395321564862,
+      "lat": 51.94919,
+      "lng": 22.60726,
       "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
+      "updatedAt": "2026-07-08T11:10:33.068Z"
     },
     "34-407 Ciche 170": {
       "status": "ok",
-      "lat": 49.38753943152643,
-      "lng": 19.86946021984651,
+      "lat": 49.3874,
+      "lng": 19.86947,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
+      "updatedAt": "2026-07-08T11:10:33.068Z"
     },
     "42-200 Częstochowa Łęczycka 55": {
       "status": "ok",
@@ -10676,12 +10676,26 @@
       "wojewodztwo": "Małopolskie",
       "updatedAt": "2026-07-03T15:24:13.271Z"
     },
+    "33-100 Tarnów Spokojna 65": {
+      "status": "ok",
+      "lat": 50.0363,
+      "lng": 20.9851911,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-06T11:12:36.998Z"
+    },
+    "32-052 Radziszów Brzegi 6": {
+      "status": "ok",
+      "lat": 49.9410702,
+      "lng": 19.8082609,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-06T11:12:40.295Z"
+    },
     "21-302 Brzozowica Duża 119c 119c": {
       "status": "ok",
-      "lat": 51.94931976072873,
-      "lng": 22.607395321564862,
+      "lat": 51.94919,
+      "lng": 22.60726,
       "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
+      "updatedAt": "2026-07-08T11:10:33.068Z"
     },
     "21-302 Brzozowica Duza 119c 119c": {
       "status": "ok",
@@ -10713,10 +10727,10 @@
     },
     "34-407 Ciche 170 170": {
       "status": "ok",
-      "lat": 49.38753943152643,
-      "lng": 19.86946021984651,
+      "lat": 49.3874,
+      "lng": 19.86947,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
+      "updatedAt": "2026-07-08T11:10:33.068Z"
     },
     "34-407 Ciche 170 170 170": {
       "status": "ok",
@@ -10727,10 +10741,10 @@
     },
     "56-321 Pakoslawsko 48A 48A": {
       "status": "ok",
-      "lat": 51.61085043197812,
-      "lng": 17.301306032581515,
+      "lat": 51.61068,
+      "lng": 17.30209,
       "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
+      "updatedAt": "2026-07-08T11:10:33.068Z"
     },
     "56-321 Pakoslawsko 48A 48A 48A": {
       "status": "ok",
@@ -10739,19 +10753,89 @@
       "wojewodztwo": "Dolnośląskie",
       "updatedAt": "2026-07-01T20:10:00.000Z"
     },
-    "33-100 Tarnów Spokojna 65": {
+    "32-053 Wola Radziszowska Jana Pawła II 11": {
       "status": "ok",
-      "lat": 50.0363,
-      "lng": 20.9851911,
+      "lat": 49.9082165,
+      "lng": 19.7868678,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-06T11:12:36.998Z"
+      "updatedAt": "2026-07-08T10:28:33.786Z"
     },
-    "32-052 Radziszów Brzegi 6": {
+    "30-384 Kraków Kobierzyńska 123": {
       "status": "ok",
-      "lat": 49.9410702,
-      "lng": 19.8082609,
+      "lat": 50.0333368,
+      "lng": 19.9243327,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-06T11:12:40.295Z"
+      "updatedAt": "2026-07-08T10:28:35.249Z"
+    },
+    "78-230 Karlino Jana Pawła II 19": {
+      "status": "ok",
+      "lat": 54.0329151,
+      "lng": 15.8775817,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-07-08T10:28:39.069Z"
+    },
+    "30-438 Kraków Borkowska 17b": {
+      "status": "ok",
+      "lat": 50.0043415,
+      "lng": 19.9039931,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-08T10:28:40.721Z"
+    },
+    "91-341 Łódź Świętego Teresy od Dzieciątka Jezus 100": {
+      "status": "uncertain",
+      "lat": 51.8029061,
+      "lng": 19.4219727,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-08T10:30:42.755Z"
+    },
+    "80-298 Gdańsk Juliusza Słowackiego 210A": {
+      "status": "ok",
+      "lat": 54.3821155,
+      "lng": 18.4657624,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-08T10:30:45.750Z"
+    },
+    "34-407 Ratułów Ratułów 229": {
+      "status": "ok",
+      "lat": 49.3602045,
+      "lng": 19.9010729,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-08T10:30:48.615Z"
+    },
+    "32-050 Skawina Korabnicka 9A": {
+      "status": "ok",
+      "lat": 49.9746658,
+      "lng": 19.8336417,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-08T10:30:51.958Z"
+    },
+    "61-740 Poznań Ignacego Paderewskiego 10": {
+      "status": "ok",
+      "lat": 52.4080653,
+      "lng": 16.93161,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-08T10:30:53.358Z"
+    },
+    "39-305 SADKOWA SADKOWA 42": {
+      "status": "ok",
+      "lat": 49.7463418,
+      "lng": 21.5659022,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-08T10:30:57.440Z"
+    },
+    "28-131 Solec-Zdrój Partyzantów 18": {
+      "status": "ok",
+      "lat": 50.3600108,
+      "lng": 20.8843046,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-07-08T10:30:58.862Z"
+    },
+    "64-100 LESZNO SUŁKOWSKIEGO 46": {
+      "status": "ok",
+      "lat": 51.8389413,
+      "lng": 16.591753,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-08T10:31:00.226Z"
     }
   }
 }
