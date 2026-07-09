@@ -252,6 +252,14 @@ export function resolveCacheEntry(
     return direct;
   }
 
+  const fromDuplicateNumber = canonicalCacheKeyFromLegacy(address);
+  if (fromDuplicateNumber) {
+    const hit = entries[fromDuplicateNumber];
+    if (hit) {
+      return hit;
+    }
+  }
+
   for (const alias of legacyCacheKeyAliases(address)) {
     const hit = entries[alias];
     if (hit) {

@@ -94,6 +94,37 @@ describe('cacheMigrate', () => {
     expect(resolveCacheEntry(entries, '21-500 BIAŁA PODLASKA POROSIUKI 130')?.status).toBe('ok');
   });
 
+  it('test_resolveCacheEntry_when_sheet_has_duplicate_number_should_find_canonical_entry', () => {
+    const ok = {
+      status: 'ok' as const,
+      lat: 49.3874,
+      lng: 19.86947,
+      wojewodztwo: 'Małopolskie',
+      updatedAt: '2026-07-01T00:00:00.000Z',
+    };
+    const entries = {
+      '34-407 Ciche 170': ok,
+      '21-302 Brzozowica Duża 119c': ok,
+      '56-321 Pakoslawsko 48A': ok,
+    };
+    expect(resolveCacheEntry(entries, '34-407 Ciche 170 170')).toEqual(ok);
+    expect(resolveCacheEntry(entries, '21-302 Brzozowica Duża 119c 119c')).toEqual(ok);
+    expect(resolveCacheEntry(entries, '56-321 Pakoslawsko 48A 48A')).toEqual(ok);
+  });
+
+  it('test_resolveCacheEntry_after_migrateCacheEntries_should_find_duplicate_sheet_key', () => {
+    const { entries: migrated } = migrateCacheEntries({
+      '34-407 Ciche 170 170': {
+        status: 'ok' as const,
+        lat: 49.3874,
+        lng: 19.86947,
+        updatedAt: '2026-07-01T00:00:00.000Z',
+      },
+    });
+    expect(migrated['34-407 Ciche 170 170']).toBeUndefined();
+    expect(resolveCacheEntry(migrated, '34-407 Ciche 170 170')?.status).toBe('ok');
+  });
+
   it('test_resolveCacheEntry_when_legacy_swietoszow_key_should_return_ok_entry', () => {
     const entries = {
       '59-726 Swietoszow Husarska 1 1': {

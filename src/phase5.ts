@@ -5,6 +5,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { getPhase5AddressOverridesPath } from './config.js';
 import { normalizeCityForCompare, normalizeCityFromSheet } from './cityNormalize.js';
 import { nominatimAsciiQueryVariant } from './polishText.js';
 import type { AddressGroup } from './phase3.js';
@@ -936,8 +937,6 @@ async function loadCache(
   }
 }
 
-const ADDRESS_OVERRIDES_FILENAME = 'phase5-address-overrides.json';
-
 /** Ręczne współrzędne — nie nadpisywać geokodowaniem ani zapisem `bad`. */
 function stampAddressOverrideIntoCache(
   cacheEntries: Record<string, CacheEntry>,
@@ -971,10 +970,10 @@ function setCacheEntryUnlessProtected(
 }
 
 async function loadAddressOverrides(
-  cacheFilePath: string,
+  _cacheFilePath: string,
   readFileFn: (path: string, encoding: BufferEncoding) => Promise<string>,
 ): Promise<Record<string, CacheEntry>> {
-  const overridesPath = join(dirname(cacheFilePath), ADDRESS_OVERRIDES_FILENAME);
+  const overridesPath = getPhase5AddressOverridesPath();
   try {
     const raw = await readFileFn(overridesPath, 'utf-8');
     const parsed = JSON.parse(raw) as Record<string, Partial<CacheEntry>>;
@@ -1147,7 +1146,11 @@ export async function executePhase5(
       for (const [address, entry] of Object.entries(overrides)) {
         stampAddressOverrideIntoCache(cacheEntries, protectedOverrideAddresses, address, entry);
       }
-      logger?.info?.('Phase 5: applied %d address overrides from %s', overrideCount, ADDRESS_OVERRIDES_FILENAME);
+      logger?.info?.(
+        'Phase 5: applied %d address overrides from %s',
+        overrideCount,
+        getPhase5AddressOverridesPath(),
+      );
     }
     logger?.info?.(
       'Phase 5: cache file ready — %d entries in memory from %s (CI: Actions cache + opcjonalnie data/phase5-cache.json w repo)',

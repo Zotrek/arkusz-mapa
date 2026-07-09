@@ -9,7 +9,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const DATA_FILE = 'data/phase5-cache.json';
+const DATA_OVERRIDES_FILE = 'data/phase5-address-overrides.json';
 const CACHE_FILE = '.cache/phase5-cache.json';
+const CACHE_OVERRIDES_FILE = '.cache/phase5-address-overrides.json';
 
 function loadEntries(filePath) {
   try {
@@ -62,6 +64,13 @@ if (dataKeys.length === 0 && actionKeys.length === 0) {
 fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
 const payload = { version: 2, entries: mergedEntries };
 fs.writeFileSync(CACHE_FILE, JSON.stringify(payload, null, 2));
+
+try {
+  fs.copyFileSync(DATA_OVERRIDES_FILE, CACHE_OVERRIDES_FILE);
+  console.log(`  overrides copied: ${DATA_OVERRIDES_FILE} → ${CACHE_OVERRIDES_FILE}`);
+} catch {
+  console.log(`  overrides: brak ${DATA_OVERRIDES_FILE} (opcjonalnie)`);
+}
 
 const mergedBytes = fs.statSync(CACHE_FILE).size;
 const dataStats = countByStatus(data.entries);

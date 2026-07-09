@@ -121,6 +121,13 @@ export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoP
 /** Wspólny plik cache (lokalnie + seed w CI) — commituj po aktualizacji geokodów. */
 export const DEFAULT_PHASE5_CACHE_PATH = join(ARKUSZ_MAPA_ROOT, 'data', 'phase5-cache.json');
 
+/** Ręczne współrzędne — zawsze z `data/`, niezależnie od PHASE5_CACHE_PATH na CI. */
+export const DEFAULT_PHASE5_ADDRESS_OVERRIDES_PATH = join(
+  ARKUSZ_MAPA_ROOT,
+  'data',
+  'phase5-address-overrides.json',
+);
+
 /**
  * Literówki / warianty zapisu → kanoniczny adres (ten sam sklep/punkt).
  * Klucz = adres z arkusza; wartość = adres używany przy grupowaniu i geokodowaniu.
@@ -138,4 +145,12 @@ export function getPhase5CacheFilePath(_outputDir: string): string {
     return fromEnv;
   }
   return DEFAULT_PHASE5_CACHE_PATH;
+}
+
+export function getPhase5AddressOverridesPath(): string {
+  const fromEnv = process.env.PHASE5_ADDRESS_OVERRIDES_PATH?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  return DEFAULT_PHASE5_ADDRESS_OVERRIDES_PATH;
 }
