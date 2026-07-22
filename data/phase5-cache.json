@@ -9593,10 +9593,10 @@
     },
     "21-080 Bogucin Bogucin 59A": {
       "status": "ok",
-      "lat": 52.7419216,
-      "lng": 20.0739355,
-      "wojewodztwo": "Mazowieckie",
-      "updatedAt": "2026-06-30T11:57:35.375Z"
+      "lat": 51.33898411856679,
+      "lng": 22.355721499720907,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-22T09:34:34.539Z"
     },
     "24-340 IDALIN IDALIN 42": {
       "status": "ok",
@@ -10475,10 +10475,10 @@
     },
     "32-065 Nowa Góra Nowa Góra 501": {
       "status": "ok",
-      "lat": 52.6463892,
-      "lng": 20.0921295,
-      "wojewodztwo": "Mazowieckie",
-      "updatedAt": "2026-06-30T21:40:56.824Z"
+      "lat": 50.17478976463805,
+      "lng": 19.592855170903288,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
     },
     "34-615 SŁOPNICE SŁOPNICE 888": {
       "status": "ok",
@@ -10545,10 +10545,10 @@
     },
     "39-304 Czermin Czermin 438A": {
       "status": "ok",
-      "lat": 50.7674816,
-      "lng": 21.7879192,
-      "wojewodztwo": "Świętokrzyskie",
-      "updatedAt": "2026-07-01T19:57:42.359Z"
+      "lat": 50.33680461477563,
+      "lng": 21.3225363459687,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
     },
     "32-353 Trzyciąż Krakowska 8a": {
       "status": "ok",
@@ -10559,10 +10559,10 @@
     },
     "21-302 Brzozowica Duza 119c": {
       "status": "ok",
-      "lat": 51.94931976072873,
-      "lng": 22.607395321564862,
+      "lat": 51.94919,
+      "lng": 22.60726,
       "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
+      "updatedAt": "2026-07-08T11:10:33.068Z"
     },
     "31-566 Kraków Bajeczna 6": {
       "status": "ok",
@@ -10690,69 +10690,6 @@
       "wojewodztwo": "Małopolskie",
       "updatedAt": "2026-07-06T11:12:40.295Z"
     },
-    "21-302 Brzozowica Duża 119c 119c": {
-      "status": "ok",
-      "lat": 51.94919,
-      "lng": 22.60726,
-      "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-08T11:10:33.068Z"
-    },
-    "21-302 Brzozowica Duza 119c 119c": {
-      "status": "ok",
-      "lat": 51.94931976072873,
-      "lng": 22.607395321564862,
-      "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
-    },
-    "21-302 Brzozowica Duża 119c 119c 119c": {
-      "status": "ok",
-      "lat": 51.94931976072873,
-      "lng": 22.607395321564862,
-      "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
-    },
-    "33-331 POLNA STARA REMIZA OSP 1 1": {
-      "status": "ok",
-      "lat": 49.67345526186956,
-      "lng": 20.989682739255844,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
-    },
-    "33-331 POLNA STARA REMIZA OSP 1 1 1": {
-      "status": "ok",
-      "lat": 49.67345526186956,
-      "lng": 20.989682739255844,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
-    },
-    "34-407 Ciche 170 170": {
-      "status": "ok",
-      "lat": 49.3874,
-      "lng": 19.86947,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-08T11:10:33.068Z"
-    },
-    "34-407 Ciche 170 170 170": {
-      "status": "ok",
-      "lat": 49.38753943152643,
-      "lng": 19.86946021984651,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
-    },
-    "56-321 Pakoslawsko 48A 48A": {
-      "status": "ok",
-      "lat": 51.61068,
-      "lng": 17.30209,
-      "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-07-08T11:10:33.068Z"
-    },
-    "56-321 Pakoslawsko 48A 48A 48A": {
-      "status": "ok",
-      "lat": 51.61085043197812,
-      "lng": 17.301306032581515,
-      "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-07-01T20:10:00.000Z"
-    },
     "32-053 Wola Radziszowska Jana Pawła II 11": {
       "status": "ok",
       "lat": 49.9082165,
@@ -10836,6 +10773,440 @@
       "lng": 16.591753,
       "wojewodztwo": "Wielkopolskie",
       "updatedAt": "2026-07-08T10:31:00.226Z"
+    },
+    "63-000 Środa Wielkopolska Tadeusza Kościuszki 47B": {
+      "status": "ok",
+      "lat": 52.2237443,
+      "lng": 17.2676711,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-09T07:38:25.731Z"
+    },
+    "32-051 Zelczyna Krakowska 178": {
+      "status": "ok",
+      "lat": 49.9624348,
+      "lng": 19.7578946,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-09T07:38:27.407Z"
+    },
+    "63-020 Zaniemyśl Poznańska 1": {
+      "status": "ok",
+      "lat": 52.1552089,
+      "lng": 17.1614733,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-09T07:38:30.571Z"
+    },
+    "30-399 Kraków Prażmowskiego 12": {
+      "status": "ok",
+      "lat": 50.0679901,
+      "lng": 19.9589273,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-09T07:38:32.118Z"
+    },
+    "34-114 Brzeźnica Krakowska 78": {
+      "status": "ok",
+      "lat": 49.9646702,
+      "lng": 19.641118,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:02:56.399Z"
+    },
+    "32-071 Rusocice Krakowska 93": {
+      "status": "ok",
+      "lat": 50.0008009,
+      "lng": 19.5982756,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:02:59.797Z"
+    },
+    "70-784 Szczecin Andrzeja Struga 31A": {
+      "status": "ok",
+      "lat": 53.3837956,
+      "lng": 14.6678378,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-07-22T09:03:01.400Z"
+    },
+    "83-000 Pruszcz Gdański Obrońców Wybrzeża 2b": {
+      "status": "ok",
+      "lat": 54.2588638,
+      "lng": 18.6302533,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T09:03:04.119Z"
+    },
+    "34-100 Jaroszowice Zakopiańska 61": {
+      "status": "ok",
+      "lat": 49.8477899,
+      "lng": 19.5103628,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:03:07.249Z"
+    },
+    "33-163 Rzepiennik Strzyżewski Rzepiennik Strzyżewski 367": {
+      "status": "ok",
+      "lat": 49.7992972,
+      "lng": 21.0495397,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:03:08.598Z"
+    },
+    "32-087 Zielonki Wiarusa 15": {
+      "status": "ok",
+      "lat": 50.1012341,
+      "lng": 19.9151749,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:03:11.345Z"
+    },
+    "38-245 Czermna Czermna 537": {
+      "status": "ok",
+      "lat": 49.8191965,
+      "lng": 21.2916043,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:03:12.641Z"
+    },
+    "57-401 Nowa Ruda Świdnicka 94a": {
+      "status": "ok",
+      "lat": 50.6037798,
+      "lng": 16.4999531,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:03:15.455Z"
+    },
+    "05-300 Mińsk Mazowiecki Ignacego Krasickiego 46": {
+      "status": "ok",
+      "lat": 52.1957812,
+      "lng": 21.5701627,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:03:18.271Z"
+    },
+    "58-124 Marcinowice Świdnicka 2": {
+      "status": "ok",
+      "lat": 50.8787567,
+      "lng": 16.5808871,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:03:21.442Z"
+    },
+    "58-150 JAROSZÓW JAROSZÓW 28": {
+      "status": "ok",
+      "lat": 50.9875821,
+      "lng": 16.421495,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:03:22.827Z"
+    },
+    "87-400 WROCKI WROCKI 84": {
+      "status": "ok",
+      "lat": 53.2093851,
+      "lng": 19.172947,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-07-22T09:03:24.208Z"
+    },
+    "59-220 LEGNICA CHOJNOWSKA 13": {
+      "status": "ok",
+      "lat": 51.2074118,
+      "lng": 16.1579445,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:03:26.950Z"
+    },
+    "72-001 Kołbaskowo Kurów 12": {
+      "status": "uncertain",
+      "lat": 53.3649548,
+      "lng": 14.5032528,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-07-22T09:03:47.606Z"
+    },
+    "11-130 Orneta Przemysłowa 16": {
+      "status": "ok",
+      "lat": 54.1141538,
+      "lng": 20.1446236,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-07-22T09:03:50.295Z"
+    },
+    "58-531 Łomnica Karpnicka 3": {
+      "status": "ok",
+      "lat": 50.875969,
+      "lng": 15.8095542,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:03:52.785Z"
+    },
+    "57-430 Jugów Główna 83a": {
+      "status": "ok",
+      "lat": 50.6120502,
+      "lng": 16.5177145,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:03:55.479Z"
+    },
+    "34-114 TŁUCZAŃ ZADZIELE 133": {
+      "status": "ok",
+      "lat": 49.948469,
+      "lng": 19.582601,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:04:01.316Z"
+    },
+    "58-211 Dobrocin Kościuszki 29b": {
+      "status": "ok",
+      "lat": 50.7322211,
+      "lng": 16.6975279,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:04:04.084Z"
+    },
+    "33-300 NOWY SĄCZ Osiedlowa 2A": {
+      "status": "ok",
+      "lat": 49.5847662,
+      "lng": 20.7158043,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:04:07.242Z"
+    },
+    "26-700 Zwoleń Perzyny 108": {
+      "status": "ok",
+      "lat": 51.3694138,
+      "lng": 21.585859,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:04:08.739Z"
+    },
+    "61-833 Poznań Szkolna 8": {
+      "status": "ok",
+      "lat": 52.40706394747705,
+      "lng": 16.931852374236545,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "61-894 poznań niezłomnych 2": {
+      "status": "ok",
+      "lat": 52.4025325,
+      "lng": 16.9223458,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-22T09:04:51.820Z"
+    },
+    "09-451 Radzanowo Ślepkowo Szlacheckie 22": {
+      "status": "uncertain",
+      "lat": 52.59139,
+      "lng": 19.85684,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:05:12.914Z"
+    },
+    "14-500 Braniewo Królewiecka 60f": {
+      "status": "ok",
+      "lat": 54.3892617,
+      "lng": 19.8367845,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-07-22T09:05:15.475Z"
+    },
+    "33-112 Tarnowiec Tarnowska 79a": {
+      "status": "ok",
+      "lat": 49.9836217,
+      "lng": 20.9847698,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:05:18.074Z"
+    },
+    "06-500 Mława J. Piłsudskiego 39": {
+      "status": "ok",
+      "lat": 53.12122903305619,
+      "lng": 20.362063514739837,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "58-240 Piława Górna Piastowska 68": {
+      "status": "ok",
+      "lat": 50.682526,
+      "lng": 16.7468998,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:06:03.845Z"
+    },
+    "95-030 kalinko 49 kalinko 49": {
+      "status": "ok",
+      "lat": 51.65105423584942,
+      "lng": 19.548600203507217,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "00-906 WARSZAWA Żwirki i Wigury 1": {
+      "status": "ok",
+      "lat": 52.1730862,
+      "lng": 20.9696667,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:06:28.374Z"
+    },
+    "31-979 KRAKÓW Klasztorna 23": {
+      "status": "ok",
+      "lat": 50.0597855,
+      "lng": 20.0505995,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:06:31.157Z"
+    },
+    "62-085 Potrzanowo Skocka 45": {
+      "status": "ok",
+      "lat": 52.6711264,
+      "lng": 17.1044742,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-22T09:06:33.828Z"
+    },
+    "01-378 Warszawa Połczyńska 4": {
+      "status": "ok",
+      "lat": 52.2238384,
+      "lng": 20.9266323,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:06:36.764Z"
+    },
+    "58-160 ŚWIEBODZICE CHROBREGO 9": {
+      "status": "ok",
+      "lat": 50.8673356,
+      "lng": 16.3182439,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-22T09:06:43.298Z"
+    },
+    "06-500 Mława J. Piłsudskiego 39 39": {
+      "status": "ok",
+      "lat": 53.12122903305619,
+      "lng": 20.362063514739837,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "06-500 Mlawa J. Piłsudskiego 39": {
+      "status": "ok",
+      "lat": 53.12122903305619,
+      "lng": 20.362063514739837,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "06-500 Mlawa J. Piłsudskiego 39 39": {
+      "status": "ok",
+      "lat": 53.12122903305619,
+      "lng": 20.362063514739837,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "06-500 Mława J. Piłsudskiego 39 39 39": {
+      "status": "ok",
+      "lat": 53.12122903305619,
+      "lng": 20.362063514739837,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "21-302 Brzozowica Duża 119c 119c": {
+      "status": "ok",
+      "lat": 51.94919,
+      "lng": 22.60726,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-08T11:10:33.068Z"
+    },
+    "21-302 Brzozowica Duza 119c 119c": {
+      "status": "ok",
+      "lat": 51.94919,
+      "lng": 22.60726,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-08T11:10:33.068Z"
+    },
+    "21-302 Brzozowica Duża 119c 119c 119c": {
+      "status": "ok",
+      "lat": 51.94919,
+      "lng": 22.60726,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-08T11:10:33.068Z"
+    },
+    "32-065 Nowa Góra Nowa Góra 501 501": {
+      "status": "ok",
+      "lat": 50.17478976463805,
+      "lng": 19.592855170903288,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "32-065 Nowa Gora Nowa Góra 501": {
+      "status": "ok",
+      "lat": 50.17478976463805,
+      "lng": 19.592855170903288,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "32-065 Nowa Gora Nowa Góra 501 501": {
+      "status": "ok",
+      "lat": 50.17478976463805,
+      "lng": 19.592855170903288,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "32-065 Nowa Góra Nowa Góra 501 501 501": {
+      "status": "ok",
+      "lat": 50.17478976463805,
+      "lng": 19.592855170903288,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "33-331 POLNA STARA REMIZA OSP 1 1": {
+      "status": "ok",
+      "lat": 49.67345526186956,
+      "lng": 20.989682739255844,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "33-331 POLNA STARA REMIZA OSP 1 1 1": {
+      "status": "ok",
+      "lat": 49.67345526186956,
+      "lng": 20.989682739255844,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-01T20:10:00.000Z"
+    },
+    "34-407 Ciche 170 170": {
+      "status": "ok",
+      "lat": 49.3874,
+      "lng": 19.86947,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-08T11:10:33.068Z"
+    },
+    "34-407 Ciche 170 170 170": {
+      "status": "ok",
+      "lat": 49.3874,
+      "lng": 19.86947,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-08T11:10:33.068Z"
+    },
+    "39-304 Czermin Czermin 438A 438A": {
+      "status": "ok",
+      "lat": 50.33680461477563,
+      "lng": 21.3225363459687,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "56-321 Pakoslawsko 48A 48A": {
+      "status": "ok",
+      "lat": 51.61068,
+      "lng": 17.30209,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-08T11:10:33.068Z"
+    },
+    "56-321 Pakoslawsko 48A 48A 48A": {
+      "status": "ok",
+      "lat": 51.61068,
+      "lng": 17.30209,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-08T11:10:33.068Z"
+    },
+    "61-833 Poznań Szkolna 8 8": {
+      "status": "ok",
+      "lat": 52.40706394747705,
+      "lng": 16.931852374236545,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "61-833 Poznan Szkolna 8": {
+      "status": "ok",
+      "lat": 52.40706394747705,
+      "lng": 16.931852374236545,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "61-833 Poznan Szkolna 8 8": {
+      "status": "ok",
+      "lat": 52.40706394747705,
+      "lng": 16.931852374236545,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "95-030 kalinko 49 kalinko 49 49": {
+      "status": "ok",
+      "lat": 51.65105423584942,
+      "lng": 19.548600203507217,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "95-030 kalinko 49 kalinko 49 49 49": {
+      "status": "ok",
+      "lat": 51.65105423584942,
+      "lng": 19.548600203507217,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
     }
   }
 }

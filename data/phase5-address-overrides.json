@@ -1,4 +1,18 @@
 {
+  "06-500 Mława J. Piłsudskiego 39": {
+    "status": "ok",
+    "lat": 53.12122903305619,
+    "lng": 20.362063514739837,
+    "wojewodztwo": "Mazowieckie",
+    "updatedAt": "2026-07-22T09:09:50.909Z"
+  },
+  "21-080 Bogucin Bogucin 59A": {
+    "status": "ok",
+    "lat": 51.33898411856679,
+    "lng": 22.355721499720907,
+    "wojewodztwo": "Lubelskie",
+    "updatedAt": "2026-07-22T09:34:34.539Z"
+  },
   "21-302 Brzozowica Duża 119c": {
     "status": "ok",
     "lat": 51.94919,
@@ -12,6 +26,13 @@
     "lng": 22.60726,
     "wojewodztwo": "Lubelskie",
     "updatedAt": "2026-07-08T11:10:33.068Z"
+  },
+  "32-065 Nowa Góra Nowa Góra 501": {
+    "status": "ok",
+    "lat": 50.17478976463805,
+    "lng": 19.592855170903288,
+    "wojewodztwo": "Małopolskie",
+    "updatedAt": "2026-07-22T09:09:50.909Z"
   },
   "33-331 POLNA STARA REMIZA OSP 1": {
     "status": "ok",
@@ -34,6 +55,13 @@
     "wojewodztwo": "Małopolskie",
     "updatedAt": "2026-07-08T11:10:33.068Z"
   },
+  "39-304 Czermin Czermin 438A": {
+    "status": "ok",
+    "lat": 50.33680461477563,
+    "lng": 21.3225363459687,
+    "wojewodztwo": "Podkarpackie",
+    "updatedAt": "2026-07-22T09:09:50.909Z"
+  },
   "56-321 Pakoslawsko 48A": {
     "status": "ok",
     "lat": 51.61068,
@@ -47,5 +75,19 @@
     "lng": 17.30209,
     "wojewodztwo": "Dolnośląskie",
     "updatedAt": "2026-07-08T11:10:33.068Z"
+  },
+  "61-833 Poznań Szkolna 8": {
+    "status": "ok",
+    "lat": 52.40706394747705,
+    "lng": 16.931852374236545,
+    "wojewodztwo": "Wielkopolskie",
+    "updatedAt": "2026-07-22T09:09:50.909Z"
+  },
+  "95-030 kalinko 49 kalinko 49": {
+    "status": "ok",
+    "lat": 51.65105423584942,
+    "lng": 19.548600203507217,
+    "wojewodztwo": "Łódzkie",
+    "updatedAt": "2026-07-22T09:09:50.909Z"
   }
 }
