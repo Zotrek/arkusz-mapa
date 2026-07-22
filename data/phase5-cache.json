@@ -11047,14 +11047,28 @@
       "wojewodztwo": "Dolnośląskie",
       "updatedAt": "2026-07-22T09:06:43.298Z"
     },
-    "06-500 Mława J. Piłsudskiego 39 39": {
+    "06-500 Mlawa J. Piłsudskiego 39": {
       "status": "ok",
       "lat": 53.12122903305619,
       "lng": 20.362063514739837,
       "wojewodztwo": "Mazowieckie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
     },
-    "06-500 Mlawa J. Piłsudskiego 39": {
+    "32-065 Nowa Gora Nowa Góra 501": {
+      "status": "ok",
+      "lat": 50.17478976463805,
+      "lng": 19.592855170903288,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "61-833 Poznan Szkolna 8": {
+      "status": "ok",
+      "lat": 52.40706394747705,
+      "lng": 16.931852374236545,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "06-500 Mława J. Piłsudskiego 39 39": {
       "status": "ok",
       "lat": 53.12122903305619,
       "lng": 20.362063514739837,
@@ -11074,6 +11088,13 @@
       "lng": 20.362063514739837,
       "wojewodztwo": "Mazowieckie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "21-080 Bogucin Bogucin 59A 59A": {
+      "status": "ok",
+      "lat": 51.33898411856679,
+      "lng": 22.355721499720907,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-22T09:34:34.539Z"
     },
     "21-302 Brzozowica Duża 119c 119c": {
       "status": "ok",
@@ -11096,14 +11117,14 @@
       "wojewodztwo": "Lubelskie",
       "updatedAt": "2026-07-08T11:10:33.068Z"
     },
-    "32-065 Nowa Góra Nowa Góra 501 501": {
+    "26-804 STROMIEC PISAKI 26 26": {
       "status": "ok",
-      "lat": 50.17478976463805,
-      "lng": 19.592855170903288,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-22T09:09:50.909Z"
+      "lat": 51.651656334875696,
+      "lng": 21.090086189699605,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
     },
-    "32-065 Nowa Gora Nowa Góra 501": {
+    "32-065 Nowa Góra Nowa Góra 501 501": {
       "status": "ok",
       "lat": 50.17478976463805,
       "lng": 19.592855170903288,
@@ -11123,6 +11144,27 @@
       "lng": 19.592855170903288,
       "wojewodztwo": "Małopolskie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "32-821 ZABORÓW ZABORÓW 42 42": {
+      "status": "ok",
+      "lat": 50.15610071747399,
+      "lng": 20.687169012859925,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "32-821 ZABOROW ZABOROW 42": {
+      "status": "ok",
+      "lat": 50.15610071747399,
+      "lng": 20.687169012859925,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "32-821 ZABOROW ZABOROW 42 42": {
+      "status": "ok",
+      "lat": 50.15610071747399,
+      "lng": 20.687169012859925,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
     },
     "33-331 POLNA STARA REMIZA OSP 1 1": {
       "status": "ok",
@@ -11180,19 +11222,68 @@
       "wojewodztwo": "Wielkopolskie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
     },
-    "61-833 Poznan Szkolna 8": {
-      "status": "ok",
-      "lat": 52.40706394747705,
-      "lng": 16.931852374236545,
-      "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-07-22T09:09:50.909Z"
-    },
     "61-833 Poznan Szkolna 8 8": {
       "status": "ok",
       "lat": 52.40706394747705,
       "lng": 16.931852374236545,
       "wojewodztwo": "Wielkopolskie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "84-100 Celbowo Celbowo 23 23": {
+      "status": "ok",
+      "lat": 54.68516362862105,
+      "lng": 18.368964936023872,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-103 STRZELNO BAŁTYCKA 6 6": {
+      "status": "ok",
+      "lat": 54.78551247900216,
+      "lng": 18.32514812035929,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-103 STRZELNO BALTYCKA 6": {
+      "status": "ok",
+      "lat": 54.78551247900216,
+      "lng": 18.32514812035929,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-103 STRZELNO BALTYCKA 6 6": {
+      "status": "ok",
+      "lat": 54.78551247900216,
+      "lng": 18.32514812035929,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-120 WŁADYSŁAWOWO HALLERA 2 2": {
+      "status": "ok",
+      "lat": 54.79345191263607,
+      "lng": 18.40510526883817,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-120 WLADYSLAWOWO HALLERA 2": {
+      "status": "ok",
+      "lat": 54.79345191263607,
+      "lng": 18.40510526883817,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-120 WLADYSLAWOWO HALLERA 2 2": {
+      "status": "ok",
+      "lat": 54.79345191263607,
+      "lng": 18.40510526883817,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-230 RUMIA Grunwaldzka 7 7": {
+      "status": "ok",
+      "lat": 54.572722175452895,
+      "lng": 18.383316426498784,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
     },
     "95-030 kalinko 49 kalinko 49 49": {
       "status": "ok",
@@ -11207,6 +11298,20 @@
       "lng": 19.548600203507217,
       "wojewodztwo": "Łódzkie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
+    },
+    "31-234 Kraków Kuźnicy Kołłątajowskiej 13": {
+      "status": "ok",
+      "lat": 50.0973739,
+      "lng": 19.9592667,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T11:36:42.300Z"
+    },
+    "21-404 Wierzejki Wierzejki 4": {
+      "status": "ok",
+      "lat": 52.0241512,
+      "lng": 22.5665777,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-22T11:36:43.856Z"
     }
   }
 }
