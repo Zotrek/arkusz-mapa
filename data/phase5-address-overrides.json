@@ -27,12 +27,26 @@
     "wojewodztwo": "Lubelskie",
     "updatedAt": "2026-07-08T11:10:33.068Z"
   },
+  "26-804 STROMIEC PISAKI 26": {
+    "status": "ok",
+    "lat": 51.651656334875696,
+    "lng": 21.090086189699605,
+    "wojewodztwo": "Mazowieckie",
+    "updatedAt": "2026-07-22T11:32:33.070Z"
+  },
   "32-065 Nowa Góra Nowa Góra 501": {
     "status": "ok",
     "lat": 50.17478976463805,
     "lng": 19.592855170903288,
     "wojewodztwo": "Małopolskie",
     "updatedAt": "2026-07-22T09:09:50.909Z"
+  },
+  "32-821 ZABORÓW ZABORÓW 42": {
+    "status": "ok",
+    "lat": 50.15610071747399,
+    "lng": 20.687169012859925,
+    "wojewodztwo": "Małopolskie",
+    "updatedAt": "2026-07-22T11:32:33.070Z"
   },
   "33-331 POLNA STARA REMIZA OSP 1": {
     "status": "ok",
@@ -82,6 +96,34 @@
     "lng": 16.931852374236545,
     "wojewodztwo": "Wielkopolskie",
     "updatedAt": "2026-07-22T09:09:50.909Z"
+  },
+  "84-100 Celbowo Celbowo 23": {
+    "status": "ok",
+    "lat": 54.68516362862105,
+    "lng": 18.368964936023872,
+    "wojewodztwo": "Pomorskie",
+    "updatedAt": "2026-07-22T11:32:33.070Z"
+  },
+  "84-103 STRZELNO BAŁTYCKA 6": {
+    "status": "ok",
+    "lat": 54.78551247900216,
+    "lng": 18.32514812035929,
+    "wojewodztwo": "Pomorskie",
+    "updatedAt": "2026-07-22T11:32:33.070Z"
+  },
+  "84-120 WŁADYSŁAWOWO HALLERA 2": {
+    "status": "ok",
+    "lat": 54.79345191263607,
+    "lng": 18.40510526883817,
+    "wojewodztwo": "Pomorskie",
+    "updatedAt": "2026-07-22T11:32:33.070Z"
+  },
+  "84-230 RUMIA Grunwaldzka 7": {
+    "status": "ok",
+    "lat": 54.572722175452895,
+    "lng": 18.383316426498784,
+    "wojewodztwo": "Pomorskie",
+    "updatedAt": "2026-07-22T11:32:33.070Z"
   },
   "95-030 kalinko 49 kalinko 49": {
     "status": "ok",
