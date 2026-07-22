@@ -56,6 +56,8 @@ export const SHEET_NAME_ADRESY_NIEPEWNE = 'Adresy niepewne';
 export const SHEET_NAME_ADRESY_TYLKO_KOD_MIASTO = 'Adresy tylko kod+miasto';
 /** Pary adresów na mapie w odległości ≤ 20 m (nakładające się pinezki). */
 export const SHEET_NAME_BLISKIE_ADRESY = 'Bliskie adresy (≤20 m)';
+/** Grube niespójności: pinezka daleko od strefy kodu pocztowego (tylko gdy są wpisy). */
+export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
 
 // REQ-1.5: URL GeoJSON granic województw (Polska)
 export const GEOJSON_WOJEWODZTWA_URL =
@@ -129,6 +131,16 @@ export const DEFAULT_PHASE5_ADDRESS_OVERRIDES_PATH = join(
 );
 
 /**
+ * Znane fałszywe alarmy / zaakceptowane literówki kodu — nie trafiają na zakładkę
+ * „Błędne kody pocztowe”. Klucz = dokładny adres z cache/arkusza; wartość = notatka.
+ */
+export const DEFAULT_PHASE5_POSTCODE_EXCEPTIONS_PATH = join(
+  ARKUSZ_MAPA_ROOT,
+  'data',
+  'phase5-postcode-exceptions.json',
+);
+
+/**
  * Literówki / warianty zapisu → kanoniczny adres (ten sam sklep/punkt).
  * Klucz = adres z arkusza; wartość = adres używany przy grupowaniu i geokodowaniu.
  */
@@ -153,4 +165,12 @@ export function getPhase5AddressOverridesPath(): string {
     return fromEnv;
   }
   return DEFAULT_PHASE5_ADDRESS_OVERRIDES_PATH;
+}
+
+export function getPhase5PostcodeExceptionsPath(): string {
+  const fromEnv = process.env.PHASE5_POSTCODE_EXCEPTIONS_PATH?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  return DEFAULT_PHASE5_POSTCODE_EXCEPTIONS_PATH;
 }

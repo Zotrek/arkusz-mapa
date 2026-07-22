@@ -427,6 +427,79 @@ describe('phase4', () => {
       );
     });
 
+    it('test_executePhase4_when_postcode_zone_mismatch_should_write_bledne_kody_pocztowe_sheet', async () => {
+      const api = {
+        spreadsheets: {
+          get: vi.fn().mockResolvedValue({
+            data: { sheets: [{ properties: { title: 'Arkusz1' } }] },
+          }),
+          batchUpdate: vi.fn().mockResolvedValue({}),
+          values: {
+            clear: vi.fn().mockResolvedValue({}),
+            update: vi.fn().mockResolvedValue({}),
+          },
+        },
+      };
+
+      await executePhase4(api, {
+        spreadsheetId: 'sheet-id',
+        headers: ['A'],
+        rowsDuplikatyPlomb: [],
+        rowsNiepewneWyniki: [],
+        groupedNiepewneAdresy: [],
+        groupedBledneAdresy: [],
+        geocoded: [
+          {
+            address: '21-080 Bogucin Bogucin 59A',
+            count: 3,
+            lat: 52.7419216,
+            lng: 20.0739355,
+            wojewodztwo: 'Mazowieckie',
+            rows: [],
+          },
+        ],
+        geocodedNoPostcode: [],
+        uncertainGeocoded: [],
+        cityOnlyGeocoded: [],
+      });
+
+      expect(api.spreadsheets.batchUpdate).toHaveBeenCalledWith({
+        spreadsheetId: 'sheet-id',
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: 'Błędne kody pocztowe' } } }],
+        },
+      });
+      expect(api.spreadsheets.values.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          range: "'Błędne kody pocztowe'!A1",
+          requestBody: {
+            values: [
+              [
+                'adres',
+                'kod_pocztowy',
+                'liczba_wystapien',
+                'lat',
+                'lng',
+                'wojewodztwo',
+                'oczekiwane_wojewodztwo',
+                'odleglosc_km_od_strefy',
+              ],
+              [
+                '21-080 Bogucin Bogucin 59A',
+                '21-080',
+                '3',
+                '52.7419216',
+                '20.0739355',
+                'Mazowieckie',
+                'Lubelskie',
+                expect.stringMatching(/^\d+(\.\d)?$/),
+              ],
+            ],
+          },
+        }),
+      );
+    });
+
     it('test_executePhase4_when_no_data_should_not_create_any_sheet', async () => {
       const api = {
         spreadsheets: {

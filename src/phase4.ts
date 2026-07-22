@@ -1,7 +1,8 @@
 /**
  * Faza 4: zapis do Sheets – zakładki z liczbą wystąpień:
  * Duplikaty plomb (pełne wiersze, tylko gdy występują), Zgrupowane niepewne adresy, Zgrupowane błędne adresy,
- * Adresy pewne (3 typy: pewne, pewne bez kodu, tylko kod+miasto).
+ * Adresy pewne (3 typy: pewne, pewne bez kodu, tylko kod+miasto),
+ * Błędne kody pocztowe (grube niespójności kod↔współrzędne, tylko gdy są).
  * Nie tworzy zakładek: Błędne adresy, Wyniki niepewne, Adresy niepewne.
  */
 
@@ -9,14 +10,17 @@ import {
   SHEET_NAME_ADRESY_PEWNE,
   SHEET_NAME_ADRESY_PEWNE_BEZ_KODU,
   SHEET_NAME_ADRESY_TYLKO_KOD_MIASTO,
+  SHEET_NAME_BLEDNE_KODY_POCZTOWE,
   SHEET_NAME_BLISKIE_ADRESY,
   SHEET_NAME_DUPLIKATY_PLOMB,
   SHEET_NAME_ZGRUPOWANE_BLEDNE_ADRESY,
   SHEET_NAME_ZGRUPOWANE_NIEPEWNE_ADRESY,
+  getPhase5PostcodeExceptionsPath,
 } from './config.js';
 import type { GeocodedAddress } from './phase5.js';
 import type { GroupedBlednyAdres, GroupedNiepewnyAdres } from './phase5.js';
 import { buildCloseGeocodedAddressPairs } from './phase6.js';
+import { findPostcodeZoneMismatches, loadPostcodeExceptions } from './postcodeZoneCheck.js';
 import type { SheetRow } from './sheets.js';
 
 type SheetsMetaClient = {
@@ -146,6 +150,17 @@ const BLISKIE_ADRESY_HEADERS = [
   'liczba_wystapien_b',
 ];
 
+const BLEDNE_KODY_POCZTOWE_HEADERS = [
+  'adres',
+  'kod_pocztowy',
+  'liczba_wystapien',
+  'lat',
+  'lng',
+  'wojewodztwo',
+  'oczekiwane_wojewodztwo',
+  'odleglosc_km_od_strefy',
+];
+
 async function overwriteAdresyTypSheet(
   api: SheetsValuesClient,
   spreadsheetId: string,
@@ -175,7 +190,8 @@ async function overwriteAdresyTypSheet(
  * 2. Zgrupowane niepewne adresy (adres, liczba_wystapien),
  * 3. Zgrupowane błędne adresy (adres, liczba_wystapien),
  * 4. Adresy pewne (3 typy: pewne, pewne bez kodu, tylko kod+miasto),
- * 5. Bliskie adresy (≤20 m) — pary nakładających się punktów na mapie.
+ * 5. Bliskie adresy (≤20 m) — pary nakładających się punktów na mapie,
+ * 6. Błędne kody pocztowe — weryfikacja kod↔współrzędne na końcu przejścia.
  * Zakładka jest tworzona tylko wtedy, gdy są dla niej dane do zapisania.
  */
 export async function executePhase4(
@@ -324,6 +340,39 @@ export async function executePhase4(
             row.wojB,
             String(row.liczbaWystapienA),
             String(row.liczbaWystapienB),
+          ]),
+        ],
+      },
+    });
+  }
+
+  const postcodeExceptions = await loadPostcodeExceptions(getPhase5PostcodeExceptionsPath());
+  const postcodeZoneMismatches = findPostcodeZoneMismatches(
+    [...geocoded, ...geocodedNoPostcode, ...uncertainGeocoded, ...cityOnlyGeocoded],
+    { excludedAddresses: postcodeExceptions },
+  );
+  if (postcodeZoneMismatches.length > 0) {
+    await ensureSheetExists(api, input.spreadsheetId, SHEET_NAME_BLEDNE_KODY_POCZTOWE);
+    await api.spreadsheets.values.clear({
+      spreadsheetId: input.spreadsheetId,
+      range: buildSheetRange(SHEET_NAME_BLEDNE_KODY_POCZTOWE),
+    });
+    await api.spreadsheets.values.update({
+      spreadsheetId: input.spreadsheetId,
+      range: buildSheetStartRange(SHEET_NAME_BLEDNE_KODY_POCZTOWE),
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [
+          BLEDNE_KODY_POCZTOWE_HEADERS,
+          ...postcodeZoneMismatches.map((row) => [
+            row.address,
+            row.postcode,
+            String(row.liczbaWystapien),
+            String(row.lat),
+            String(row.lng),
+            row.wojewodztwo,
+            row.oczekiwaneWojewodztwo,
+            String(row.odlegloscKm),
           ]),
         ],
       },
