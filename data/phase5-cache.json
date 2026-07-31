@@ -11068,6 +11068,41 @@
       "wojewodztwo": "Wielkopolskie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
     },
+    "32-821 ZABOROW ZABOROW 42": {
+      "status": "ok",
+      "lat": 50.15610071747399,
+      "lng": 20.687169012859925,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-103 STRZELNO BALTYCKA 6": {
+      "status": "ok",
+      "lat": 54.78551247900216,
+      "lng": 18.32514812035929,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "84-120 WLADYSLAWOWO HALLERA 2": {
+      "status": "ok",
+      "lat": 54.79345191263607,
+      "lng": 18.40510526883817,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-22T11:32:33.070Z"
+    },
+    "31-234 Kraków Kuźnicy Kołłątajowskiej 13": {
+      "status": "ok",
+      "lat": 50.0973739,
+      "lng": 19.9592667,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-22T11:36:42.300Z"
+    },
+    "21-404 Wierzejki Wierzejki 4": {
+      "status": "ok",
+      "lat": 52.0241512,
+      "lng": 22.5665777,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-22T11:36:43.856Z"
+    },
     "06-500 Mława J. Piłsudskiego 39 39": {
       "status": "ok",
       "lat": 53.12122903305619,
@@ -11146,13 +11181,6 @@
       "updatedAt": "2026-07-22T09:09:50.909Z"
     },
     "32-821 ZABORÓW ZABORÓW 42 42": {
-      "status": "ok",
-      "lat": 50.15610071747399,
-      "lng": 20.687169012859925,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-22T11:32:33.070Z"
-    },
-    "32-821 ZABOROW ZABOROW 42": {
       "status": "ok",
       "lat": 50.15610071747399,
       "lng": 20.687169012859925,
@@ -11243,13 +11271,6 @@
       "wojewodztwo": "Pomorskie",
       "updatedAt": "2026-07-22T11:32:33.070Z"
     },
-    "84-103 STRZELNO BALTYCKA 6": {
-      "status": "ok",
-      "lat": 54.78551247900216,
-      "lng": 18.32514812035929,
-      "wojewodztwo": "Pomorskie",
-      "updatedAt": "2026-07-22T11:32:33.070Z"
-    },
     "84-103 STRZELNO BALTYCKA 6 6": {
       "status": "ok",
       "lat": 54.78551247900216,
@@ -11258,13 +11279,6 @@
       "updatedAt": "2026-07-22T11:32:33.070Z"
     },
     "84-120 WŁADYSŁAWOWO HALLERA 2 2": {
-      "status": "ok",
-      "lat": 54.79345191263607,
-      "lng": 18.40510526883817,
-      "wojewodztwo": "Pomorskie",
-      "updatedAt": "2026-07-22T11:32:33.070Z"
-    },
-    "84-120 WLADYSLAWOWO HALLERA 2": {
       "status": "ok",
       "lat": 54.79345191263607,
       "lng": 18.40510526883817,
@@ -11299,19 +11313,215 @@
       "wojewodztwo": "Łódzkie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
     },
-    "31-234 Kraków Kuźnicy Kołłątajowskiej 13": {
+    "07-410 Ostrołęka Żeromskiego 21": {
       "status": "ok",
-      "lat": 50.0973739,
-      "lng": 19.9592667,
-      "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-07-22T11:36:42.300Z"
+      "lat": 53.0575575,
+      "lng": 21.6176948,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-31T13:48:55.527Z"
     },
-    "21-404 Wierzejki Wierzejki 4": {
+    "41-106 Siemianowice Śląskie Kapicy 10d": {
       "status": "ok",
-      "lat": 52.0241512,
-      "lng": 22.5665777,
+      "lat": 50.3032438,
+      "lng": 19.0149213,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-07-31T13:48:58.291Z"
+    },
+    "21-040 Świdnik Jana III Sobieskiego 1": {
+      "status": "ok",
+      "lat": 51.2362849,
+      "lng": 22.7143474,
       "wojewodztwo": "Lubelskie",
-      "updatedAt": "2026-07-22T11:36:43.856Z"
+      "updatedAt": "2026-07-31T13:49:00.408Z"
+    },
+    "32-083 BALICE Na Lotnisko 51": {
+      "status": "ok",
+      "lat": 50.0838836,
+      "lng": 19.8073826,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-31T13:49:03.280Z"
+    },
+    "97-500 Radomsko Metalurgii 11": {
+      "status": "ok",
+      "lat": 51.0728337,
+      "lng": 19.4450001,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-31T13:49:05.896Z"
+    },
+    "68-130 GOZDNICA KOŚCIELNA 14": {
+      "status": "ok",
+      "lat": 51.4389457,
+      "lng": 15.0944703,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-07-31T13:49:08.835Z"
+    },
+    "39-320 ŁĄCZKI BRZESKIE ŁĄCZKI BRZESKIE 163": {
+      "status": "ok",
+      "lat": 50.1856746,
+      "lng": 21.386359,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-31T13:49:10.483Z"
+    },
+    "39-331 CHRZĄSTÓW CHRZĄSTÓW 51": {
+      "status": "ok",
+      "lat": 50.3470347,
+      "lng": 21.4022861,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-31T13:49:11.891Z"
+    },
+    "39-340 Padew Narodowa Grunwaldzka 37": {
+      "status": "ok",
+      "lat": 50.4340247,
+      "lng": 21.486417,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-31T13:49:14.672Z"
+    },
+    "21-560 Żabce ------ 36": {
+      "status": "uncertain",
+      "lat": 52.0187979,
+      "lng": 22.7249969,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-07-31T13:49:48.437Z"
+    },
+    "66-120 KARGOWA RYNEK 23": {
+      "status": "ok",
+      "lat": 52.0703812,
+      "lng": 15.8612909,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-07-31T13:49:54.324Z"
+    },
+    "19-500 Gołdap Zwyciestwa 16": {
+      "status": "ok",
+      "lat": 54.3087582,
+      "lng": 22.3023194,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-07-31T13:49:57.633Z"
+    },
+    "27-500 OPATÓW 1-GO MAJA 66": {
+      "status": "ok",
+      "lat": 50.80539528720035,
+      "lng": 21.4322057916968,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-07-31T13:53:59.346Z"
+    },
+    "83-404 Nowa Karczma Kościerska 5": {
+      "status": "uncertain",
+      "lat": 54.1325632,
+      "lng": 18.2015281,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-07-31T13:51:15.350Z"
+    },
+    "38-242 Skołyszyn Skołyszyn 430": {
+      "status": "ok",
+      "lat": 49.7498498,
+      "lng": 21.3358381,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-31T13:51:17.258Z"
+    },
+    "15-404 Białystok Młynowa 14": {
+      "status": "ok",
+      "lat": 53.1292247,
+      "lng": 23.1522617,
+      "wojewodztwo": "Podlaskie",
+      "updatedAt": "2026-07-31T13:51:20.462Z"
+    },
+    "26-021 Daleszyce Staszica 3": {
+      "status": "ok",
+      "lat": 50.8017404,
+      "lng": 20.8075754,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-07-31T13:51:23.340Z"
+    },
+    "07-410 Ostrołęka Prądzyńskiego 2": {
+      "status": "ok",
+      "lat": 53.0818067,
+      "lng": 21.5737242,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-31T13:51:26.616Z"
+    },
+    "58-310 SZCZAWNO ZDRÓJ KOŚCIUSZKI 1": {
+      "status": "ok",
+      "lat": 50.8006427,
+      "lng": 16.2517048,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-31T13:51:33.828Z"
+    },
+    "38-316 wysowa wysowa 109": {
+      "status": "ok",
+      "lat": 49.4399971,
+      "lng": 21.1727633,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-07-31T13:51:35.694Z"
+    },
+    "58-125 Pszenno Świdnicka 4": {
+      "status": "ok",
+      "lat": 50.8554395,
+      "lng": 16.5364137,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-31T13:51:38.443Z"
+    },
+    "39-321 Tuszyma Tuszyma 771": {
+      "status": "ok",
+      "lat": 50.1897135,
+      "lng": 21.5198733,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-07-31T13:51:39.874Z"
+    },
+    "59-940 Węgliniec Sikorskiego b/n": {
+      "status": "ok",
+      "lat": 51.2874775,
+      "lng": 15.2324357,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-31T13:51:43.152Z"
+    },
+    "97-318 Czarnocin Dalków 35": {
+      "status": "uncertain",
+      "lat": 51.63219,
+      "lng": 19.66916,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-07-31T13:52:02.136Z"
+    },
+    "07-410 Ostrołęka Bogusławskiego 34": {
+      "status": "ok",
+      "lat": 53.0836537,
+      "lng": 21.572231,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-31T13:52:04.832Z"
+    },
+    "63-233 Jaraczewo Kolejowa 8": {
+      "status": "ok",
+      "lat": 51.9677095,
+      "lng": 17.2963173,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-07-31T13:52:07.646Z"
+    },
+    "57-160 Borów Wrocławska 8a": {
+      "status": "ok",
+      "lat": 50.8839501,
+      "lng": 16.9913218,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-07-31T13:52:10.696Z"
+    },
+    "07-410 Ostrołęka Piłsudskiego 13": {
+      "status": "ok",
+      "lat": 53.0851237,
+      "lng": 21.5762285,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-31T13:52:14.374Z"
+    },
+    "05-660 Warka Długa 4": {
+      "status": "ok",
+      "lat": 51.7837263,
+      "lng": 21.187375,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-07-31T13:52:17.148Z"
+    },
+    "11-034 Łańsk Łańsk 1": {
+      "status": "ok",
+      "lat": 53.6292753,
+      "lng": 20.4824841,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-07-31T13:52:18.992Z"
     }
   }
 }
