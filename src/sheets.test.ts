@@ -29,6 +29,7 @@ import {
   COL_NUMER_PLOMBY,
   COL_DATA_ZAMKNIECIA_WORKA,
   COL_ZBIORKA,
+  COL_WG_HARMONOGRAMU,
 } from './config';
 
 const CURRENT_HEADERS = [
@@ -135,6 +136,12 @@ describe('sheets phase 2', () => {
       expect(map.kodPocztowy).toBe(COL_KOD_POCZTOWY);
       expect(map.numerPlomby).toBe(COL_NUMER_PLOMBY);
       expect(map.zbiorka).toBe(COL_ZBIORKA);
+      expect(map.wgHarmonogramu).toBe(COL_WG_HARMONOGRAMU);
+    });
+
+    it('test_resolveSheetColumnMap_when_wg_harmonogramu_header_should_map_column', () => {
+      const map = resolveSheetColumnMap([...CURRENT_HEADERS, 'Wg harmonogramu']);
+      expect(map.wgHarmonogramu).toBe(14);
     });
   });
 
@@ -201,8 +208,32 @@ describe('sheets phase 2', () => {
       expect(row.numerBudynku).toBe('18');
       expect(row.numerPlomby).toBe('700000000349130');
       expect(row.zbiorka).toBe('Maszyna');
+      expect(row.wgHarmonogramu).toBe('');
       expect(row.address).toBe('62-320 Miłosław os. Władysławs Łokietka 18');
       expect(row.sourceRowIndex).toBe(2);
+    });
+
+    it('test_mapRawRowToSheetRow_when_wg_harmonogramu_column_should_read_tak_nie', () => {
+      const columns = resolveSheetColumnMap([...CURRENT_HEADERS, 'Wg harmonogramu']);
+      const raw = [
+        '7790000000',
+        'PH',
+        'Sklep',
+        '62-320',
+        'Miłosław',
+        'Leśna',
+        '1',
+        'Gmina',
+        'Wielkopolskie',
+        '123',
+        '',
+        '',
+        '15.04.2026',
+        'Maszyna',
+        'tak',
+      ];
+      const row = mapRawRowToSheetRow(raw, 2, columns);
+      expect(row.wgHarmonogramu).toBe('tak');
     });
 
     it('test_mapRawRowToSheetRow_when_srem_has_wrong_postcode_should_correct_to_63_100', () => {

@@ -65,6 +65,8 @@ export interface GeocodedAddress {
   wojewodztwo: string;
   /** Zbiórka: "Ręczna" / "Maszyna" / "Ręczna / Maszyna" (z kolumny L) */
   zbiorka?: string;
+  /** Wg harmonogramu: "tak" / "nie" (agregat z wierszy; brak/mixed → undefined). */
+  wgHarmonogramu?: string;
   rows: SheetRow[];
 }
 
@@ -317,6 +319,36 @@ function aggregateZbiorka(rows: SheetRow[]): string | undefined {
   }
   if (values.size === 0) return undefined;
   return [...values].sort().join(' / ');
+}
+
+/** Normalizuje komórkę „Wg harmonogramu” do tak / nie / ''. */
+export function normalizeWgHarmonogramuCell(raw: string | undefined): 'tak' | 'nie' | '' {
+  const s = (raw ?? '').trim().toLowerCase();
+  if (s === 'tak') {
+    return 'tak';
+  }
+  if (s === 'nie') {
+    return 'nie';
+  }
+  return '';
+}
+
+/**
+ * Agregat „Wg harmonogramu” na pinezkę: jeden wspólny tak/nie → ta wartość;
+ * mieszane lub puste → undefined.
+ */
+export function aggregateWgHarmonogramu(rows: SheetRow[]): string | undefined {
+  const values = new Set<'tak' | 'nie'>();
+  for (const row of rows) {
+    const v = normalizeWgHarmonogramuCell(row.wgHarmonogramu);
+    if (v) {
+      values.add(v);
+    }
+  }
+  if (values.size === 1) {
+    return [...values][0];
+  }
+  return undefined;
 }
 
 function pushQuery(target: string[], query: string): void {
@@ -1051,6 +1083,7 @@ function applyGeocodingFromCache(
     address,
     count: group.count,
     zbiorka: aggregateZbiorka(group.rows),
+    wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
     rows: group.rows,
   };
 
@@ -1290,6 +1323,7 @@ export async function executePhase5(
               lng,
               wojewodztwo,
               zbiorka: aggregateZbiorka(group.rows),
+              wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
               rows: group.rows,
             };
             if (bestPick.status === 'ok') {

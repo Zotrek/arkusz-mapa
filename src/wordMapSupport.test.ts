@@ -41,6 +41,8 @@ function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
     numerPlomby: overrides.numerPlomby ?? 'P1',
     dataZamknieciaWorka: overrides.dataZamknieciaWorka ?? '',
     zbiorka: overrides.zbiorka ?? '',
+    wgHarmonogramu: overrides.wgHarmonogramu ?? '',
+    ulicaRaw: overrides.ulicaRaw ?? overrides.ulica ?? 'Leśna',
     raw: overrides.raw ?? [],
     address: overrides.address ?? '62-320 Miłosław Leśna 1',
   };

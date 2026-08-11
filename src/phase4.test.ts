@@ -27,6 +27,7 @@ function makeRow(raw: string[]): SheetRow {
     numerPlomby: '',
     dataZamknieciaWorka: '',
     zbiorka: '',
+    wgHarmonogramu: '',
     raw,
     address: '',
   };

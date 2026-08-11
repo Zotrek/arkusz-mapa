@@ -31,6 +31,8 @@ export interface SheetRow extends AddressParts {
   dataZamknieciaWorka: string;
   /** Tryb zbiórki – ręczna / maszyna */
   zbiorka: string;
+  /** Wg harmonogramu – tak / nie (surowy tekst z arkusza). */
+  wgHarmonogramu: string;
   /** Ulica z arkusza przed rozwinięciem skrótów (Gen. → Generała). */
   ulicaRaw: string;
   raw: string[];
@@ -112,6 +114,10 @@ export function resolveSheetColumnMap(headers: string[]): SheetColumnMap {
       DEFAULT_SHEET_COLUMN_MAP.dataZamknieciaWorka,
     ),
     zbiorka: pick(['tryb zbiorki', 'tryb zbior', 'zbiorki'], DEFAULT_SHEET_COLUMN_MAP.zbiorka),
+    wgHarmonogramu: pick(
+      ['wg harmonogramu', 'harmonogramu'],
+      DEFAULT_SHEET_COLUMN_MAP.wgHarmonogramu,
+    ),
   };
 }
 
@@ -214,6 +220,7 @@ export function mapRawRowToSheetRow(
     numerPlomby: normalizeCell(raw[columns.numerPlomby]),
     dataZamknieciaWorka: normalizeCell(raw[columns.dataZamknieciaWorka] ?? ''),
     zbiorka: normalizeCell(raw[columns.zbiorka] ?? ''),
+    wgHarmonogramu: normalizeCell(raw[columns.wgHarmonogramu] ?? ''),
     raw,
     address: buildAddress({
       kodPocztowy,

@@ -309,6 +309,8 @@ type MapPoint = {
   sealRows: SealRowLite[];
   /** Zbiórka: Ręczna / Maszyna (z kolumny L) */
   zbiorka?: string;
+  /** Wg harmonogramu: tak / nie */
+  wgHarmonogramu?: string;
   /** Do {{rodzaj_zbiorki}} w Word: ręczna | automatyczna | ręczna i automatyczna */
   rodzaj_zbiorki: string;
   doc: MapPointDocPayload;
@@ -511,6 +513,34 @@ export function mapPointMatchesZbiorkaFilter(
   return classifyMapPointZbiorka(zbiorka) === mode;
 }
 
+/** Filtr „Wg harmonogramu” na mapie. */
+export type WgHarmonogramuFilterMode = 'wszystkie' | 'tak' | 'nie';
+
+/** Normalizuje wartość kolumny do tak / nie / ''. */
+export function normalizeWgHarmonogramu(raw: string | undefined): 'tak' | 'nie' | '' {
+  const s = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  if (s === 'tak') {
+    return 'tak';
+  }
+  if (s === 'nie') {
+    return 'nie';
+  }
+  return '';
+}
+
+/** Czy punkt jest widoczny przy filtrze „Wg harmonogramu”. */
+export function mapPointMatchesWgHarmonogramuFilter(
+  wgHarmonogramu: string | undefined,
+  mode: WgHarmonogramuFilterMode,
+): boolean {
+  if (mode === 'wszystkie') {
+    return true;
+  }
+  return normalizeWgHarmonogramu(wgHarmonogramu) === mode;
+}
+
 /** Unikalne wartości kolumny A z wierszy punktu (deduplikacja po {@link normalizeForAddressSearch}). */
 export function uniquePodmiotyHandloweFromRows(rows: SheetRow[]): string[] {
   const seen = new Set<string>();
@@ -567,6 +597,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     sklep: firstSklepFromRows(item.rows),
     sealRows: sealRowsFromSheetRows(item.rows),
     zbiorka: item.zbiorka,
+    wgHarmonogramu: item.wgHarmonogramu,
     rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
     doc: buildMapPointDocPayload(item.rows),
   };
@@ -594,6 +625,10 @@ export function buildMapHtml(
 
   const hasAnyPoints = points.length > 0;
   const showZbiorkaFilter = points.some((p) => classifyMapPointZbiorka(p.zbiorka) !== 'unknown');
+  const showHarmonogramFilter = points.some((p) => {
+    const v = normalizeWgHarmonogramu(p.wgHarmonogramu);
+    return v === 'tak' || v === 'nie';
+  });
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
   const transportApiEnabled = wordEnabled && transportWebAppUrl.length > 0;
 
@@ -715,6 +750,11 @@ export function buildMapHtml(
     .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 4px; }
     .map-zbiorka-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-zbiorka-filter-options input { margin: 0; flex-shrink: 0; }
+    .map-harmonogram-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
+    .map-harmonogram-filter-title { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
+    .map-harmonogram-filter-options { display: flex; flex-direction: column; gap: 4px; }
+    .map-harmonogram-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
+    .map-harmonogram-filter-options input { margin: 0; flex-shrink: 0; }
 ${
   transportApiEnabled
     ? `    .map-transport-loader { position: fixed; z-index: 15000; left: 50%; top: 14px; transform: translateX(-50%); pointer-events: none; }
@@ -742,6 +782,7 @@ ${
     const adresy = ${JSON.stringify(points)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
     const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
+    const showHarmonogramFilter = ${JSON.stringify(showHarmonogramFilter)};
     const wordDocEnabled = ${JSON.stringify(wordEnabled)};
     const transportApiEnabled = ${JSON.stringify(transportApiEnabled)};
     const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
@@ -865,6 +906,20 @@ ${
     }
     function getZbiorkaFilterMode() {
       var el = document.querySelector('input[name="map-zbiorka-filter"]:checked');
+      return el ? String(el.value) : 'wszystkie';
+    }
+    function normalizeWgHarmonogramuMap(raw) {
+      var s = String(raw || '').trim().toLowerCase();
+      if (s === 'tak') return 'tak';
+      if (s === 'nie') return 'nie';
+      return '';
+    }
+    function mapPointMatchesWgHarmonogramuFilterMap(wgHarmonogramu, mode) {
+      if (mode === 'wszystkie') return true;
+      return normalizeWgHarmonogramuMap(wgHarmonogramu) === mode;
+    }
+    function getWgHarmonogramuFilterMode() {
+      var el = document.querySelector('input[name="map-harmonogram-filter"]:checked');
       return el ? String(el.value) : 'wszystkie';
     }
     function setMarkerClickable(marker, clickable) {
@@ -2090,6 +2145,15 @@ ${
         '<label><input type="radio" name="map-zbiorka-filter" value="maszyna" /> Tylko maszynowa</label>' +
         '</div></div>'
       : '';
+    var harmonogramFilterHtml = showHarmonogramFilter
+      ? '<div class="map-harmonogram-filter" role="group" aria-labelledby="map-harmonogram-filter-title">' +
+        '<span id="map-harmonogram-filter-title" class="map-harmonogram-filter-title">Wg harmonogramu</span>' +
+        '<div class="map-harmonogram-filter-options">' +
+        '<label><input type="radio" name="map-harmonogram-filter" value="wszystkie" checked /> Wszystkie</label>' +
+        '<label><input type="radio" name="map-harmonogram-filter" value="tak" /> Tak</label>' +
+        '<label><input type="radio" name="map-harmonogram-filter" value="nie" /> Nie</label>' +
+        '</div></div>'
+      : '';
     var bulkPanelHtml = wordDocEnabled
       ? '<div id="map-bulk-panel" class="map-bulk-panel" hidden>' +
         '<span id="map-bulk-count" class="map-bulk-count">0 punktów zaznaczonych</span>' +
@@ -2111,6 +2175,7 @@ ${
         '</div></div>' +
         '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>' +
         zbiorkaFilterHtml +
+        harmonogramFilterHtml +
         bulkPanelHtml;
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
@@ -2122,6 +2187,12 @@ ${
         var zbiorkaRadios = wrap.querySelectorAll('input[name="map-zbiorka-filter"]');
         for (var zi = 0; zi < zbiorkaRadios.length; zi++) {
           zbiorkaRadios[zi].addEventListener('change', applyAddressSearch);
+        }
+      }
+      if (showHarmonogramFilter) {
+        var harmRadios = wrap.querySelectorAll('input[name="map-harmonogram-filter"]');
+        for (var hi = 0; hi < harmRadios.length; hi++) {
+          harmRadios[hi].addEventListener('change', applyAddressSearch);
         }
       }
       if (wordDocEnabled) {
@@ -2172,9 +2243,11 @@ ${
         var r = inputEl ? inputEl.value : '';
         if (String(r).trim().length === 0) return;
         var zMode = getZbiorkaFilterMode();
+        var hMode = getWgHarmonogramuFilterMode();
         var matched = markerEntries.filter(function(e) {
           var zOk = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(e.p.zbiorka, zMode);
-          return zOk && mapPointMatchesSearchMap(e.p, r);
+          var hOk = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(e.p.wgHarmonogramu, hMode);
+          return zOk && hOk && mapPointMatchesSearchMap(e.p, r);
         });
         if (matched.length === 0) return;
         if (matched.length === 1) {
@@ -2199,10 +2272,12 @@ ${
       var raw = inputEl ? inputEl.value : '';
       var hasSearchFilter = String(raw).trim().length > 0;
       var zbiorkaMode = getZbiorkaFilterMode();
+      var harmMode = getWgHarmonogramuFilterMode();
       var matchCount = 0;
       markerEntries.forEach(function(entry) {
         var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
-        if (!zMatch) {
+        var hMatch = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(entry.p.wgHarmonogramu, harmMode);
+        if (!zMatch || !hMatch) {
           entry.marker.setOpacity(0);
           entry.marker.setZIndexOffset(0);
           setMarkerClickable(entry.marker, false);

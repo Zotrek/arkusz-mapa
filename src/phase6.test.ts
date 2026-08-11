@@ -24,6 +24,8 @@ import {
   uniquePodmiotyHandloweFromRows,
   classifyMapPointZbiorka,
   mapPointMatchesZbiorkaFilter,
+  normalizeWgHarmonogramu,
+  mapPointMatchesWgHarmonogramuFilter,
   haversineMeters,
   spreadCloseMarkerPositions,
   findCloseMapPointPairs,
@@ -45,11 +47,13 @@ function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
     numerPlomby: overrides.numerPlomby ?? '',
     dataZamknieciaWorka: overrides.dataZamknieciaWorka ?? '',
     zbiorka: overrides.zbiorka ?? '',
+    wgHarmonogramu: overrides.wgHarmonogramu ?? '',
     raw: overrides.raw ?? [],
     address: overrides.address ?? '62-320 Miłosław Leśna 1',
     kodPocztowy: overrides.kodPocztowy ?? '62-320',
     miasto: overrides.miasto ?? 'Miłosław',
     ulica: overrides.ulica ?? 'Leśna',
+    ulicaRaw: overrides.ulicaRaw ?? overrides.ulica ?? 'Leśna',
     numerBudynku: overrides.numerBudynku ?? '1',
   };
 }
@@ -251,6 +255,60 @@ describe('phase6', () => {
     it('test_mapPointMatchesZbiorkaFilter_when_maszyna_mode_should_match_maszyna_only', () => {
       expect(mapPointMatchesZbiorkaFilter('Maszyna', 'maszyna')).toBe(true);
       expect(mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'maszyna')).toBe(false);
+    });
+  });
+
+  describe('wg harmonogramu filter', () => {
+    it('test_normalizeWgHarmonogramu_when_tak_nie_should_normalize', () => {
+      expect(normalizeWgHarmonogramu('tak')).toBe('tak');
+      expect(normalizeWgHarmonogramu(' Tak ')).toBe('tak');
+      expect(normalizeWgHarmonogramu('NIE')).toBe('nie');
+      expect(normalizeWgHarmonogramu('')).toBe('');
+      expect(normalizeWgHarmonogramu('może')).toBe('');
+    });
+
+    it('test_mapPointMatchesWgHarmonogramuFilter_when_modes_should_match', () => {
+      expect(mapPointMatchesWgHarmonogramuFilter('tak', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesWgHarmonogramuFilter('', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesWgHarmonogramuFilter('tak', 'tak')).toBe(true);
+      expect(mapPointMatchesWgHarmonogramuFilter('nie', 'tak')).toBe(false);
+      expect(mapPointMatchesWgHarmonogramuFilter('nie', 'nie')).toBe(true);
+      expect(mapPointMatchesWgHarmonogramuFilter(undefined, 'nie')).toBe(false);
+    });
+
+    it('test_buildMapHtml_when_harmonogram_data_present_should_embed_filter_controls', () => {
+      const geo: GeocodedAddress[] = [
+        {
+          address: 'Adres tak',
+          count: 1,
+          lat: 52.1,
+          lng: 21.0,
+          wojewodztwo: 'Mazowieckie',
+          wgHarmonogramu: 'tak',
+          rows: [],
+        },
+        {
+          address: 'Adres nie',
+          count: 1,
+          lat: 52.2,
+          lng: 21.1,
+          wojewodztwo: 'Mazowieckie',
+          wgHarmonogramu: 'nie',
+          rows: [],
+        },
+      ];
+      const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
+      expect(html).toContain('map-harmonogram-filter');
+      expect(html).toContain('Wg harmonogramu');
+      expect(html).toContain('mapPointMatchesWgHarmonogramuFilterMap');
+      expect(html).toContain('name="map-harmonogram-filter"');
+      expect(html).toContain('value="tak"');
+      expect(html).toContain('value="nie"');
+    });
+
+    it('test_buildMapHtml_when_no_harmonogram_data_should_omit_filter_controls', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain('showHarmonogramFilter = false');
     });
   });
 

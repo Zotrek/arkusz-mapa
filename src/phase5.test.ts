@@ -23,6 +23,8 @@ import {
   isNumericDuplicateStreetNumber,
   stripStreetPrefix,
   stripAfterSlash,
+  aggregateWgHarmonogramu,
+  normalizeWgHarmonogramuCell,
 } from './phase5';
 
 function makeRow(params: Partial<SheetRow> = {}): SheetRow {
@@ -39,6 +41,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
     numerPlomby: params.numerPlomby ?? '111',
     dataZamknieciaWorka: params.dataZamknieciaWorka ?? '',
     zbiorka: params.zbiorka ?? '',
+    wgHarmonogramu: params.wgHarmonogramu ?? '',
     raw: params.raw ?? ['A', 'B'],
     address: params.address ?? '62-320 Miłosław os. Władysława Łokietka 18',
   };
@@ -61,6 +64,23 @@ function asGrouped(rows: SheetRow[]): Map<string, AddressGroup> {
 }
 
 describe('phase5', () => {
+  describe('aggregateWgHarmonogramu', () => {
+    it('test_aggregateWgHarmonogramu_when_single_tak_should_return_tak', () => {
+      expect(aggregateWgHarmonogramu([makeRow({ wgHarmonogramu: 'tak' })])).toBe('tak');
+      expect(normalizeWgHarmonogramuCell(' NIE ')).toBe('nie');
+    });
+
+    it('test_aggregateWgHarmonogramu_when_mixed_or_empty_should_return_undefined', () => {
+      expect(aggregateWgHarmonogramu([makeRow({ wgHarmonogramu: '' })])).toBeUndefined();
+      expect(
+        aggregateWgHarmonogramu([
+          makeRow({ wgHarmonogramu: 'tak' }),
+          makeRow({ wgHarmonogramu: 'nie' }),
+        ]),
+      ).toBeUndefined();
+    });
+  });
+
   describe('buildGeocodingQuery', () => {
     it('test_buildGeocodingQuery_when_street_exists_should_include_street_without_prefix', () => {
       const row = makeRow({

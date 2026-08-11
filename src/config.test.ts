@@ -28,6 +28,7 @@ import {
   COL_NUMER_PLOMBY,
   COL_DATA_ZAMKNIECIA_WORKA,
   COL_ZBIORKA,
+  COL_WG_HARMONOGRAMU,
   GEOJSON_WOJEWODZTWA_URL,
 } from './config';
 
@@ -89,6 +90,10 @@ describe('config', () => {
 
     it('should expose column index for Tryb zbiórki (N) as 13', () => {
       expect(COL_ZBIORKA).toBe(13);
+    });
+
+    it('should expose column index for Wg harmonogramu (R) as 17', () => {
+      expect(COL_WG_HARMONOGRAMU).toBe(17);
     });
   });
 

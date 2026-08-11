@@ -15,7 +15,8 @@ const ARKUSZ_MAPA_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // A=0 NIP, B=1 Podmiot handlowy, C=2 Sklep, D=3 Kod pocztowy, E=4 Miasto, F=5 Ulica,
 // G=6 Numer budynku, H=7 Gmina, I=8 Województwo, J=9 Numer plomby,
 // K=10 Status worka, L=11 Status TMS worka, M=12 Data zamknięcia worka,
-// N=13 Tryb zbiórki, O=14 Waga, P=15 Frakcja, Q=16 Typ worka
+// N=13 Tryb zbiórki, O=14 Waga, P=15 Frakcja, Q=16 Typ worka,
+// R=17 Wg harmonogramu (opcjonalna; pozycja wykrywana też po nagłówku)
 export const COL_NIP = 0;
 export const COL_PODMIOT_HANDLOWY = 1;
 export const COL_SKLEP = 2;
@@ -29,6 +30,8 @@ export const COL_NUMER_PLOMBY = 9;    // J
 /** M (12): data zamknięcia worka — m.in. do listy plomb w Wordzie (mm-dd). */
 export const COL_DATA_ZAMKNIECIA_WORKA = 12;
 export const COL_ZBIORKA = 13;        // N – Tryb zbiórki
+/** R (17): Wg harmonogramu (tak/nie) — fallback gdy brak nagłówka. */
+export const COL_WG_HARMONOGRAMU = 17;
 
 /** Domyślne indeksy kolumn — używane gdy brak wiersza nagłówków; patrz też resolveSheetColumnMap(). */
 export const DEFAULT_SHEET_COLUMN_MAP = {
@@ -42,6 +45,7 @@ export const DEFAULT_SHEET_COLUMN_MAP = {
   numerPlomby: COL_NUMER_PLOMBY,
   dataZamknieciaWorka: COL_DATA_ZAMKNIECIA_WORKA,
   zbiorka: COL_ZBIORKA,
+  wgHarmonogramu: COL_WG_HARMONOGRAMU,
 } as const;
 
 // REQ-1.5: nazwy zakładek w Google Sheets
