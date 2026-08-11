@@ -11313,6 +11313,55 @@
       "wojewodztwo": "Warmińsko-mazurskie",
       "updatedAt": "2026-07-31T13:52:18.992Z"
     },
+    "46-040 OZIMEK LIPOWA 6": {
+      "status": "ok",
+      "lat": 50.6809931,
+      "lng": 18.2094589,
+      "wojewodztwo": "Opolskie",
+      "updatedAt": "2026-08-03T14:33:50.269Z"
+    },
+    "64-100 Leszno Jagiellońska 16": {
+      "status": "ok",
+      "lat": 51.8416469,
+      "lng": 16.5833435,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-08-03T14:33:53.481Z"
+    },
+    "95-030 tadzin tadzin 21": {
+      "status": "ok",
+      "lat": 51.83795,
+      "lng": 19.74777,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-08-03T14:33:54.874Z"
+    },
+    "00-844 Warszawa Grzybowska 63": {
+      "status": "ok",
+      "lat": 52.2333558,
+      "lng": 20.9863477,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-08-03T14:33:58.072Z"
+    },
+    "58-260 Niemcza Rynek 26": {
+      "status": "ok",
+      "lat": 50.7158834,
+      "lng": 16.8350921,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-08-03T14:34:00.695Z"
+    },
+    "09-300 Żuromin Przemysłowa 4/8a": {
+      "status": "ok",
+      "lat": 53.0707337,
+      "lng": 19.897572,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-08-03T14:34:03.430Z"
+    },
+    "64-100 Leszno Aleje Konstytucji 3 Maja 12": {
+      "status": "ok",
+      "lat": 51.8265664,
+      "lng": 16.5994033,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-08-03T14:34:04.892Z"
+    },
     "06-500 Mława J. Piłsudskiego 39 39": {
       "status": "ok",
       "lat": 53.12122903305619,
@@ -11523,54 +11572,145 @@
       "wojewodztwo": "Łódzkie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
     },
-    "46-040 OZIMEK LIPOWA 6": {
+    "20-147 Lublin Spółdzielczości Pracy 34": {
       "status": "ok",
-      "lat": 50.6809931,
-      "lng": 18.2094589,
-      "wojewodztwo": "Opolskie",
-      "updatedAt": "2026-08-03T14:33:50.269Z"
+      "lat": 51.2659745,
+      "lng": 22.5709592,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-08-11T18:19:15.960Z"
     },
-    "64-100 Leszno Jagiellońska 16": {
+    "07-410 Ostrołęka Sienkiewicza 55": {
       "status": "ok",
-      "lat": 51.8416469,
-      "lng": 16.5833435,
+      "lat": 53.0730007,
+      "lng": 21.563827,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-08-11T18:19:19.354Z"
+    },
+    "44-338 Jastrzębie Zdrój Armii krajowej 3": {
+      "status": "ok",
+      "lat": 49.943653942582124,
+      "lng": 18.570888297452928,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-08-11T18:50:23.250Z"
+    },
+    "72-513 Wisełka lesna 3A": {
+      "status": "ok",
+      "lat": 53.9662973,
+      "lng": 14.5716796,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-08-11T18:20:15.651Z"
+    },
+    "33-100 Tarnów Czysta 16a": {
+      "status": "ok",
+      "lat": 50.024255,
+      "lng": 20.9393923,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-08-11T18:20:18.377Z"
+    },
+    "63-620 Laski Kępińska 20": {
+      "status": "ok",
+      "lat": 51.1917536,
+      "lng": 18.0248131,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-08-03T14:33:53.481Z"
+      "updatedAt": "2026-08-11T18:20:21.126Z"
     },
-    "95-030 tadzin tadzin 21": {
+    "14-260 Lubawa Byszwałd 4a": {
+      "status": "uncertain",
+      "lat": 53.5342876,
+      "lng": 19.7483882,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-08-11T18:20:41.811Z"
+    },
+    "38-450 Dukla Zboiska 97": {
+      "status": "uncertain",
+      "lat": 49.5664105,
+      "lng": 21.6918948,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-08-11T18:21:00.388Z"
+    },
+    "30-302 Kraków Marii Konopnickiej 28": {
       "status": "ok",
-      "lat": 51.83795,
-      "lng": 19.74777,
+      "lat": 50.0450326,
+      "lng": 19.9361576,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-08-11T18:21:02.047Z"
+    },
+    "05-600 Grójec Niepodległości 22": {
+      "status": "ok",
+      "lat": 51.8609076,
+      "lng": 20.8673331,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-08-11T18:21:05.736Z"
+    },
+    "78-300 Rogalinko Rogalinko 1A": {
+      "status": "ok",
+      "lat": 53.8088721,
+      "lng": 15.8434607,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-08-11T18:21:07.524Z"
+    },
+    "83-034 Trąbki Wielkie Gdańska 27J": {
+      "status": "ok",
+      "lat": 54.1727661,
+      "lng": 18.5340778,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-08-11T18:21:10.437Z"
+    },
+    "26-340 Drzewica WOLNOŚCI 28": {
+      "status": "ok",
+      "lat": 51.4513664,
+      "lng": 20.4776157,
       "wojewodztwo": "Łódzkie",
-      "updatedAt": "2026-08-03T14:33:54.874Z"
+      "updatedAt": "2026-08-11T18:21:16.581Z"
     },
-    "00-844 Warszawa Grzybowska 63": {
+    "72-330 Rogowo Rogowo Wiktoria 90": {
       "status": "ok",
-      "lat": 52.2333558,
-      "lng": 20.9863477,
-      "wojewodztwo": "Mazowieckie",
-      "updatedAt": "2026-08-03T14:33:58.072Z"
+      "lat": 54.151671554785025,
+      "lng": 15.347836501341002,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-08-11T18:50:23.250Z"
     },
-    "58-260 Niemcza Rynek 26": {
+    "63-620 Trzcinica Jana Pawła II 76A": {
       "status": "ok",
-      "lat": 50.7158834,
-      "lng": 16.8350921,
-      "wojewodztwo": "Dolnośląskie",
-      "updatedAt": "2026-08-03T14:34:00.695Z"
-    },
-    "09-300 Żuromin Przemysłowa 4/8a": {
-      "status": "ok",
-      "lat": 53.0707337,
-      "lng": 19.897572,
-      "wojewodztwo": "Mazowieckie",
-      "updatedAt": "2026-08-03T14:34:03.430Z"
-    },
-    "64-100 Leszno Aleje Konstytucji 3 Maja 12": {
-      "status": "ok",
-      "lat": 51.8265664,
-      "lng": 16.5994033,
+      "lat": 51.1666422,
+      "lng": 18.0036283,
       "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-08-03T14:34:04.892Z"
+      "updatedAt": "2026-08-11T18:21:47.185Z"
+    },
+    "55-040 Biskupice Podgórne Lg 1A": {
+      "status": "ok",
+      "lat": 51.0176384,
+      "lng": 16.8860435,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-08-11T18:21:50.270Z"
+    },
+    "34-236 Sidzina Sidzina 768": {
+      "status": "ok",
+      "lat": 49.6095024,
+      "lng": 19.7268864,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-08-11T18:21:51.808Z"
+    },
+    "46-203 Kluczbork Byczyńska 99": {
+      "status": "ok",
+      "lat": 50.989084,
+      "lng": 18.2111665,
+      "wojewodztwo": "Opolskie",
+      "updatedAt": "2026-08-11T18:21:54.674Z"
+    },
+    "41-506 Chorzów Stalowa 17/61E": {
+      "status": "ok",
+      "lat": 50.2800489,
+      "lng": 18.9370754,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-08-11T18:21:58.035Z"
+    },
+    "66-530 DREZDENKO MIEDZIANA 1": {
+      "status": "ok",
+      "lat": 52.8294985,
+      "lng": 15.8359802,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-08-11T18:21:59.514Z"
     }
   }
 }
