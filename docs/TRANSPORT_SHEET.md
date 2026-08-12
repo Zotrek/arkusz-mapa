@@ -32,6 +32,10 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   9. Ilość worków
 
+  10. Komentarz 1
+
+  11. Komentarz 2
+
 
 
 ## Wdrożenie Apps Script (jednorazowo)
@@ -100,7 +104,11 @@ Przykład POST (body):
 
   "rodzajZbiorki": "ręczna",
 
-  "iloscWorkow": 5
+  "iloscWorkow": 5,
+
+  "komentarz1": "Uwaga do arkusza",
+
+  "komentarz2": ""
 
 }
 
@@ -142,7 +150,7 @@ Bez `TRANSPORT_WEBAPP_URL` mapa generuje protokoły **bez** zapisu do arkusza (n
 
 2. **Filtrowanie plomb** — z protokołu usuwane są worki ze datą zamknięcia **wcześniejszą** niż ostatni transport (kolumna E). Przy dacie transportu 20.06.2026 zostają plomby z 20.06, 25.06 itd., a znikają np. 10.06, 15.06.
 
-3. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera.
+3. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera. Pola **Komentarz 1** / **Komentarz 2** w modalu trafiają tylko do arkusza (kolumny J/K), nie do protokołu Word.
 
 
 

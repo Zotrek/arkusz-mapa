@@ -658,6 +658,10 @@ export function buildMapHtml(
         <label for="doc-inp-numer-zlecenia">Numer dokumentu (zlecenie transportowe)</label>
         <input type="text" id="doc-inp-numer-zlecenia" maxlength="120" placeholder="np. 1460" autocomplete="off" spellcheck="false" />
       </div>
+      <label for="doc-inp-komentarz-1">Komentarz 1 <span class="doc-field-hint">(tylko arkusz)</span></label>
+      <input type="text" id="doc-inp-komentarz-1" maxlength="500" placeholder="Opcjonalnie — trafia do rejestru transportów" autocomplete="off" spellcheck="true" />
+      <label for="doc-inp-komentarz-2">Komentarz 2 <span class="doc-field-hint">(tylko arkusz)</span></label>
+      <input type="text" id="doc-inp-komentarz-2" maxlength="500" placeholder="Opcjonalnie — trafia do rejestru transportów" autocomplete="off" spellcheck="true" />
       <p id="doc-bulk-numer-info" class="doc-bulk-numer-info" hidden aria-live="polite"></p>
       <p id="doc-filter-info" class="doc-filter-info" aria-live="polite"></p>
       <div class="doc-modal-actions">
@@ -679,6 +683,7 @@ export function buildMapHtml(
     .doc-modal-panel { background: #fff; padding: 20px 22px; border-radius: 10px; max-width: 420px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
     .doc-modal-panel h3 { margin: 0 0 14px 0; font-size: 16px; }
     .doc-modal-panel label { display: block; font-size: 13px; margin: 10px 0 4px; color: #333; }
+    .doc-field-hint { font-weight: normal; color: #888; font-size: 12px; }
     .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"], .doc-modal-panel .doc-combobox-input { width: 100%; padding: 8px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
     .doc-combobox-wrap { position: relative; }
     .doc-combobox-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); max-height: 220px; overflow-y: auto; z-index: 10; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
@@ -1712,6 +1717,10 @@ ${
       if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
       if (numEl) numEl.value = '';
+      var kom1 = document.getElementById('doc-inp-komentarz-1');
+      if (kom1) kom1.value = '';
+      var kom2 = document.getElementById('doc-inp-komentarz-2');
+      if (kom2) kom2.value = '';
       ensureDocxLibrariesLoaded();
       prewarmDocxTemplateCache();
       loadDocModalData(pointIdx);
@@ -1733,6 +1742,10 @@ ${
       restoreDocComboboxFromSavedLabel('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list', DOC_LS_MIEJSCE);
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       if (dateEl) dateEl.value = defaultDateZaladunkuYmd();
+      var kom1 = document.getElementById('doc-inp-komentarz-1');
+      if (kom1) kom1.value = '';
+      var kom2 = document.getElementById('doc-inp-komentarz-2');
+      if (kom2) kom2.value = '';
       ensureDocxLibrariesLoaded();
       prewarmDocxTemplateCache();
       loadBulkDocModalData(indices);
@@ -1889,13 +1902,17 @@ ${
       var mm = String(mo + 1).padStart(2, '0');
       var yyyy = String(y);
       var rr = yyyy.slice(-2);
+      var kom1El = document.getElementById('doc-inp-komentarz-1');
+      var kom2El = document.getElementById('doc-inp-komentarz-2');
       return {
         pr: prOpt.dane,
         md: mdOpt.dane,
         prOpt: prOpt,
         mdOpt: mdOpt,
         dz: dd + '.' + mm + '.' + yyyy,
-        dzPlik: dd + '.' + mm + '.' + rr
+        dzPlik: dd + '.' + mm + '.' + rr,
+        komentarz1: kom1El ? String(kom1El.value).trim() : '',
+        komentarz2: kom2El ? String(kom2El.value).trim() : ''
       };
     }
     function updateTransportCutoffAfterAppend(p, dz) {
@@ -1952,7 +1969,9 @@ ${
               ktoOdbiera: form.prOpt.label,
               miejsceZrzutu: form.mdOpt.label,
               rodzajZbiorki: p.rodzaj_zbiorki || '',
-              iloscWorkow: job.filteredSeals.length
+              iloscWorkow: job.filteredSeals.length,
+              komentarz1: form.komentarz1,
+              komentarz2: form.komentarz2
             };
             return appendTransportRow(transportPayload).then(function (resp) {
               if (!resp || !resp.ok) {
@@ -2058,7 +2077,9 @@ ${
           ktoOdbiera: prOpt.label,
           miejsceZrzutu: mdOpt.label,
           rodzajZbiorki: p.rodzaj_zbiorki || '',
-          iloscWorkow: filteredSeals.length
+          iloscWorkow: filteredSeals.length,
+          komentarz1: form.komentarz1,
+          komentarz2: form.komentarz2
         };
         if (manualNumer) {
           finishWithNumber(numerWpisany);

@@ -20,6 +20,8 @@ var COL = {
   miejsceZrzutu: 7,
   rodzajZbiorki: 8,
   iloscWorkow: 9,
+  komentarz1: 10,
+  komentarz2: 11,
 };
 
 var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
@@ -282,6 +284,8 @@ function appendTransportRow_(numer, body) {
     body.miejsceZrzutu || '',
     body.rodzajZbiorki || '',
     body.iloscWorkow != null ? body.iloscWorkow : '',
+    body.komentarz1 || '',
+    body.komentarz2 || '',
   ]);
   var parsed = parseNumberFromCell_(numer);
   var stored = getStoredMaxNumber_();
