@@ -387,6 +387,10 @@ describe('phase6', () => {
       expect(html).toContain('L.markerClusterGroup');
       expect(html).toContain('dm-cluster-inner');
       expect(html).toContain('setMarkerInCluster');
+      expect(html).toContain('maxClusterRadius: 28');
+      expect(html).toContain('disableClusteringAtZoom: 16');
+      expect(html).toContain('dominantPinKolor');
+      expect(html).toContain('pinKolor');
       expect(html).toContain('https://example.com/woj.json');
       expect(html).toContain('const adresy =');
       expect(html).toContain('Liczba wystąpień');

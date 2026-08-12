@@ -741,14 +741,14 @@ export function buildMapHtml(
     .dm-cluster { background: none !important; border: none !important; }
     .dm-cluster-inner {
       width: 100%; height: 100%; border-radius: 50%;
-      background: #3a3a3a; border: 2px solid #fff;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
-      color: #f5d000; font-weight: 700; font-size: 14px; line-height: 1;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      font-weight: 700; line-height: 1;
       display: flex; align-items: center; justify-content: center;
     }
     .dm-cluster-sm .dm-cluster-inner { font-size: 13px; }
-    .dm-cluster-md .dm-cluster-inner { font-size: 15px; }
-    .dm-cluster-lg .dm-cluster-inner { font-size: 16px; }
+    .dm-cluster-md .dm-cluster-inner { font-size: 14px; }
+    .dm-cluster-lg .dm-cluster-inner { font-size: 15px; }
     .map-legend { background: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); font-size: 12px; line-height: 1.5; }
     .map-legend h3 { margin: 0 0 6px 0; font-size: 13px; }
     .map-legend ul { margin: 0; padding: 0; list-style: none; }
@@ -863,7 +863,31 @@ ${
     function markerDisplayIcon(entry, searchHighlight) {
       var selected = isBulkPointSelected(entry.pointIdx);
       var fill = selected ? colorBulkSelected : entry.kolor;
+      if (entry.marker) entry.marker.options.pinKolor = fill;
       return pinIcon(fill, selected || searchHighlight);
+    }
+    function clusterLabelColor(bg) {
+      var light = { '#97f0c7': 1, '#cce5ff': 1, '#ffc107': 1 };
+      return light[String(bg).toLowerCase()] ? '#145c38' : '#fff';
+    }
+    function dominantPinKolor(markers) {
+      var counts = {};
+      var best = '#97F0C7';
+      var bestN = 0;
+      for (var i = 0; i < markers.length; i++) {
+        var c = (markers[i].options && markers[i].options.pinKolor) || '#97F0C7';
+        counts[c] = (counts[c] || 0) + 1;
+        if (counts[c] > bestN) {
+          bestN = counts[c];
+          best = c;
+        }
+      }
+      return best;
+    }
+    function refreshClusterIcons() {
+      if (typeof markersCluster !== 'undefined' && markersCluster.refreshClusters) {
+        markersCluster.refreshClusters();
+      }
     }
     function normalizeForAddressSearchMap(text) {
       var s = String(text).normalize('NFD').replace(/\\p{M}/gu, '');
@@ -1109,6 +1133,7 @@ ${
           var sMatch = !hasSearchFilter || mapPointMatchesSearchMap(entry.p, raw);
           entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
         });
+        refreshClusterIcons();
       }
     }
     function wirePopupControls(marker, pointIdx) {
@@ -1137,6 +1162,7 @@ ${
       entry.kolor = kolor;
       entry.marker.setIcon(markerDisplayIcon(entry, false));
       entry.marker.setPopupContent(buildPopupContent(p, entry.pointIdx));
+      refreshClusterIcons();
     }
     function setTransportDatesLoading(loading) {
       var el = document.getElementById('map-transport-loader');
@@ -2159,15 +2185,17 @@ ${
 
     var markersCluster = L.markerClusterGroup({
       showCoverageOnHover: false,
-      maxClusterRadius: 55,
+      maxClusterRadius: 28,
       spiderfyOnMaxZoom: true,
-      disableClusteringAtZoom: 18,
+      disableClusteringAtZoom: 16,
       iconCreateFunction: function(cluster) {
-        var n = cluster.getChildCount();
-        var size = n < 10 ? 36 : n < 50 ? 44 : 52;
-        var sizeClass = n < 10 ? 'dm-cluster-sm' : n < 50 ? 'dm-cluster-md' : 'dm-cluster-lg';
+        var children = cluster.getAllChildMarkers();
+        var n = children.length;
+        var fill = dominantPinKolor(children);
+        var size = n < 10 ? 34 : n < 25 ? 40 : 48;
+        var sizeClass = n < 10 ? 'dm-cluster-sm' : n < 25 ? 'dm-cluster-md' : 'dm-cluster-lg';
         return L.divIcon({
-          html: '<div class="dm-cluster-inner"><span>' + n + '</span></div>',
+          html: '<div class="dm-cluster-inner" style="background:' + fill + ';color:' + clusterLabelColor(fill) + '"><span>' + n + '</span></div>',
           className: 'dm-cluster ' + sizeClass,
           iconSize: L.point(size, size),
           iconAnchor: [size / 2, size / 2]
@@ -2188,7 +2216,7 @@ ${
     adresy.forEach(function(p, pointIdx) {
       var displayCount = displayCountForPoint(p);
       var kolor = kolorPinezki(displayCount);
-      var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false) })
+      var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false), pinKolor: kolor })
         .bindPopup(buildPopupContent(p, pointIdx));
       markersCluster.addLayer(marker);
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
@@ -2363,6 +2391,7 @@ ${
         entry.marker.setZIndexOffset(hasSearchFilter && sMatch ? 800 : 0);
         entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
       });
+      refreshClusterIcons();
       if (statusEl) {
         if (!hasSearchFilter) {
           statusEl.textContent = '';
