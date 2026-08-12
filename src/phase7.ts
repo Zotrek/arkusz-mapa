@@ -2,7 +2,7 @@
  * Faza 7: orkiestracja pełnego pipeline + obsługa CLI.
  */
 
-import { getConfig, getPhase5CacheFilePath, GEOJSON_WOJEWODZTWA_URL } from './config.js';
+import { getConfig, getPhase5CacheFilePath, getEwidencjaOdbiorowSheetsId, GEOJSON_WOJEWODZTWA_URL } from './config.js';
 import { isCopyOdebraneZHarmonogramuEnabled } from './harmonogramDays.js';
 import { executeOdebraneZHarmonogramu } from './odebraneZHarmonogramu.js';
 import { applyAddressAliases, createSheetsClient, loadAddressAliases, loadSourceRows } from './sheets.js';
@@ -81,6 +81,7 @@ export interface Phase7Deps {
   loadSourceRows: typeof loadSourceRows;
   executeOdebraneZHarmonogramu: typeof executeOdebraneZHarmonogramu;
   isCopyOdebraneZHarmonogramuEnabled: typeof isCopyOdebraneZHarmonogramuEnabled;
+  getEwidencjaOdbiorowSheetsId: typeof getEwidencjaOdbiorowSheetsId;
   executePhase3: typeof executePhase3;
   executePhase5: typeof executePhase5;
   executePhase4: typeof executePhase4;
@@ -108,6 +109,7 @@ const defaultDeps: Phase7Deps = {
   loadSourceRows,
   executeOdebraneZHarmonogramu,
   isCopyOdebraneZHarmonogramuEnabled,
+  getEwidencjaOdbiorowSheetsId,
   executePhase3,
   executePhase5,
   executePhase4,
@@ -149,14 +151,23 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
 
   let odebraneAppendedCount = 0;
   if (deps.isCopyOdebraneZHarmonogramuEnabled()) {
-    deps.logger.info('COPY_ODEBRANE_Z_HARMONOGRAMU enabled — checking schedule pickups');
+    const ewidencjaId = deps.getEwidencjaOdbiorowSheetsId();
+    if (!ewidencjaId) {
+      throw new Error(
+        'COPY_ODEBRANE_Z_HARMONOGRAMU=1 wymaga GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID (arkusz ewidencja odbiorów)',
+      );
+    }
+    deps.logger.info(
+      'COPY_ODEBRANE_Z_HARMONOGRAMU enabled — read trasówki, write ewidencja (%s)',
+      ewidencjaId,
+    );
     const odebrane = await withGoogleApiRetry(
       'executeOdebraneZHarmonogramu',
       () =>
         deps.executeOdebraneZHarmonogramu(
           sheetsClient,
           {
-            spreadsheetId: config.sheetsId,
+            targetSpreadsheetId: ewidencjaId,
             headers: source.headers,
             rows: source.rows,
             columnMap: source.columnMap,

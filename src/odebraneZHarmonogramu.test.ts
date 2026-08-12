@@ -55,7 +55,7 @@ describe('odebraneZHarmonogramu', () => {
     };
 
     const result = await executeOdebraneZHarmonogramu(api, {
-      spreadsheetId: 'id',
+      targetSpreadsheetId: 'id',
       headers: ['A'],
       rows: [makeRow({ zbiorka: 'Ręczna' })],
       columnMap: { ...DEFAULT_SHEET_COLUMN_MAP },
@@ -87,7 +87,7 @@ describe('odebraneZHarmonogramu', () => {
 
     const row = makeRow({ numerPlomby: 'NEW1', raw: ['x', 'NEW1'] });
     const result = await executeOdebraneZHarmonogramu(api, {
-      spreadsheetId: 'id',
+      targetSpreadsheetId: 'ewidencja-id',
       headers: ['H1', 'H2'],
       rows: [row],
       columnMap: { ...DEFAULT_SHEET_COLUMN_MAP },
@@ -99,6 +99,7 @@ describe('odebraneZHarmonogramu', () => {
     expect(batchUpdateMock).toHaveBeenCalled();
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        spreadsheetId: 'ewidencja-id',
         range: `'${SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU}'!A1`,
         requestBody: { values: [['H1', 'H2'], ['x', 'NEW1']] },
       }),
@@ -136,7 +137,7 @@ describe('odebraneZHarmonogramu', () => {
     };
 
     const result = await executeOdebraneZHarmonogramu(api, {
-      spreadsheetId: 'id',
+      targetSpreadsheetId: 'ewidencja-id',
       headers: ['H'],
       rows: [
         makeRow({ numerPlomby: 'EXIST', raw: ['EXIST'] }),

@@ -7,6 +7,9 @@
 #
 # Wymagane sekrety: jak w arkusz-mapa-pages.yml
 #   GOOGLE_SHEETS_ID, GOOGLE_SERVICE_ACCOUNT_JSON, TRANSPORT_WEBAPP_URL
+#   + GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID — arkusz „ewidencja odbiorów” (zapis „odebrane z harmonogramu”)
+#
+# Odczyt plomb: trasówki (GOOGLE_SHEETS_ID). Zapis wyników: ewidencja (GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID).
 #
 # Concurrency „pages” — ten sam deployment GitHub Pages co zwykły generate.
 name: arkusz-mapa — Pages + odebrane
@@ -80,6 +83,8 @@ jobs:
       - name: Generuj mapę + kopiuj odebrane z harmonogramu
         env:
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          # Opcjonalny override; gdy pusty — kod używa domyślnego ID ewidencji (rejestr transportów).
+          GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID: ${{ secrets.GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.ci-credentials.json
           OUTPUT_DIR: ${{ github.workspace }}/site/maps
           PHASE5_CACHE_PATH: ${{ github.workspace }}/.cache/phase5-cache.json

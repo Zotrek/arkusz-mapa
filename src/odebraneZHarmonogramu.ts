@@ -92,7 +92,10 @@ export async function loadExistingSealNumbers(
 }
 
 export interface ExecuteOdebraneZHarmonogramuInput {
-  spreadsheetId: string;
+  /** Arkusz źródłowy (trasówki) — tylko do mapowania kolumn / raw; zapis idzie do targetSpreadsheetId. */
+  spreadsheetId?: string;
+  /** Cel zapisu (ewidencja odbiorów). */
+  targetSpreadsheetId: string;
   headers: string[];
   rows: SheetRow[];
   columnMap: SheetColumnMap;
@@ -129,14 +132,21 @@ export async function executeOdebraneZHarmonogramu(
     };
   }
 
-  const exists = await sheetExists(api, input.spreadsheetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
+  const targetId = input.targetSpreadsheetId.trim();
+  if (!targetId) {
+    throw new Error(
+      'Missing targetSpreadsheetId — set GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID (ewidencja odbiorów)',
+    );
+  }
+
+  const exists = await sheetExists(api, targetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
   let existing = new Set<string>();
   let sheetCreated = false;
 
   if (exists) {
     existing = await loadExistingSealNumbers(
       api,
-      input.spreadsheetId,
+      targetId,
       SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU,
       input.columnMap.numerPlomby,
     );
@@ -150,7 +160,7 @@ export async function executeOdebraneZHarmonogramu(
 
   if (toAppend.length === 0) {
     logger?.info(
-      'Odebrane z harmonogramu: %d kandydat(ów), wszystkie już w zakładce',
+      'Odebrane z harmonogramu: %d kandydat(ów), wszystkie już w ewidencji',
       candidates.length,
     );
     return {
@@ -162,10 +172,10 @@ export async function executeOdebraneZHarmonogramu(
   }
 
   if (!exists) {
-    await ensureSheetExists(api, input.spreadsheetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
+    await ensureSheetExists(api, targetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
     sheetCreated = true;
     await api.spreadsheets.values.update({
-      spreadsheetId: input.spreadsheetId,
+      spreadsheetId: targetId,
       range: buildSheetStartRange(SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU),
       valueInputOption: 'RAW',
       requestBody: {
@@ -174,7 +184,7 @@ export async function executeOdebraneZHarmonogramu(
     });
   } else {
     await api.spreadsheets.values.append({
-      spreadsheetId: input.spreadsheetId,
+      spreadsheetId: targetId,
       range: buildSheetRange(SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU),
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
@@ -185,7 +195,8 @@ export async function executeOdebraneZHarmonogramu(
   }
 
   logger?.info(
-    'Odebrane z harmonogramu: skopiowano %d (kandydaci %d, pominięte duplikaty %d, nowa zakładka=%s)',
+    'Odebrane z harmonogramu → ewidencja (%s): skopiowano %d (kandydaci %d, pominięte duplikaty %d, nowa zakładka=%s)',
+    targetId,
     toAppend.length,
     candidates.length,
     skippedExistingCount,

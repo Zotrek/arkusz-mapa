@@ -297,6 +297,7 @@ describe('phase7 pipeline', () => {
         };
       }),
       isCopyOdebraneZHarmonogramuEnabled: vi.fn(() => true),
+      getEwidencjaOdbiorowSheetsId: vi.fn(() => 'ewidencja-sheet-id'),
       executeOdebraneZHarmonogramu: vi.fn(async () => {
         order.push('executeOdebraneZHarmonogramu');
         return {
@@ -350,6 +351,11 @@ describe('phase7 pipeline', () => {
       'executePhase6',
     ]);
     expect(result.odebraneAppendedCount).toBe(1);
+    expect(deps.executeOdebraneZHarmonogramu).toHaveBeenCalledWith(
+      { client: true },
+      expect.objectContaining({ targetSpreadsheetId: 'ewidencja-sheet-id' }),
+      expect.anything(),
+    );
   });
 });
 

@@ -122,6 +122,19 @@ export function getTransportSheetsId(): string {
   return process.env.GOOGLE_TRANSPORT_SHEETS_ID?.trim() ?? DEFAULT_TRANSPORT_SHEETS_ID;
 }
 
+/**
+ * Arkusz „ewidencja odbiorów” — cel zapisu zakładki „odebrane z harmonogramu”.
+ * Odczyt plomb nadal z {@link getConfig}.sheetsId (trasówki).
+ * Domyślnie ten sam plik co rejestr transportów ({@link DEFAULT_TRANSPORT_SHEETS_ID}).
+ */
+export function getEwidencjaOdbiorowSheetsId(): string {
+  return (
+    process.env.GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID?.trim() ||
+    process.env.GOOGLE_TRANSPORT_SHEETS_ID?.trim() ||
+    DEFAULT_TRANSPORT_SHEETS_ID
+  );
+}
+
 export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoPath: string } {
   const templatePath =
     process.env.WORD_TEMPLATE_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'pusty.docx');
