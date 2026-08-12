@@ -306,7 +306,7 @@ describe('phase6', () => {
       expect(html).toContain('value="nie"');
     });
 
-    it('test_buildMapHtml_when_harmonogram_tak_should_embed_popup_line_only_for_tak', () => {
+    it('test_buildMapHtml_when_harmonogram_should_embed_popup_tak_nie_or_brak', () => {
       const html = buildMapHtml(
         [
           {
@@ -323,9 +323,9 @@ describe('phase6', () => {
         'https://example.com/woj.json',
       );
       expect(html).toContain('popup-harmonogram');
-      expect(html).toContain("Harmonogram: tak");
-      expect(html).toContain("normalizeWgHarmonogramuMap(p.wgHarmonogramu) === 'tak'");
-      expect(html).not.toContain('Harmonogram: nie');
+      expect(html).toContain("Harmonogram: ' + harmLabel");
+      expect(html).toContain("harmNorm === 'tak' ? 'tak'");
+      expect(html).toContain("harmNorm === 'nie' ? 'nie' : 'brak wartości'");
     });
 
     it('test_buildMapHtml_when_no_harmonogram_data_should_omit_filter_controls', () => {

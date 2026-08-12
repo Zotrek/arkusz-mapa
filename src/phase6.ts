@@ -1012,9 +1012,9 @@ ${
       var zbiorkaLine = p.zbiorka
         ? '<div class="popup-zbiorka">Zbiórka: ' + p.zbiorka + '</div>'
         : '';
-      var harmLine = normalizeWgHarmonogramuMap(p.wgHarmonogramu) === 'tak'
-        ? '<div class="popup-harmonogram">Harmonogram: tak</div>'
-        : '';
+      var harmNorm = normalizeWgHarmonogramuMap(p.wgHarmonogramu);
+      var harmLabel = harmNorm === 'tak' ? 'tak' : (harmNorm === 'nie' ? 'nie' : 'brak wartości');
+      var harmLine = '<div class="popup-harmonogram">Harmonogram: ' + harmLabel + '</div>';
       var podmiotLine =
         p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
           ? '<div class="popup-podmiot">Podmiot handlowy: ' + p.podmiotyHandlowe.join(', ') + '</div>'
