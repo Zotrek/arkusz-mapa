@@ -720,7 +720,9 @@ export function buildMapHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mapa adresów</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin=""></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; }
@@ -736,6 +738,17 @@ export function buildMapHtml(
     .popup-harmonogram { font-size: 0.85em; color: #0d6efd; margin-top: 4px; }
     .popup-confidence { font-size: 0.85em; color: #b02a37; margin-top: 4px; font-weight: 600; }
     .pin-woj { background: none !important; border: none !important; }
+    .dm-cluster { background: none !important; border: none !important; }
+    .dm-cluster-inner {
+      width: 100%; height: 100%; border-radius: 50%;
+      background: #3a3a3a; border: 2px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      color: #f5d000; font-weight: 700; font-size: 14px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .dm-cluster-sm .dm-cluster-inner { font-size: 13px; }
+    .dm-cluster-md .dm-cluster-inner { font-size: 15px; }
+    .dm-cluster-lg .dm-cluster-inner { font-size: 16px; }
     .map-legend { background: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); font-size: 12px; line-height: 1.5; }
     .map-legend h3 { margin: 0 0 6px 0; font-size: 13px; }
     .map-legend ul { margin: 0; padding: 0; list-style: none; }
@@ -2144,13 +2157,40 @@ ${
         console.warn('Nie załadowano granic województw.');
       });
 
+    var markersCluster = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 55,
+      spiderfyOnMaxZoom: true,
+      disableClusteringAtZoom: 18,
+      iconCreateFunction: function(cluster) {
+        var n = cluster.getChildCount();
+        var size = n < 10 ? 36 : n < 50 ? 44 : 52;
+        var sizeClass = n < 10 ? 'dm-cluster-sm' : n < 50 ? 'dm-cluster-md' : 'dm-cluster-lg';
+        return L.divIcon({
+          html: '<div class="dm-cluster-inner"><span>' + n + '</span></div>',
+          className: 'dm-cluster ' + sizeClass,
+          iconSize: L.point(size, size),
+          iconAnchor: [size / 2, size / 2]
+        });
+      }
+    });
+    map.addLayer(markersCluster);
+
+    function setMarkerInCluster(marker, on) {
+      if (on) {
+        if (!markersCluster.hasLayer(marker)) markersCluster.addLayer(marker);
+      } else if (markersCluster.hasLayer(marker)) {
+        markersCluster.removeLayer(marker);
+      }
+    }
+
     var markerEntries = [];
     adresy.forEach(function(p, pointIdx) {
       var displayCount = displayCountForPoint(p);
       var kolor = kolorPinezki(displayCount);
       var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false) })
-        .addTo(map)
         .bindPopup(buildPopupContent(p, pointIdx));
+      markersCluster.addLayer(marker);
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
       marker.on('popupopen', function() {
         marker.setPopupContent(buildPopupContent(p, pointIdx));
@@ -2309,11 +2349,13 @@ ${
         var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
         var hMatch = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(entry.p.wgHarmonogramu, harmMode);
         if (!zMatch || !hMatch) {
-          entry.marker.setOpacity(0);
+          setMarkerInCluster(entry.marker, false);
+          entry.marker.setOpacity(1);
           entry.marker.setZIndexOffset(0);
           setMarkerClickable(entry.marker, false);
           return;
         }
+        setMarkerInCluster(entry.marker, true);
         var sMatch = mapPointMatchesSearchMap(entry.p, raw);
         if (hasSearchFilter && sMatch) matchCount++;
         setMarkerClickable(entry.marker, true);

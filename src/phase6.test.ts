@@ -383,6 +383,10 @@ describe('phase6', () => {
     it('test_buildMapHtml_when_geocoded_data_given_should_embed_leaflet_and_geojson_url', () => {
       const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
       expect(html).toContain('leaflet@1.9.4');
+      expect(html).toContain('leaflet.markercluster@1.5.3');
+      expect(html).toContain('L.markerClusterGroup');
+      expect(html).toContain('dm-cluster-inner');
+      expect(html).toContain('setMarkerInCluster');
       expect(html).toContain('https://example.com/woj.json');
       expect(html).toContain('const adresy =');
       expect(html).toContain('Liczba wystąpień');
