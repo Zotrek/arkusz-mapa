@@ -725,6 +725,7 @@ export function buildMapHtml(
     .popup-count-detail { font-size: 0.88em; color: #555; margin-top: 4px; }
     .popup-woj { font-size: 0.85em; color: #555; margin-top: 4px; }
     .popup-zbiorka { font-size: 0.85em; color: #0d6efd; margin-top: 4px; }
+    .popup-harmonogram { font-size: 0.85em; color: #0d6efd; margin-top: 4px; }
     .popup-confidence { font-size: 0.85em; color: #b02a37; margin-top: 4px; font-weight: 600; }
     .pin-woj { background: none !important; border: none !important; }
     .map-legend { background: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); font-size: 12px; line-height: 1.5; }
@@ -1011,6 +1012,9 @@ ${
       var zbiorkaLine = p.zbiorka
         ? '<div class="popup-zbiorka">Zbiórka: ' + p.zbiorka + '</div>'
         : '';
+      var harmLine = normalizeWgHarmonogramuMap(p.wgHarmonogramu) === 'tak'
+        ? '<div class="popup-harmonogram">Harmonogram: tak</div>'
+        : '';
       var podmiotLine =
         p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
           ? '<div class="popup-podmiot">Podmiot handlowy: ' + p.podmiotyHandlowe.join(', ') + '</div>'
@@ -1029,6 +1033,7 @@ ${
         (podmiotLine || '') +
         buildPopupCountHtml(p) +
         (zbiorkaLine || '') +
+        (harmLine || '') +
         '<div class="popup-woj">' + p.woj + '</div>' +
         confidenceLabel +
         bulkSelect +

@@ -306,6 +306,28 @@ describe('phase6', () => {
       expect(html).toContain('value="nie"');
     });
 
+    it('test_buildMapHtml_when_harmonogram_tak_should_embed_popup_line_only_for_tak', () => {
+      const html = buildMapHtml(
+        [
+          {
+            address: 'Adres tak',
+            count: 1,
+            lat: 52.1,
+            lng: 21.0,
+            wojewodztwo: 'Mazowieckie',
+            wgHarmonogramu: 'tak',
+            rows: [],
+          },
+        ],
+        [],
+        'https://example.com/woj.json',
+      );
+      expect(html).toContain('popup-harmonogram');
+      expect(html).toContain("Harmonogram: tak");
+      expect(html).toContain("normalizeWgHarmonogramuMap(p.wgHarmonogramu) === 'tak'");
+      expect(html).not.toContain('Harmonogram: nie');
+    });
+
     it('test_buildMapHtml_when_no_harmonogram_data_should_omit_filter_controls', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
       expect(html).toContain('showHarmonogramFilter = false');
