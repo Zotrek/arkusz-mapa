@@ -503,6 +503,13 @@ describe('phase6', () => {
       expect(html).toContain('palettePin');
     });
 
+    it('test_buildMapHtml_when_zero_bags_should_embed_light_blue_pin_color_and_legend', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain('if (count <= 0) return colorZeroBags');
+      expect(html).toContain('#cce5ff');
+      expect(html).toContain("style=\"background:' + colorZeroBags + '\"></span> 0</li>");
+    });
+
     it('test_buildMapHtml_when_ok_no_postcode_given_should_use_green_pin_and_status_in_popup', () => {
       const noPostcode = [
         {

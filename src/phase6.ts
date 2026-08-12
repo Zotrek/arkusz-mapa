@@ -27,6 +27,9 @@ const COLOR_15_PLUS = '#fd7e14';
 /** Kolor pinezki dla 10–14 wystąpień. */
 const COLOR_10_14 = '#ffc107';
 
+/** Kolor pinezki gdy po filtrze transportów nie ma worków do odebrania. */
+const COLOR_ZERO_BAGS = '#cce5ff';
+
 /** Kolor pinezki zaznaczonej do zbiorczego protokołu (poza paletą worków). */
 const COLOR_BULK_SELECTED = '#6f42c1';
 
@@ -603,7 +606,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
   };
 }
 
-/** Paleta pinezek: jasny zielony (1–3), ciemny zielony (4–9), żółty (10–14). Dla 15+ używany COLOR_15_PLUS (pomarańczowy). */
+/** Paleta pinezek: jasny zielony (1–3), ciemny zielony (4–9), żółty (10–14). Dla 15+ — COLOR_15_PLUS; dla 0 — COLOR_ZERO_BAGS. */
 const PALETTE_PIN = ['#97F0C7', '#198754', COLOR_10_14] as const;
 
 export function buildMapHtml(
@@ -935,7 +938,9 @@ ${
 
     var palettePin = ${JSON.stringify([...PALETTE_PIN])};
     var color15Plus = ${JSON.stringify(COLOR_15_PLUS)};
+    var colorZeroBags = ${JSON.stringify(COLOR_ZERO_BAGS)};
     function kolorPinezki(count) {
+      if (count <= 0) return colorZeroBags;
       if (count >= 15) return color15Plus;
       var idx = count >= 10 ? 2 : count >= 4 ? 1 : 0;
       return palettePin[idx];
@@ -2342,6 +2347,7 @@ ${
       var countLegendTitle = transportApiEnabled ? 'Worki do odebrania' : 'Liczba wystąpień';
       var countHtml = hasCountLegend
         ? '<div class="legend-section"><h3>' + countLegendTitle + '</h3><ul>' +
+          '<li><span class="legend-swatch" style="background:' + colorZeroBags + '"></span> 0</li>' +
           '<li><span class="legend-swatch" style="background:' + pinLight + '"></span> 1–3</li>' +
           '<li><span class="legend-swatch" style="background:' + pinMed + '"></span> 4–9</li>' +
           '<li><span class="legend-swatch" style="background:' + pinFull + '"></span> 10–14</li>' +
