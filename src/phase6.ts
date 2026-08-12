@@ -777,6 +777,9 @@ export function buildMapHtml(
     .map-harmonogram-filter-options { display: flex; flex-direction: column; gap: 4px; }
     .map-harmonogram-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-harmonogram-filter-options input { margin: 0; flex-shrink: 0; }
+    .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
+    .map-cluster-filter label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
+    .map-cluster-filter input { margin: 0; flex-shrink: 0; }
 ${
   transportApiEnabled
     ? `    .map-transport-loader { position: fixed; z-index: 15000; left: 50%; top: 14px; transform: translateX(-50%); pointer-events: none; }
@@ -2185,7 +2188,7 @@ ${
 
     var markersCluster = L.markerClusterGroup({
       showCoverageOnHover: false,
-      maxClusterRadius: 28,
+      maxClusterRadius: 16,
       spiderfyOnMaxZoom: true,
       disableClusteringAtZoom: 16,
       iconCreateFunction: function(cluster) {
@@ -2202,14 +2205,28 @@ ${
         });
       }
     });
-    map.addLayer(markersCluster);
 
-    function setMarkerInCluster(marker, on) {
-      if (on) {
-        if (!markersCluster.hasLayer(marker)) markersCluster.addLayer(marker);
-      } else if (markersCluster.hasLayer(marker)) {
-        markersCluster.removeLayer(marker);
+    function isClusteringEnabled() {
+      var el = document.getElementById('map-cluster-toggle');
+      return !!(el && el.checked);
+    }
+    function setMarkerVisible(marker, on) {
+      if (markersCluster.hasLayer(marker)) markersCluster.removeLayer(marker);
+      if (map.hasLayer(marker)) map.removeLayer(marker);
+      if (!on) return;
+      if (isClusteringEnabled()) {
+        markersCluster.addLayer(marker);
+      } else {
+        marker.addTo(map);
       }
+    }
+    function applyClusteringMode() {
+      if (isClusteringEnabled()) {
+        if (!map.hasLayer(markersCluster)) map.addLayer(markersCluster);
+      } else if (map.hasLayer(markersCluster)) {
+        map.removeLayer(markersCluster);
+      }
+      applyAddressSearch();
     }
 
     var markerEntries = [];
@@ -2218,7 +2235,7 @@ ${
       var kolor = kolorPinezki(displayCount);
       var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false), pinKolor: kolor })
         .bindPopup(buildPopupContent(p, pointIdx));
-      markersCluster.addLayer(marker);
+      marker.addTo(map);
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
       marker.on('popupopen', function() {
         marker.setPopupContent(buildPopupContent(p, pointIdx));
@@ -2253,6 +2270,10 @@ ${
         '<label><input type="radio" name="map-harmonogram-filter" value="nie" /> Nie</label>' +
         '</div></div>'
       : '';
+    var clusterToggleHtml =
+      '<div class="map-cluster-filter">' +
+      '<label for="map-cluster-toggle"><input type="checkbox" id="map-cluster-toggle" /> Grupuj nachodzące punkty</label>' +
+      '</div>';
     var bulkPanelHtml = wordDocEnabled
       ? '<div id="map-bulk-panel" class="map-bulk-panel" hidden>' +
         '<span id="map-bulk-count" class="map-bulk-count">0 punktów zaznaczonych</span>' +
@@ -2275,6 +2296,7 @@ ${
         '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>' +
         zbiorkaFilterHtml +
         harmonogramFilterHtml +
+        clusterToggleHtml +
         bulkPanelHtml;
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
@@ -2294,6 +2316,8 @@ ${
           harmRadios[hi].addEventListener('change', applyAddressSearch);
         }
       }
+      var clusterToggle = wrap.querySelector('#map-cluster-toggle');
+      if (clusterToggle) clusterToggle.addEventListener('change', applyClusteringMode);
       if (wordDocEnabled) {
         var bulkGenBtn = wrap.querySelector('#map-bulk-generate');
         var bulkClearBtn = wrap.querySelector('#map-bulk-clear');
@@ -2377,13 +2401,13 @@ ${
         var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
         var hMatch = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(entry.p.wgHarmonogramu, harmMode);
         if (!zMatch || !hMatch) {
-          setMarkerInCluster(entry.marker, false);
+          setMarkerVisible(entry.marker, false);
           entry.marker.setOpacity(1);
           entry.marker.setZIndexOffset(0);
           setMarkerClickable(entry.marker, false);
           return;
         }
-        setMarkerInCluster(entry.marker, true);
+        setMarkerVisible(entry.marker, true);
         var sMatch = mapPointMatchesSearchMap(entry.p, raw);
         if (hasSearchFilter && sMatch) matchCount++;
         setMarkerClickable(entry.marker, true);

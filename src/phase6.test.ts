@@ -386,8 +386,12 @@ describe('phase6', () => {
       expect(html).toContain('leaflet.markercluster@1.5.3');
       expect(html).toContain('L.markerClusterGroup');
       expect(html).toContain('dm-cluster-inner');
-      expect(html).toContain('setMarkerInCluster');
-      expect(html).toContain('maxClusterRadius: 28');
+      expect(html).toContain('setMarkerVisible');
+      expect(html).toContain('map-cluster-toggle');
+      expect(html).toContain('Grupuj nachodzące punkty');
+      expect(html).toContain('applyClusteringMode');
+      expect(html).toContain('isClusteringEnabled');
+      expect(html).toContain('maxClusterRadius: 16');
       expect(html).toContain('disableClusteringAtZoom: 16');
       expect(html).toContain('dominantPinKolor');
       expect(html).toContain('pinKolor');
