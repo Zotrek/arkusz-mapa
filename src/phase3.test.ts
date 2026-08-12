@@ -29,6 +29,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
     dataZamknieciaWorka: params.dataZamknieciaWorka ?? '',
     zbiorka: params.zbiorka ?? '',
     wgHarmonogramu: params.wgHarmonogramu ?? '',
+    dniHarmonogramu: params.dniHarmonogramu ?? '',
     raw: params.raw ?? [],
     address: params.address ?? '62-320 Miłosław os. Władysława Łokietka 18',
   };

@@ -143,6 +143,16 @@ describe('sheets phase 2', () => {
       const map = resolveSheetColumnMap([...CURRENT_HEADERS, 'Wg harmonogramu']);
       expect(map.wgHarmonogramu).toBe(14);
     });
+
+    it('test_resolveSheetColumnMap_when_dni_harmonogramu_header_should_map_column', () => {
+      const map = resolveSheetColumnMap([
+        ...CURRENT_HEADERS,
+        'Wg harmonogramu',
+        'Dni harmonogramu',
+      ]);
+      expect(map.wgHarmonogramu).toBe(14);
+      expect(map.dniHarmonogramu).toBe(15);
+    });
   });
 
   describe('applyAddressAliases', () => {
@@ -234,6 +244,34 @@ describe('sheets phase 2', () => {
       ];
       const row = mapRawRowToSheetRow(raw, 2, columns);
       expect(row.wgHarmonogramu).toBe('tak');
+    });
+
+    it('test_mapRawRowToSheetRow_when_dni_harmonogramu_column_should_read_days', () => {
+      const columns = resolveSheetColumnMap([
+        ...CURRENT_HEADERS,
+        'Wg harmonogramu',
+        'Dni harmonogramu',
+      ]);
+      const raw = [
+        '7790000000',
+        'PH',
+        'Sklep',
+        '62-320',
+        'Miłosław',
+        'Leśna',
+        '1',
+        'Gmina',
+        'Wielkopolskie',
+        '123',
+        '',
+        '',
+        '15.04.2026',
+        'Maszyna',
+        'tak',
+        'pn, śr',
+      ];
+      const row = mapRawRowToSheetRow(raw, 2, columns);
+      expect(row.dniHarmonogramu).toBe('pn, śr');
     });
 
     it('test_mapRawRowToSheetRow_when_srem_has_wrong_postcode_should_correct_to_63_100', () => {

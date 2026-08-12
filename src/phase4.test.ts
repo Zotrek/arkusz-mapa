@@ -28,6 +28,7 @@ function makeRow(raw: string[]): SheetRow {
     dataZamknieciaWorka: '',
     zbiorka: '',
     wgHarmonogramu: '',
+    dniHarmonogramu: '',
     raw,
     address: '',
   };

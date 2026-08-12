@@ -44,9 +44,19 @@ Po wywołaniu: **Actions** → **arkusz-mapa — Pages** → nowy run **„Manua
 
 ## GitHub Pages (CI)
 
-Workflow: `.github/workflows/arkusz-mapa-pages.yml` — tylko `workflow_dispatch`.
+Workflow: `.github/workflows/arkusz-mapa-pages.yml` — tylko `workflow_dispatch` (mapa **bez** kopiowania do „odebrane z harmonogramu”).
+
+Workflow: `.github/workflows/arkusz-mapa-pages-odebrane.yml` — mapa **+** kopiowanie kwalifikujących się plomb maszynowych z harmonogramem do zakładki `odebrane z harmonogramu` (`COPY_ODEBRANE_Z_HARMONOGRAMU=1`).
 
 Sekrety repo: `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` (jak dotąd).
+
+### Dispatch „Pages + odebrane” (cron-job.org)
+
+Jak w sekcji 3, ale URL:
+
+`https://api.github.com/repos/Zotrek/arkusz-mapa/actions/workflows/arkusz-mapa-pages-odebrane.yml/dispatches`
+
+Body: `{"ref":"master"}` — te same nagłówki `Authorization` / `Accept`.
 
 ## Co usunęliśmy
 

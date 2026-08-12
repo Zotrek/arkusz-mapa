@@ -17,6 +17,7 @@ const ARKUSZ_MAPA_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // K=10 Status worka, L=11 Status TMS worka, M=12 Data zamknięcia worka,
 // N=13 Tryb zbiórki, O=14 Waga, P=15 Frakcja, Q=16 Typ worka,
 // R=17 Wg harmonogramu (opcjonalna; pozycja wykrywana też po nagłówku)
+// S=18 Dni harmonogramu (opcjonalna; wykrywana po nagłówku)
 export const COL_NIP = 0;
 export const COL_PODMIOT_HANDLOWY = 1;
 export const COL_SKLEP = 2;
@@ -32,6 +33,8 @@ export const COL_DATA_ZAMKNIECIA_WORKA = 12;
 export const COL_ZBIORKA = 13;        // N – Tryb zbiórki
 /** R (17): Wg harmonogramu (tak/nie) — fallback gdy brak nagłówka. */
 export const COL_WG_HARMONOGRAMU = 17;
+/** S (18): Dni harmonogramu (pn, cz, …) — fallback gdy brak nagłówka. */
+export const COL_DNI_HARMONOGRAMU = 18;
 
 /** Domyślne indeksy kolumn — używane gdy brak wiersza nagłówków; patrz też resolveSheetColumnMap(). */
 export const DEFAULT_SHEET_COLUMN_MAP = {
@@ -46,6 +49,7 @@ export const DEFAULT_SHEET_COLUMN_MAP = {
   dataZamknieciaWorka: COL_DATA_ZAMKNIECIA_WORKA,
   zbiorka: COL_ZBIORKA,
   wgHarmonogramu: COL_WG_HARMONOGRAMU,
+  dniHarmonogramu: COL_DNI_HARMONOGRAMU,
 } as const;
 
 // REQ-1.5: nazwy zakładek w Google Sheets
@@ -62,6 +66,8 @@ export const SHEET_NAME_ADRESY_TYLKO_KOD_MIASTO = 'Adresy tylko kod+miasto';
 export const SHEET_NAME_BLISKIE_ADRESY = 'Bliskie adresy (≤20 m)';
 /** Grube niespójności: pinezka daleko od strefy kodu pocztowego (tylko gdy są wpisy). */
 export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
+/** Kopia plomb maszynowych po minięciu dnia z harmonogramu (tworzona tylko gdy są przypadki). */
+export const SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU = 'odebrane z harmonogramu';
 
 // REQ-1.5: URL GeoJSON granic województw (Polska)
 export const GEOJSON_WOJEWODZTWA_URL =

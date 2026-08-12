@@ -3,6 +3,8 @@
  */
 
 import { getConfig, getPhase5CacheFilePath, GEOJSON_WOJEWODZTWA_URL } from './config.js';
+import { isCopyOdebraneZHarmonogramuEnabled } from './harmonogramDays.js';
+import { executeOdebraneZHarmonogramu } from './odebraneZHarmonogramu.js';
 import { applyAddressAliases, createSheetsClient, loadAddressAliases, loadSourceRows } from './sheets.js';
 import { executePhase3 } from './phase3.js';
 import { executePhase4 } from './phase4.js';
@@ -77,6 +79,8 @@ export interface Phase7Deps {
   getConfig: () => RuntimeConfig;
   createSheetsClient: typeof createSheetsClient;
   loadSourceRows: typeof loadSourceRows;
+  executeOdebraneZHarmonogramu: typeof executeOdebraneZHarmonogramu;
+  isCopyOdebraneZHarmonogramuEnabled: typeof isCopyOdebraneZHarmonogramuEnabled;
   executePhase3: typeof executePhase3;
   executePhase5: typeof executePhase5;
   executePhase4: typeof executePhase4;
@@ -95,12 +99,15 @@ export interface Phase7Result {
   badAddressRowsCount: number;
   uncertainAddressRowsCount: number;
   mapFilePath: string;
+  odebraneAppendedCount: number;
 }
 
 const defaultDeps: Phase7Deps = {
   getConfig,
   createSheetsClient,
   loadSourceRows,
+  executeOdebraneZHarmonogramu,
+  isCopyOdebraneZHarmonogramuEnabled,
   executePhase3,
   executePhase5,
   executePhase4,
@@ -139,6 +146,28 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
       );
     }
   }
+
+  let odebraneAppendedCount = 0;
+  if (deps.isCopyOdebraneZHarmonogramuEnabled()) {
+    deps.logger.info('COPY_ODEBRANE_Z_HARMONOGRAMU enabled — checking schedule pickups');
+    const odebrane = await withGoogleApiRetry(
+      'executeOdebraneZHarmonogramu',
+      () =>
+        deps.executeOdebraneZHarmonogramu(
+          sheetsClient,
+          {
+            spreadsheetId: config.sheetsId,
+            headers: source.headers,
+            rows: source.rows,
+            columnMap: source.columnMap,
+          },
+          deps.logger,
+        ),
+      deps.logger,
+    );
+    odebraneAppendedCount = odebrane.appendedCount;
+  }
+
   deps.logger.info('Executing phase 3 (duplicates + grouping)');
   const phase3 = deps.executePhase3(rowsForPipeline);
   deps.logger.info('Executing phase 5 (geocoding)');
@@ -190,6 +219,7 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
     badAddressRowsCount: phase5.rowsBledneAdresy.length,
     uncertainAddressRowsCount: phase5.rowsNiepewneWyniki.length,
     mapFilePath: phase6.filePath,
+    odebraneAppendedCount,
   };
 
   deps.logger.info('Sheets loaded from tab: %s', result.sheetTitle);

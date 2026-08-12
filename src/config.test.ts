@@ -29,6 +29,8 @@ import {
   COL_DATA_ZAMKNIECIA_WORKA,
   COL_ZBIORKA,
   COL_WG_HARMONOGRAMU,
+  COL_DNI_HARMONOGRAMU,
+  SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU,
   GEOJSON_WOJEWODZTWA_URL,
 } from './config';
 
@@ -94,6 +96,14 @@ describe('config', () => {
 
     it('should expose column index for Wg harmonogramu (R) as 17', () => {
       expect(COL_WG_HARMONOGRAMU).toBe(17);
+    });
+
+    it('should expose column index for Dni harmonogramu (S) as 18', () => {
+      expect(COL_DNI_HARMONOGRAMU).toBe(18);
+    });
+
+    it('should expose odebrane z harmonogramu sheet name', () => {
+      expect(SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU).toBe('odebrane z harmonogramu');
     });
   });
 

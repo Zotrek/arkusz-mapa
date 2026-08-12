@@ -49,8 +49,9 @@ Kompilacja TypeScript → `dist/`. Do uruchomienia pipeline’u użyj `npm run g
 
 ## GitHub Actions (Pages) i harmonogram
 
-- Ręcznie: **Actions** → **arkusz-mapa — Pages** → **Run workflow**.
-- Automatycznie **9:30** i **14:00** (czas warszawski): zewnętrzny cron wywołuje ten sam workflow przez API — instrukcja w [`docs/harmonogram-github-actions.md`](docs/harmonogram-github-actions.md) (skrypt `scripts/trigger-pages-workflow.sh`).
+- Ręcznie: **Actions** → **arkusz-mapa — Pages** → **Run workflow** (mapa bez kopiowania „odebrane”).
+- Ręcznie z kopiowaniem: **Actions** → **arkusz-mapa — Pages + odebrane** → **Run workflow** (`COPY_ODEBRANE_Z_HARMONOGRAMU=1`).
+- Automatycznie **9:30** i **14:00** (czas warszawski): zewnętrzny cron wywołuje workflow Pages przez API — instrukcja w [`docs/harmonogram-github-actions.md`](docs/harmonogram-github-actions.md) (skrypt `scripts/trigger-pages-workflow.sh`). Osobny cron może celować w `arkusz-mapa-pages-odebrane.yml`.
 - Natywny `on.schedule` w GitHub **nie uruchamia się** w tym repozytorium; nie polegaj na nim, dopóki w historii Actions nie pojawią się runy z eventem **Schedule**.
 
 ## Testy

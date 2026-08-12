@@ -26,6 +26,7 @@ function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
     dataZamknieciaWorka: overrides.dataZamknieciaWorka ?? '',
     zbiorka: overrides.zbiorka ?? '',
     wgHarmonogramu: overrides.wgHarmonogramu ?? '',
+    dniHarmonogramu: overrides.dniHarmonogramu ?? '',
     raw: overrides.raw ?? ['A', 'B'],
     address: overrides.address ?? '62-320 Miłosław os. Władysława Łokietka 18',
   };
@@ -130,6 +131,16 @@ describe('phase7 pipeline', () => {
           htmlContent: '<!doctype html>',
         };
       }),
+      isCopyOdebraneZHarmonogramuEnabled: vi.fn(() => false),
+      executeOdebraneZHarmonogramu: vi.fn(async () => {
+        order.push('executeOdebraneZHarmonogramu');
+        return {
+          candidatesCount: 0,
+          appendedCount: 0,
+          skippedExistingCount: 0,
+          sheetCreated: false,
+        };
+      }),
       logger: {
         info: vi.fn(),
         error: vi.fn(),
@@ -147,6 +158,8 @@ describe('phase7 pipeline', () => {
       'executePhase4',
       'executePhase6',
     ]);
+    expect(deps.executeOdebraneZHarmonogramu).not.toHaveBeenCalled();
+    expect(result.odebraneAppendedCount).toBe(0);
     expect(deps.executePhase4).toHaveBeenCalledWith(
       { client: true },
       expect.objectContaining({
@@ -233,6 +246,8 @@ describe('phase7 pipeline', () => {
         filePath: '/tmp/out/mapa.html',
         htmlContent: '<html></html>',
       })),
+      isCopyOdebraneZHarmonogramuEnabled: vi.fn(() => false),
+      executeOdebraneZHarmonogramu: vi.fn(),
       logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
     };
 
@@ -240,6 +255,101 @@ describe('phase7 pipeline', () => {
 
     expect(loadAttempts).toBe(2);
     expect(deps.createSheetsClient).toHaveBeenCalledTimes(2);
+  });
+
+  it('test_runPhase7Pipeline_when_copy_odebrane_enabled_should_run_before_phase3', async () => {
+    const order: string[] = [];
+    const rows = [makeRow()];
+    const grouped = new Map<string, { address: string; count: number; rows: SheetRow[] }>();
+    grouped.set(rows[0].address, { address: rows[0].address, count: 1, rows });
+
+    const deps = {
+      getConfig: vi.fn(() => ({
+        sheetsId: 'sheet-id',
+        credentialsPath: '/tmp/sa.json',
+        outputDir: '/tmp/out',
+        geoJsonUrl: 'https://example.com/woj.json',
+      })),
+      createSheetsClient: vi.fn(() => {
+        order.push('createSheetsClient');
+        return { client: true };
+      }),
+      loadSourceRows: vi.fn(async () => {
+        order.push('loadSourceRows');
+        return {
+          sheetTitle: 'Arkusz1',
+          headers: ['A'],
+          rows,
+          columnMap: {
+            podmiotHandlowy: 0,
+            sklep: 1,
+            kodPocztowy: 2,
+            miasto: 3,
+            ulica: 4,
+            numerBudynku: 5,
+            gmina: 6,
+            numerPlomby: 7,
+            dataZamknieciaWorka: 8,
+            zbiorka: 9,
+            wgHarmonogramu: 10,
+            dniHarmonogramu: 11,
+          },
+        };
+      }),
+      isCopyOdebraneZHarmonogramuEnabled: vi.fn(() => true),
+      executeOdebraneZHarmonogramu: vi.fn(async () => {
+        order.push('executeOdebraneZHarmonogramu');
+        return {
+          candidatesCount: 1,
+          appendedCount: 1,
+          skippedExistingCount: 0,
+          sheetCreated: true,
+        };
+      }),
+      executePhase3: vi.fn(() => {
+        order.push('executePhase3');
+        return { rowsDuplikatyPlomb: [], rowsBezDuplikatow: rows, groupedByAddress: grouped };
+      }),
+      executePhase5: vi.fn(async () => {
+        order.push('executePhase5');
+        return {
+          geocoded: [],
+          geocodedNoPostcode: [],
+          uncertainGeocoded: [],
+          cityOnlyGeocoded: [],
+          rowsBledneAdresy: [],
+          rowsNiepewneWyniki: [],
+          groupedNiepewneAdresy: [],
+          groupedBledneAdresy: [],
+          totalBatches: 0,
+          geocodedUniqueAddresses: 0,
+          geocodedNoPostcodeUniqueAddresses: 0,
+          uncertainUniqueAddresses: 0,
+          cityOnlyUniqueAddresses: 0,
+          badUniqueAddresses: 0,
+        };
+      }),
+      executePhase4: vi.fn(async () => {
+        order.push('executePhase4');
+      }),
+      executePhase6: vi.fn(async () => {
+        order.push('executePhase6');
+        return { fileName: 'mapa.html', filePath: '/tmp/out/mapa.html', htmlContent: '<html></html>' };
+      }),
+      logger: { info: vi.fn(), error: vi.fn() },
+    };
+
+    const result = await runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>);
+    expect(order).toEqual([
+      'createSheetsClient',
+      'loadSourceRows',
+      'executeOdebraneZHarmonogramu',
+      'executePhase3',
+      'executePhase5',
+      'executePhase4',
+      'executePhase6',
+    ]);
+    expect(result.odebraneAppendedCount).toBe(1);
   });
 });
 

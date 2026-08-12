@@ -1,0 +1,116 @@
+# Jak „arkusz-mapa — Pages”, plus kopiowanie plomb do zakładki „odebrane z harmonogramu”.
+# Uruchomienia:
+#   • Ręcznie: Actions → „arkusz-mapa — Pages + odebrane” → Run workflow.
+#   • Zewnętrzny cron → workflow_dispatch (docs/harmonogram-github-actions.md).
+#
+# Zwykły workflow „arkusz-mapa — Pages” NIE kopiuje plomb (bez COPY_ODEBRANE_Z_HARMONOGRAMU).
+#
+# Wymagane sekrety: jak w arkusz-mapa-pages.yml
+#   GOOGLE_SHEETS_ID, GOOGLE_SERVICE_ACCOUNT_JSON, TRANSPORT_WEBAPP_URL
+#
+# Concurrency „pages” — ten sam deployment GitHub Pages co zwykły generate.
+name: arkusz-mapa — Pages + odebrane
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Przywróć cache adresów (faza 5)
+        id: cache-phase5
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: phase5-geocode-v2-${{ github.run_id }}
+          restore-keys: |
+            phase5-geocode-v2-
+
+      - name: Scal cache (data/ + Actions)
+        run: node scripts/merge-phase5-cache.mjs
+
+      - name: Raport cache (diagnostyka)
+        run: |
+          echo "actions/cache cache-hit=${{ steps.cache-phase5.outputs.cache-hit }}"
+          if [ -f .cache/phase5-cache.json ]; then
+            echo "phase5-cache.json: bytes=$(wc -c < .cache/phase5-cache.json)"
+            node -e "
+              const fs = require('fs');
+              const p = '.cache/phase5-cache.json';
+              const j = JSON.parse(fs.readFileSync(p,'utf8'));
+              const n = j.entries && typeof j.entries === 'object' ? Object.keys(j.entries).length : 0;
+              console.log('JSON version=', j.version, 'entries=', n);
+            " || echo "(niepoprawny JSON — faza 5 wczyta 0 wpisów)"
+          else
+            echo "Brak pliku .cache/phase5-cache.json przed generate."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Zapis klucza Service Account
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::Brak sekretu GOOGLE_SERVICE_ACCOUNT_JSON"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > .ci-credentials.json
+
+      - name: Generuj mapę + kopiuj odebrane z harmonogramu
+        env:
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.ci-credentials.json
+          OUTPUT_DIR: ${{ github.workspace }}/site/maps
+          PHASE5_CACHE_PATH: ${{ github.workspace }}/.cache/phase5-cache.json
+          TRANSPORT_WEBAPP_URL: ${{ secrets.TRANSPORT_WEBAPP_URL }}
+          COPY_ODEBRANE_Z_HARMONOGRAMU: '1'
+        run: |
+          if [ -z "$GOOGLE_SHEETS_ID" ]; then
+            echo "::error::Brak sekretu GOOGLE_SHEETS_ID"
+            exit 1
+          fi
+          mkdir -p "$OUTPUT_DIR"
+          npm run generate
+
+      - name: Strona indeksu (lista map)
+        run: node scripts/build-pages-index.mjs
+
+      - name: Konfiguracja Pages
+        uses: actions/configure-pages@v5
+
+      - name: Pakiet statyczny
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publikacja na GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
