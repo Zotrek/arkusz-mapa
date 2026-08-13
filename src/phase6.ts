@@ -1158,27 +1158,30 @@ ${
         openDocModal(pointIdx);
       };
     }
-    function applyMarkerTransportDisplay(entry) {
+    function applyMarkerTransportIcon(entry) {
       var p = entry.p;
       var displayCount = displayCountForPoint(p);
       var kolor = kolorPinezki(displayCount);
       entry.kolor = kolor;
       entry.marker.setIcon(markerDisplayIcon(entry, false));
-      entry.marker.setPopupContent(buildPopupContent(p, entry.pointIdx));
+    }
+    function applyMarkerTransportDisplay(entry) {
+      applyMarkerTransportIcon(entry);
+      entry.marker.setPopupContent(buildPopupContent(entry.p, entry.pointIdx));
     }
     function refreshMarkerDisplay(entry) {
       applyMarkerTransportDisplay(entry);
       refreshClusterIcons();
     }
-    /** Odświeża wszystkie pinezki po datach transportu; refreshClusters tylko raz na końcu. */
+    /** Po datach transportu: tylko kolory pinezek; popup budowany przy otwarciu. */
     function refreshAllMarkerDisplaysAfterTransport() {
       return new Promise(function (resolve) {
         var i = 0;
-        var batchSize = 80;
+        var batchSize = 200;
         function step() {
           var end = Math.min(i + batchSize, markerEntries.length);
           for (; i < end; i++) {
-            applyMarkerTransportDisplay(markerEntries[i]);
+            applyMarkerTransportIcon(markerEntries[i]);
           }
           if (i < markerEntries.length) {
             setTimeout(step, 0);
@@ -2257,7 +2260,7 @@ ${
       var displayCount = displayCountForPoint(p);
       var kolor = kolorPinezki(displayCount);
       var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false), pinKolor: kolor })
-        .bindPopup(buildPopupContent(p, pointIdx));
+        .bindPopup('');
       marker.addTo(map);
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
       marker.on('popupopen', function() {

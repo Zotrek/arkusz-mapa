@@ -676,8 +676,11 @@ describe('phase6', () => {
       expect(html).toContain('Pobieranie danych transportu');
       expect(html).toContain('setTransportDatesLoading');
       expect(html).toContain('refreshAllMarkerDisplaysAfterTransport');
+      expect(html).toContain('applyMarkerTransportIcon');
       expect(html).toContain('applyMarkerTransportDisplay');
       expect(html).toContain('return refreshAllMarkerDisplaysAfterTransport()');
+      expect(html).toContain('applyMarkerTransportIcon(markerEntries[i])');
+      expect(html).toContain(".bindPopup('')");
       expect(html).toContain('Worki do odebrania');
       expect(html).toContain('Ostatni transport');
       expect(html).toContain('Wszystkie worki');
