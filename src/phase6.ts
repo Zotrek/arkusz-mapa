@@ -888,8 +888,12 @@ ${
       return best;
     }
     function refreshClusterIcons() {
-      if (typeof markersCluster !== 'undefined' && markersCluster.refreshClusters) {
+      if (typeof markersCluster === 'undefined' || !markersCluster.refreshClusters) return;
+      if (typeof map === 'undefined' || !map.hasLayer(markersCluster)) return;
+      try {
         markersCluster.refreshClusters();
+      } catch (err) {
+        console.error(err);
       }
     }
     function normalizeForAddressSearchMap(text) {
@@ -1228,6 +1232,8 @@ ${
         window.__transportDatesLoaded = true;
       }).then(function () {
         return refreshAllMarkerDisplaysAfterTransport();
+      }).catch(function (err) {
+        console.error(err);
       }).then(function () {
         setTransportDatesLoading(false);
       });

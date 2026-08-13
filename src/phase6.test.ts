@@ -681,6 +681,8 @@ describe('phase6', () => {
       expect(html).toContain('return refreshAllMarkerDisplaysAfterTransport()');
       expect(html).toContain('applyMarkerTransportIcon(markerEntries[i])');
       expect(html).toContain(".bindPopup('')");
+      expect(html).toContain('!map.hasLayer(markersCluster)');
+      expect(html).toContain('markersCluster.refreshClusters()');
       expect(html).toContain('Worki do odebrania');
       expect(html).toContain('Ostatni transport');
       expect(html).toContain('Wszystkie worki');
