@@ -1158,14 +1158,41 @@ ${
         openDocModal(pointIdx);
       };
     }
-    function refreshMarkerDisplay(entry) {
+    function applyMarkerTransportDisplay(entry) {
       var p = entry.p;
       var displayCount = displayCountForPoint(p);
       var kolor = kolorPinezki(displayCount);
       entry.kolor = kolor;
       entry.marker.setIcon(markerDisplayIcon(entry, false));
       entry.marker.setPopupContent(buildPopupContent(p, entry.pointIdx));
+    }
+    function refreshMarkerDisplay(entry) {
+      applyMarkerTransportDisplay(entry);
       refreshClusterIcons();
+    }
+    /** Odświeża wszystkie pinezki po datach transportu; refreshClusters tylko raz na końcu. */
+    function refreshAllMarkerDisplaysAfterTransport() {
+      return new Promise(function (resolve) {
+        var i = 0;
+        var batchSize = 80;
+        function step() {
+          var end = Math.min(i + batchSize, markerEntries.length);
+          for (; i < end; i++) {
+            applyMarkerTransportDisplay(markerEntries[i]);
+          }
+          if (i < markerEntries.length) {
+            setTimeout(step, 0);
+            return;
+          }
+          refreshClusterIcons();
+          resolve();
+        }
+        if (markerEntries.length === 0) {
+          resolve();
+          return;
+        }
+        step();
+      });
     }
     function setTransportDatesLoading(loading) {
       var el = document.getElementById('map-transport-loader');
@@ -1193,15 +1220,11 @@ ${
         }
         window.__transportDateByKey = byKey;
         window.__transportDatesLoaded = true;
-        markerEntries.forEach(function (entry) {
-          refreshMarkerDisplay(entry);
-        });
       }).catch(function (err) {
         console.error(err);
         window.__transportDatesLoaded = true;
-        markerEntries.forEach(function (entry) {
-          refreshMarkerDisplay(entry);
-        });
+      }).then(function () {
+        return refreshAllMarkerDisplaysAfterTransport();
       }).then(function () {
         setTransportDatesLoading(false);
       });
