@@ -142,4 +142,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Publikacja na GitHub Pages
         id: deployment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/deploy-github-pages.sh
