@@ -12,6 +12,7 @@
 # Odczyt plomb: trasówki (GOOGLE_SHEETS_ID). Zapis wyników: ewidencja (GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID).
 #
 # Concurrency „pages” — ten sam deployment GitHub Pages co zwykły generate.
+# Deploy: unikalny git SHA (scripts/prepare-pages-deploy.sh) — jak w arkusz-mapa-pages.yml.
 name: arkusz-mapa — Pages + odebrane
 
 on:
@@ -112,10 +113,24 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      actions: read
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+      - name: Unikalny SHA + zwolnij lock Pages
+        id: unique
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/prepare-pages-deploy.sh
       - name: Publikacja na GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        env:
+          GITHUB_SHA: ${{ steps.unique.outputs.sha }}
