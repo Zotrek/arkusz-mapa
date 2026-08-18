@@ -780,7 +780,7 @@ export function buildMapHtml(
     .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
     .map-cluster-filter label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-cluster-filter input { margin: 0; flex-shrink: 0; }
-    .map-filter-count { background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); font-size: 13px; font-weight: 600; color: #1a1a1a; white-space: nowrap; }
+    .map-filter-count { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; font-size: 13px; font-weight: 600; color: #1a1a1a; }
 ${
   transportApiEnabled
     ? `    .map-transport-loader { position: fixed; z-index: 15000; left: 50%; top: 14px; transform: translateX(-50%); pointer-events: none; }
@@ -2345,6 +2345,7 @@ ${
         zbiorkaFilterHtml +
         harmonogramFilterHtml +
         clusterToggleHtml +
+        '<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt.</div>' +
         bulkPanelHtml;
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
@@ -2487,17 +2488,6 @@ ${
       searchInputEl.addEventListener('input', applyAddressSearch);
       searchInputEl.addEventListener('search', applyAddressSearch);
     }
-
-    var filterCountControl = L.control({ position: 'bottomleft' });
-    filterCountControl.onAdd = function() {
-      var div = L.DomUtil.create('div', 'map-filter-count');
-      div.id = 'map-filter-count';
-      div.setAttribute('role', 'status');
-      div.setAttribute('aria-live', 'polite');
-      div.textContent = 'Widoczne: 0 szt.';
-      return div;
-    };
-    filterCountControl.addTo(map);
 
     applyAddressSearch();
 
