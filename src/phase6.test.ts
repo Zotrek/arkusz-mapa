@@ -446,6 +446,16 @@ describe('phase6', () => {
       expect(html).toContain('Tylko maszynowa');
     });
 
+    it('test_buildMapHtml_when_points_given_should_embed_bottom_filter_point_count', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain("div.id = 'map-filter-count'");
+      expect(html).toContain('map-filter-count');
+      expect(html).toContain("position: 'bottomleft'");
+      expect(html).toContain('var filterCount = 0');
+      expect(html).toContain('filterCount++');
+      expect(html).toContain("countEl.textContent = 'Widoczne: ' + filterCount + ' szt.'");
+    });
+
     it('test_buildMapHtml_when_two_close_points_should_embed_markerLat_markerLng', () => {
       const close: GeocodedAddress[] = [
         {

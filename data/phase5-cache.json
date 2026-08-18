@@ -11502,6 +11502,48 @@
       "wojewodztwo": "Lubuskie",
       "updatedAt": "2026-08-11T18:21:59.514Z"
     },
+    "44-338 Jastrzebie Zdroj Armii krajowej 3": {
+      "status": "ok",
+      "lat": 49.943653942582124,
+      "lng": 18.570888297452928,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-08-11T18:50:23.250Z"
+    },
+    "28-100 Busko-Zdrój Prusa 1": {
+      "status": "ok",
+      "lat": 50.4745678,
+      "lng": 20.7169346,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-08-12T20:30:52.215Z"
+    },
+    "30-001 Kraków Kamienna 2-4": {
+      "status": "ok",
+      "lat": 50.0750035,
+      "lng": 19.9397617,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-08-12T20:30:55.485Z"
+    },
+    "05-102 Nowy Dwór Mazowiecki Generała Wiktora Thommee 1a": {
+      "status": "ok",
+      "lat": 52.4462125,
+      "lng": 20.6513339,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-08-12T20:30:58.661Z"
+    },
+    "64-100 Leszno Łaziebna 2": {
+      "status": "ok",
+      "lat": 51.8441221,
+      "lng": 16.5731663,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-08-12T20:31:01.864Z"
+    },
+    "67-410 Sława Odrodzonego Wojska Polskiego 19": {
+      "status": "ok",
+      "lat": 51.8807328,
+      "lng": 16.0581471,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-08-12T20:31:05.724Z"
+    },
     "06-500 Mława J. Piłsudskiego 39 39": {
       "status": "ok",
       "lat": 53.12122903305619,
@@ -11635,13 +11677,6 @@
       "wojewodztwo": "Śląskie",
       "updatedAt": "2026-08-11T18:50:23.250Z"
     },
-    "44-338 Jastrzebie Zdroj Armii krajowej 3": {
-      "status": "ok",
-      "lat": 49.943653942582124,
-      "lng": 18.570888297452928,
-      "wojewodztwo": "Śląskie",
-      "updatedAt": "2026-08-11T18:50:23.250Z"
-    },
     "44-338 Jastrzebie Zdroj Armii krajowej 3 3": {
       "status": "ok",
       "lat": 49.943653942582124,
@@ -11754,40 +11789,82 @@
       "wojewodztwo": "Łódzkie",
       "updatedAt": "2026-07-22T09:09:50.909Z"
     },
-    "28-100 Busko-Zdrój Prusa 1": {
+    "38-340 BIECZ PRZEDMIEŚCIE DOLNE 10A": {
       "status": "ok",
-      "lat": 50.4745678,
-      "lng": 20.7169346,
-      "wojewodztwo": "Świętokrzyskie",
-      "updatedAt": "2026-08-12T20:30:52.215Z"
-    },
-    "30-001 Kraków Kamienna 2-4": {
-      "status": "ok",
-      "lat": 50.0750035,
-      "lng": 19.9397617,
+      "lat": 49.7362539,
+      "lng": 21.2653644,
       "wojewodztwo": "Małopolskie",
-      "updatedAt": "2026-08-12T20:30:55.485Z"
+      "updatedAt": "2026-08-18T14:08:53.244Z"
     },
-    "05-102 Nowy Dwór Mazowiecki Generała Wiktora Thommee 1a": {
+    "66-403 Gorzów Wlkp. os. Bermudy 24F": {
       "status": "ok",
-      "lat": 52.4462125,
-      "lng": 20.6513339,
-      "wojewodztwo": "Mazowieckie",
-      "updatedAt": "2026-08-12T20:30:58.661Z"
-    },
-    "64-100 Leszno Łaziebna 2": {
-      "status": "ok",
-      "lat": 51.8441221,
-      "lng": 16.5731663,
-      "wojewodztwo": "Wielkopolskie",
-      "updatedAt": "2026-08-12T20:31:01.864Z"
-    },
-    "67-410 Sława Odrodzonego Wojska Polskiego 19": {
-      "status": "ok",
-      "lat": 51.8807328,
-      "lng": 16.0581471,
+      "lat": 52.768506581750465,
+      "lng": 15.282677699428238,
       "wojewodztwo": "Lubuskie",
-      "updatedAt": "2026-08-12T20:31:05.724Z"
+      "updatedAt": "2026-08-18T14:16:00.000Z"
+    },
+    "11-700 Mrągowo OSIEDLE GRUNWALDZKIE 14B": {
+      "status": "ok_no_postcode",
+      "lat": 53.8605556,
+      "lng": 21.3102778,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-08-18T14:11:09.210Z"
+    },
+    "86-010 Koronowo Stopka 22": {
+      "status": "city_only",
+      "lat": 53.2841553,
+      "lng": 17.93642,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-08-18T14:11:19.776Z"
+    },
+    "83-110 Tczew Kwiatowa 13": {
+      "status": "ok",
+      "lat": 54.103076,
+      "lng": 18.7793928,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-08-18T14:11:23.111Z"
+    },
+    "70-464 Szczecin MONTE CASSINO 5/LU2": {
+      "status": "ok",
+      "lat": 53.4322297,
+      "lng": 14.5442884,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-08-18T14:11:42.306Z"
+    },
+    "63-300 Pleszew KRÓLOWEJ JADWIGI 11": {
+      "status": "ok",
+      "lat": 51.888813,
+      "lng": 17.7693354,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-08-18T14:11:43.794Z"
+    },
+    "96-100 Skierniewice Hortensji 2": {
+      "status": "ok",
+      "lat": 51.9439026,
+      "lng": 20.1395465,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-08-18T14:11:47.084Z"
+    },
+    "62-270 Kłecko Gnieźnieńska 1": {
+      "status": "ok",
+      "lat": 52.63141,
+      "lng": 17.431,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-08-18T14:11:56.372Z"
+    },
+    "05-200 Wołomin Geodetów 2a": {
+      "status": "ok",
+      "lat": 52.357761,
+      "lng": 21.2565002,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-08-18T14:11:59.203Z"
+    },
+    "99-306 Łanięta Łanięta 15D": {
+      "status": "ok",
+      "lat": 52.362475,
+      "lng": 19.2800995,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-08-18T14:12:01.293Z"
     }
   }
 }

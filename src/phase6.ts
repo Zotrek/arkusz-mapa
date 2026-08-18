@@ -780,6 +780,7 @@ export function buildMapHtml(
     .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
     .map-cluster-filter label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-cluster-filter input { margin: 0; flex-shrink: 0; }
+    .map-filter-count { background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); font-size: 13px; font-weight: 600; color: #1a1a1a; white-space: nowrap; }
 ${
   transportApiEnabled
     ? `    .map-transport-loader { position: fixed; z-index: 15000; left: 50%; top: 14px; transform: translateX(-50%); pointer-events: none; }
@@ -2439,11 +2440,13 @@ ${
     function applyAddressSearch() {
       var inputEl = document.getElementById('map-address-search');
       var statusEl = document.getElementById('map-search-status');
+      var countEl = document.getElementById('map-filter-count');
       var raw = inputEl ? inputEl.value : '';
       var hasSearchFilter = String(raw).trim().length > 0;
       var zbiorkaMode = getZbiorkaFilterMode();
       var harmMode = getWgHarmonogramuFilterMode();
       var matchCount = 0;
+      var filterCount = 0;
       markerEntries.forEach(function(entry) {
         var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
         var hMatch = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(entry.p.wgHarmonogramu, harmMode);
@@ -2454,6 +2457,7 @@ ${
           setMarkerClickable(entry.marker, false);
           return;
         }
+        filterCount++;
         setMarkerVisible(entry.marker, true);
         var sMatch = mapPointMatchesSearchMap(entry.p, raw);
         if (hasSearchFilter && sMatch) matchCount++;
@@ -2463,6 +2467,9 @@ ${
         entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
       });
       refreshClusterIcons();
+      if (countEl) {
+        countEl.textContent = 'Widoczne: ' + filterCount + ' szt.';
+      }
       if (statusEl) {
         if (!hasSearchFilter) {
           statusEl.textContent = '';
@@ -2480,6 +2487,18 @@ ${
       searchInputEl.addEventListener('input', applyAddressSearch);
       searchInputEl.addEventListener('search', applyAddressSearch);
     }
+
+    var filterCountControl = L.control({ position: 'bottomleft' });
+    filterCountControl.onAdd = function() {
+      var div = L.DomUtil.create('div', 'map-filter-count');
+      div.id = 'map-filter-count';
+      div.setAttribute('role', 'status');
+      div.setAttribute('aria-live', 'polite');
+      div.textContent = 'Widoczne: 0 szt.';
+      return div;
+    };
+    filterCountControl.addTo(map);
+
     applyAddressSearch();
 
     var legend = L.control({ position: 'bottomright' });
