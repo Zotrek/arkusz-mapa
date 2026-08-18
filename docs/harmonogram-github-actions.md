@@ -64,10 +64,10 @@ Pliki ze `schedule` w repo (smoke, cron-trigger) — nie działały w tym projek
 
 Jeśli kiedyś `schedule` zacznie działać (zmiana po stronie GitHub), można ponownie dodać `on.schedule` w workflow — wtedy wyłącz zewnętrzny cron, żeby nie dublować.
 
-## GitHub Pages: unikalny SHA przy każdym deployu
+## GitHub Pages (kolejka i retry)
 
-Akcja `actions/deploy-pages` identyfikuje deployment przez SHA commita ([bug #383](https://github.com/actions/deploy-pages/issues/383)). Runner **nie pozwala nadpisać** `GITHUB_SHA`, więc override w YAML był ignorowany. Dodatkowo `POST .../pages/deployments/{sha}/cancel` tuż przed publikacją kasował ten sam deployment (`Deployment cancelled`).
+Publikacja idzie przez oficjalne `actions/deploy-pages@v5`. Przed nią `scripts/unstick-pages-deploy.sh` próbuje anulować zaległe deploymenty (częsty 400: „in progress deployment”).
 
-Oba workflowy Pages wołają `scripts/deploy-github-pages.sh`: nowy obiekt git (nie rusza `master`) i własne wywołanie API Pages z tym SHA. W logu `pages_build_version` ma być **inne** niż SHA commita z `master`.
+Własny `pages_build_version` (SHA poza `master`, inny token OIDC) GitHub odrzuca — tego nie robimy.
 
-**Nie anuluj** joba `deploy` w pierwszej minucie przy `deployment_queued` — skrypt czeka do 10 min.
+**Nie anuluj** joba `deploy` przy `deployment_queued` w pierwszej minucie. Timeout joba: 15 min. Ponowne „Run workflow” w trakcie wiszącego deployu pogarsza kolejkę ([bug #383](https://github.com/actions/deploy-pages/issues/383): to samo SHA commita = to samo ID).

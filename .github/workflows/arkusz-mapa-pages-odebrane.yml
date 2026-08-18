@@ -12,7 +12,7 @@
 # Odczyt plomb: trasówki (GOOGLE_SHEETS_ID). Zapis wyników: ewidencja (GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID).
 #
 # Concurrency „pages” — ten sam deployment GitHub Pages co zwykły generate.
-# Deploy: scripts/deploy-github-pages.sh — jak w arkusz-mapa-pages.yml.
+# Deploy: actions/deploy-pages@v5 + unstick (jak w arkusz-mapa-pages.yml).
 name: arkusz-mapa — Pages + odebrane
 
 on:
@@ -114,18 +114,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
-      actions: read
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publikacja na GitHub Pages
-        id: deployment
+      - name: Zwolnij zaległą kolejkę Pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/deploy-github-pages.sh
+        run: bash scripts/unstick-pages-deploy.sh
+      - name: Publikacja na GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
