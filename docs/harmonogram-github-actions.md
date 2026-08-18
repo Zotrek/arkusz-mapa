@@ -64,10 +64,14 @@ Pliki ze `schedule` w repo (smoke, cron-trigger) — nie działały w tym projek
 
 Jeśli kiedyś `schedule` zacznie działać (zmiana po stronie GitHub), można ponownie dodać `on.schedule` w workflow — wtedy wyłącz zewnętrzny cron, żeby nie dublować.
 
-## GitHub Pages (kolejka i retry)
+## GitHub Pages (gałąź `gh-pages`)
 
-Publikacja idzie przez oficjalne `actions/deploy-pages@v5`. Przed nią `scripts/unstick-pages-deploy.sh` próbuje anulować zaległe deploymenty (częsty 400: „in progress deployment”).
+Publikacja idzie przez `peaceiris/actions-gh-pages@v4` → gałąź **`gh-pages`** (orphan commit z katalogiem `site/`).
 
-Własny `pages_build_version` (SHA poza `master`, inny token OIDC) GitHub odrzuca — tego nie robimy.
+**Wymagane w Settings → Pages:**
+- Source: **Deploy from a branch**
+- Branch: **`gh-pages`** / **`/(root)`**
 
-**Nie anuluj** joba `deploy` przy `deployment_queued` w pierwszej minucie. Timeout joba: 15 min. Ponowne „Run workflow” w trakcie wiszącego deployu pogarsza kolejkę ([bug #383](https://github.com/actions/deploy-pages/issues/383): to samo SHA commita = to samo ID).
+Nie używamy `actions/deploy-pages` — przy `workflow_dispatch` bez nowego commita ID deployu = SHA `master`, a po anulowaniach kolejka Pages zostawała zablokowana (pusty status / `deployment_queued`, [bug #383](https://github.com/actions/deploy-pages/issues/383)).
+
+Pierwszy udany run workflowu utworzy gałąź `gh-pages`, jeśli jeszcze nie istnieje. Potem upewnij się, że Source Pages wskazuje tę gałąź (inaczej strona nie odświeży się mimo zielonego Actions).

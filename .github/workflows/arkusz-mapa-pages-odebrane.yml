@@ -12,16 +12,14 @@
 # Odczyt plomb: trasówki (GOOGLE_SHEETS_ID). Zapis wyników: ewidencja (GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID).
 #
 # Concurrency „pages” — ten sam deployment GitHub Pages co zwykły generate.
-# Deploy: actions/deploy-pages@v5 + unstick (jak w arkusz-mapa-pages.yml).
+# Publikacja: peaceiris/actions-gh-pages → gałąź gh-pages (bez actions/deploy-pages).
 name: arkusz-mapa — Pages + odebrane
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
   actions: write
 
 concurrency:
@@ -29,8 +27,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -102,27 +101,10 @@ jobs:
       - name: Strona indeksu (lista map)
         run: node scripts/build-pages-index.mjs
 
-      - name: Konfiguracja Pages
-        uses: actions/configure-pages@v5
-
-      - name: Pakiet statyczny
-        uses: actions/upload-pages-artifact@v3
+      - name: Publikacja na gałąź gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Zwolnij zaległą kolejkę Pages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/unstick-pages-deploy.sh
-      - name: Publikacja na GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: true
+          commit_message: 'deploy: arkusz-mapa odebrane ${{ github.run_id }}'

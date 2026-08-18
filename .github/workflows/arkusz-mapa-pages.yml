@@ -16,16 +16,9 @@
 # Cache geokodowania: commituj data/phase5-cache.json po lokalnym `npm run generate`.
 # Na CI: merge data/ (priorytet) + Actions cache — patrz scripts/merge-phase5-cache.mjs
 #
-# GitHub: Settings → Pages → Source: „GitHub Actions”.
-# Nie dodawaj drugiego workflowu Pages (szablony „Jekyll” / „Deploy static content” z GitHuba)
-# z `on: push` — publikują całe repo (`path: '.'`) → 404; ten sam concurrency „pages” je nadpisuje.
-#
-# Dwa joby: „build” BEZ środowiska github-pages (token może zapisywać actions/cache).
-# „deploy” TYLKO z environment github-pages — inaczej cache między runami często nie działa.
-#
-# Publikacja: oficjalne actions/deploy-pages@v5. Własny pages_build_version (SHA poza
-# master / inny audience OIDC) GitHub odrzuca (400). Przed deployem unstick zaległej
-# kolejki Pages. Nie anuluj ręcznie joba deploy przy deployment_queued (timeout 15 min).
+# GitHub Pages: Settings → Pages → Source: Deploy from a branch → gh-pages / (root).
+# Publikacja: peaceiris/actions-gh-pages → gałąź gh-pages (bez actions/deploy-pages —
+# kolejka „GitHub Actions” Pages wisiała przy workflow_dispatch na tym samym SHA).
 #
 # Każde uruchomienie zastępuje całą witrynę Pages (tylko mapy z tego biegu).
 name: arkusz-mapa — Pages
@@ -34,9 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
   actions: write
 
 concurrency:
@@ -44,8 +35,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -118,27 +110,10 @@ jobs:
       - name: Strona indeksu (lista map)
         run: node scripts/build-pages-index.mjs
 
-      - name: Konfiguracja Pages
-        uses: actions/configure-pages@v5
-
-      - name: Pakiet statyczny
-        uses: actions/upload-pages-artifact@v3
+      - name: Publikacja na gałąź gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Zwolnij zaległą kolejkę Pages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/unstick-pages-deploy.sh
-      - name: Publikacja na GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: true
+          commit_message: 'deploy: arkusz-mapa ${{ github.run_id }}'
