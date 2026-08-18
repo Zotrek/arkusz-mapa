@@ -66,10 +66,8 @@ Jeśli kiedyś `schedule` zacznie działać (zmiana po stronie GitHub), można p
 
 ## GitHub Pages: unikalny SHA przy każdym deployu
 
-Akcja `actions/deploy-pages` identyfikuje deployment przez SHA commita ([bug #383](https://github.com/actions/deploy-pages/issues/383)). Przy samym `workflow_dispatch` (cron / Run workflow, bez nowego commita) kolejne biegi miały to samo ID — stąd `deployment_queued` albo zielony deploy ze starą mapą.
+Akcja `actions/deploy-pages` identyfikuje deployment przez SHA commita ([bug #383](https://github.com/actions/deploy-pages/issues/383)). Runner **nie pozwala nadpisać** `GITHUB_SHA`, więc override w YAML był ignorowany. Dodatkowo `POST .../pages/deployments/{sha}/cancel` tuż przed publikacją kasował ten sam deployment (`Deployment cancelled`).
 
-Oba workflowy Pages przed publikacją wołają `scripts/prepare-pages-deploy.sh`: nowy obiekt git (ten sam tree, nie rusza `master`) + próba zwolnienia zaległego locka. W logu `deploy` powinno być `pages_build_version` **inne** niż SHA commita z `master`.
+Oba workflowy Pages wołają `scripts/deploy-github-pages.sh`: nowy obiekt git (nie rusza `master`) i własne wywołanie API Pages z tym SHA. W logu `pages_build_version` ma być **inne** niż SHA commita z `master`.
 
-**Nie anuluj** joba `deploy` w pierwszej minucie, jeśli tylko powtarza `deployment_queued` — poczekaj (timeout 15 min). Ponowne „Run workflow” w trakcie wiszącego deployu pogarsza kolejkę.
-
-Gdyby publikacja znów wisiała, a w payloadzie `pages_build_version` było SHA z `master` (override `GITHUB_SHA` zignorowany przez runner): daj znać — wtedy trzeba iść inną ścieżką (własne wywołanie API Pages).
+**Nie anuluj** joba `deploy` w pierwszej minucie przy `deployment_queued` — skrypt czeka do 10 min.
