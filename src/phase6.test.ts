@@ -612,6 +612,12 @@ describe('phase6', () => {
       expect(html).toContain('appendTransportRow');
       expect(html).toContain('filterSealRowsByMinDate');
       expect(html).toContain('buildDocListsFromSealRows');
+      expect(html).toContain('function aggregateRodzajZbiorkiFromSealRows');
+      expect(html).toContain("rodzaj_zbiorki: rodzajZbiorki ? (' ' + rodzajZbiorki) : ''");
+      expect(html).toContain('rodzajZbiorki: aggregateRodzajZbiorkiFromSealRows(job.filteredSeals)');
+      expect(html).toContain('rodzajZbiorki: aggregateRodzajZbiorkiFromSealRows(filteredSeals)');
+      expect(html).not.toContain('rodzaj_zbiorki: p.rodzaj_zbiorki');
+      expect(html).not.toContain('rodzajZbiorki: p.rodzaj_zbiorki');
       expect(html).toContain('doc-filter-info');
       expect(html).toContain('transportApiEnabled');
       expect(html).toContain('var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;');

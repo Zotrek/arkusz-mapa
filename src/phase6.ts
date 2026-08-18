@@ -314,7 +314,7 @@ type MapPoint = {
   zbiorka?: string;
   /** Wg harmonogramu: tak / nie */
   wgHarmonogramu?: string;
-  /** Do {{rodzaj_zbiorki}} w Word: ręczna | automatyczna | ręczna i automatyczna */
+  /** Agregat zbiórki całej pinezki (mapa). Protokół Word i rejestr transportu liczą rodzaj z `sealRows` po filtrze daty. */
   rodzaj_zbiorki: string;
   doc: MapPointDocPayload;
 };
@@ -1342,6 +1342,20 @@ ${
       if (hasMaszyna) return 'automatyczna';
       return '';
     }
+    function aggregateRodzajZbiorkiFromSealRows(sealRows) {
+      var hasReczna = false, hasMaszyna = false;
+      (sealRows || []).forEach(function (r) {
+        var n = String(r.numerPlomby || '').trim();
+        if (!n) return;
+        var rodzaj = formatRodzajZbiorkiSeal(r.zbiorka);
+        if (rodzaj === 'ręczna' || rodzaj === 'ręczna i automatyczna') hasReczna = true;
+        if (rodzaj === 'automatyczna' || rodzaj === 'ręczna i automatyczna') hasMaszyna = true;
+      });
+      if (hasReczna && hasMaszyna) return 'ręczna i automatyczna';
+      if (hasReczna) return 'ręczna';
+      if (hasMaszyna) return 'automatyczna';
+      return '';
+    }
     function sortSealRowsForDoc(sealRows) {
       return (sealRows || []).slice().sort(function (a, b) {
         return parseSealClosureDateMs(b.dataZamknieciaWorka) - parseSealClosureDateMs(a.dataZamknieciaWorka);
@@ -1909,6 +1923,7 @@ ${
     function renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists, options) {
       var opts = options || {};
       var lists = preparedLists || buildDocListsFromSealRows(filteredSeals);
+      var rodzajZbiorki = aggregateRodzajZbiorkiFromSealRows(filteredSeals);
       var zip = new PizZip(getWordTemplateBytes());
       var Doc = window.docxtemplater;
       var doc = new Doc(zip, {
@@ -1924,7 +1939,7 @@ ${
         miejsce_dostawy: md,
         data_zaladunku: dz,
         numer_zlecenia_transportowego: numerZlecenia,
-        rodzaj_zbiorki: p.rodzaj_zbiorki ? (' ' + p.rodzaj_zbiorki) : ''
+        rodzaj_zbiorki: rodzajZbiorki ? (' ' + rodzajZbiorki) : ''
       });
       var out = doc.getZip().generate({
         type: 'blob',
@@ -2047,7 +2062,7 @@ ${
               dataOdbioru: form.dz,
               ktoOdbiera: form.prOpt.label,
               miejsceZrzutu: form.mdOpt.label,
-              rodzajZbiorki: p.rodzaj_zbiorki || '',
+              rodzajZbiorki: aggregateRodzajZbiorkiFromSealRows(job.filteredSeals),
               iloscWorkow: job.filteredSeals.length,
               komentarz1: form.komentarz1,
               komentarz2: form.komentarz2
@@ -2155,7 +2170,7 @@ ${
           dataOdbioru: dz,
           ktoOdbiera: prOpt.label,
           miejsceZrzutu: mdOpt.label,
-          rodzajZbiorki: p.rodzaj_zbiorki || '',
+          rodzajZbiorki: aggregateRodzajZbiorkiFromSealRows(filteredSeals),
           iloscWorkow: filteredSeals.length,
           komentarz1: form.komentarz1,
           komentarz2: form.komentarz2

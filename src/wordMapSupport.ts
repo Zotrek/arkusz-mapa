@@ -203,7 +203,7 @@ export function buildListaPlombOoxml(rows: SheetRow[]): string {
 }
 
 /**
- * Wartość dla {{rodzaj_zbiorki}} w dokumencie Word — z agregatu kolumny zbiórki (jak na mapie).
+ * Mapuje komórkę/agregat kolumny zbiórki na etykietę dokumentu:
  * Ręczna → „ręczna”, Maszyna → „automatyczna”, obie → „ręczna i automatyczna”.
  */
 export function formatRodzajZbiorkiForDoc(zbiorka: string | undefined): string {
@@ -317,6 +317,37 @@ export function filterSealRowsByMinClosureDate(
     }
     return ms >= minDateMs;
   });
+}
+
+/**
+ * {{rodzaj_zbiorki}} / rejestr transportu: tylko z plomb, które realnie wchodzą na protokół
+ * (po filtrze daty, z numerem plomby — te same wiersze co lista w Wordzie).
+ */
+export function aggregateRodzajZbiorkiFromSealRows(rows: SealRowLite[]): string {
+  let hasReczna = false;
+  let hasMaszyna = false;
+  for (const r of rows) {
+    if (r.numerPlomby.trim().length === 0) {
+      continue;
+    }
+    const rodzaj = formatRodzajZbiorkiForDoc(r.zbiorka);
+    if (rodzaj === 'ręczna' || rodzaj === 'ręczna i automatyczna') {
+      hasReczna = true;
+    }
+    if (rodzaj === 'automatyczna' || rodzaj === 'ręczna i automatyczna') {
+      hasMaszyna = true;
+    }
+  }
+  if (hasReczna && hasMaszyna) {
+    return 'ręczna i automatyczna';
+  }
+  if (hasReczna) {
+    return 'ręczna';
+  }
+  if (hasMaszyna) {
+    return 'automatyczna';
+  }
+  return '';
 }
 
 /** Buduje payload Word z lekkich wierszy plomb (po filtrze w przeglądarce). */

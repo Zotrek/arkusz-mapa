@@ -28,8 +28,9 @@ fragmenty tekstu (podwójne nawiasy klamrowe):
   {{lista_plomb}}       — ten sam tekst co lista powyżej, zwykły placeholder (10 pt jak reszta).
                         Gdy używasz {{@lista_plomb_xml}}, ten znacznik możesz usunąć z szablonu.
 
-  {{rodzaj_zbiorki}}    — z kolumny zbiórki w arkuszu: „ręczna”, „automatyczna”
-                        lub „ręczna i automatyczna” (gdy w grupie są oba tryby)
+  {{rodzaj_zbiorki}}    — z plomb na danym protokole (po filtrze daty ostatniego
+                        transportu): „ręczna”, „automatyczna” lub „ręczna i automatyczna”
+                        (gdy wśród worków do odbioru są oba tryby)
 
 
 

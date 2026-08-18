@@ -14,6 +14,7 @@ import {
   formatDataZamknieciaWorkaAsMmDd,
   parseDataZamknieciaWorkaToSortMs,
   formatRodzajZbiorkiForDoc,
+  aggregateRodzajZbiorkiFromSealRows,
   extractPodwykoOptionsFromMatrix,
   mergeAdjacentXmlTextRuns,
   shouldMergeAdjacentWtRuns,
@@ -227,6 +228,56 @@ describe('wordMapSupport', () => {
     expect(formatRodzajZbiorkiForDoc('Maszyna')).toBe('automatyczna');
     expect(formatRodzajZbiorkiForDoc('Maszyna / Ręczna')).toBe('ręczna i automatyczna');
     expect(formatRodzajZbiorkiForDoc('Ręczna / Maszyna')).toBe('ręczna i automatyczna');
+  });
+
+  it('test_aggregateRodzajZbiorkiFromSealRows_when_empty_should_return_empty', () => {
+    expect(aggregateRodzajZbiorkiFromSealRows([])).toBe('');
+  });
+
+  it('test_aggregateRodzajZbiorkiFromSealRows_when_only_reczna_on_protocol_should_return_reczna', () => {
+    expect(
+      aggregateRodzajZbiorkiFromSealRows([
+        { numerPlomby: 'A', dataZamknieciaWorka: '2026-06-15', zbiorka: 'Ręczna' },
+        { numerPlomby: 'B', dataZamknieciaWorka: '2026-06-20', zbiorka: 'Ręczna' },
+      ]),
+    ).toBe('ręczna');
+  });
+
+  it('test_aggregateRodzajZbiorkiFromSealRows_when_only_maszyna_on_protocol_should_return_automatyczna', () => {
+    expect(
+      aggregateRodzajZbiorkiFromSealRows([
+        { numerPlomby: 'M1', dataZamknieciaWorka: '2026-06-20', zbiorka: 'Maszyna' },
+      ]),
+    ).toBe('automatyczna');
+  });
+
+  it('test_aggregateRodzajZbiorkiFromSealRows_when_mixed_on_protocol_should_return_both', () => {
+    expect(
+      aggregateRodzajZbiorkiFromSealRows([
+        { numerPlomby: 'A', dataZamknieciaWorka: '2026-06-15', zbiorka: 'Ręczna' },
+        { numerPlomby: 'B', dataZamknieciaWorka: '2026-06-20', zbiorka: 'Maszyna' },
+      ]),
+    ).toBe('ręczna i automatyczna');
+  });
+
+  it('test_aggregateRodzajZbiorkiFromSealRows_when_older_other_type_filtered_out_should_use_remaining_only', () => {
+    const all = [
+      { numerPlomby: 'old-reczna', dataZamknieciaWorka: '2026-06-01', zbiorka: 'Ręczna' },
+      { numerPlomby: 'new-maszyna', dataZamknieciaWorka: '2026-06-20', zbiorka: 'Maszyna' },
+    ];
+    const onProtocol = filterSealRowsByMinClosureDate(all, Date.UTC(2026, 5, 10));
+    expect(onProtocol.map((r) => r.numerPlomby)).toEqual(['new-maszyna']);
+    expect(aggregateRodzajZbiorkiFromSealRows(onProtocol)).toBe('automatyczna');
+    expect(aggregateRodzajZbiorkiFromSealRows(all)).toBe('ręczna i automatyczna');
+  });
+
+  it('test_aggregateRodzajZbiorkiFromSealRows_when_empty_numer_should_skip_row', () => {
+    expect(
+      aggregateRodzajZbiorkiFromSealRows([
+        { numerPlomby: '', dataZamknieciaWorka: '2026-06-20', zbiorka: 'Maszyna' },
+        { numerPlomby: 'A', dataZamknieciaWorka: '2026-06-20', zbiorka: 'Ręczna' },
+      ]),
+    ).toBe('ręczna');
   });
 
   it('test_extractPodwykoOptionsFromMatrix_should_skip_header_map_dane_and_number_duplicate_labels', () => {
