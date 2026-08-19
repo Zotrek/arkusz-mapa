@@ -163,12 +163,18 @@ export function getEwidencjaOdbiorowSheetsId(): string {
   );
 }
 
-export function getOptionalWordMapAssetPaths(): { templatePath: string; podwykoPath: string } {
+export function getOptionalWordMapAssetPaths(): {
+  templatePath: string;
+  podwykoPath: string;
+  faviconPath: string;
+} {
   const templatePath =
     process.env.WORD_TEMPLATE_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'pusty.docx');
   const podwykoPath =
     process.env.PODWYKOLISTA_ODS_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'podwyko lista.xlsx');
-  return { templatePath, podwykoPath };
+  const faviconPath =
+    process.env.FAVICON_PATH?.trim() ?? join(ARKUSZ_MAPA_ROOT, 'docs', 'favicon.svg');
+  return { templatePath, podwykoPath, faviconPath };
 }
 
 /** Wspólny plik cache (lokalnie + seed w CI) — commituj po aktualizacji geokodów. */

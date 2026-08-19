@@ -41,6 +41,7 @@ const html = `<!DOCTYPE html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mapy — arkusz-mapa</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <style>
     body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
     ul { padding-left: 1.2rem; }
@@ -58,4 +59,12 @@ ${items}
 
 fs.mkdirSync(siteDir, { recursive: true });
 fs.writeFileSync(path.join(siteDir, 'index.html'), html, 'utf8');
+
+const faviconSrc = path.join(workspace, 'docs', 'favicon.svg');
+if (fs.existsSync(faviconSrc)) {
+  fs.copyFileSync(faviconSrc, path.join(siteDir, 'favicon.svg'));
+  fs.copyFileSync(faviconSrc, path.join(mapsDir, 'favicon.svg'));
+  console.log('Skopiowano favicon.svg do site/ i site/maps/');
+}
+
 console.log('Zapisano', path.join(siteDir, 'index.html'), `(${files.length} map)`);

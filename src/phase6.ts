@@ -3,7 +3,8 @@
  * Opcjonalnie: osadzony szablon Word + lista podwykonawców → generowanie .docx w przeglądarce (PizZip + docxtemplater z CDN).
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, copyFile, access } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { getOptionalWordMapAssetPaths, getTransportWebAppUrl } from './config.js';
 import type { GeocodedAddress } from './phase5.js';
@@ -726,6 +727,7 @@ export function buildMapHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mapa adresów</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -2592,7 +2594,7 @@ export interface ExecutePhase6Input {
   /** Jawne osadzenie szablonu/listy (testy) albo wyłączenie przez { templateBase64: '' }. */
   wordMapEmbed?: WordMapHtmlEmbed;
   /** Nadpisuje domyślne ścieżki docs/pusty.docx i docs/podwyko lista.xlsx */
-  wordMapPaths?: { templatePath: string; podwykoPath: string };
+  wordMapPaths?: { templatePath: string; podwykoPath: string; faviconPath?: string };
   /** URL Web App rejestru transportów (nadpisuje TRANSPORT_WEBAPP_URL z env). */
   transportWebAppUrl?: string;
   now?: () => Date;
@@ -2631,6 +2633,16 @@ export async function executePhase6(input: ExecutePhase6Input): Promise<ExecuteP
 
   await mkdirFn(input.outputDir, { recursive: true });
   await writeFileFn(filePath, htmlContent, 'utf-8');
+
+  const assetPaths = input.wordMapPaths ?? getOptionalWordMapAssetPaths();
+  const faviconPath =
+    assetPaths.faviconPath ?? getOptionalWordMapAssetPaths().faviconPath;
+  try {
+    await access(faviconPath, constants.R_OK);
+    await copyFile(faviconPath, join(input.outputDir, 'favicon.svg'));
+  } catch {
+    /* opcjonalny asset */
+  }
 
   return { fileName, filePath, htmlContent };
 }

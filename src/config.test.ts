@@ -182,17 +182,21 @@ describe('config', () => {
     it('should default to arkusz-mapa/docs filenames regardless of cwd', () => {
       delete process.env.WORD_TEMPLATE_PATH;
       delete process.env.PODWYKOLISTA_ODS_PATH;
+      delete process.env.FAVICON_PATH;
       const path = getOptionalWordMapAssetPaths();
       expect(path.templatePath).toMatch(/[/\\]docs[/\\]pusty\.docx$/);
       expect(path.podwykoPath).toMatch(/[/\\]docs[/\\]podwyko lista\.xlsx$/);
+      expect(path.faviconPath).toMatch(/[/\\]docs[/\\]favicon\.svg$/);
     });
 
     it('should respect WORD_TEMPLATE_PATH and PODWYKOLISTA_ODS_PATH when set', () => {
       process.env.WORD_TEMPLATE_PATH = '/custom/t.docx';
       process.env.PODWYKOLISTA_ODS_PATH = '/custom/l.ods';
+      process.env.FAVICON_PATH = '/custom/f.svg';
       expect(getOptionalWordMapAssetPaths()).toEqual({
         templatePath: '/custom/t.docx',
         podwykoPath: '/custom/l.ods',
+        faviconPath: '/custom/f.svg',
       });
     });
   });
