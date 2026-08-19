@@ -2,6 +2,8 @@
  * Panel ręcznego dodawania do wspólnej listy podwykonawców i poprawek adresów (mapa plomb).
  */
 
+import { referenceFormatsBrowserScript } from './referenceFormats.js';
+
 export function manualAdminCss(): string {
   return `
     .map-manual-add-btn {
@@ -51,6 +53,7 @@ export function manualAdminCss(): string {
       border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; cursor: pointer;
     }
     .manual-admin-submit:disabled { opacity: 0.75; cursor: wait; }
+    .manual-admin-hint { font-size: 11px; color: #64748b; margin: 8px 0 0; line-height: 1.4; }
   `;
 }
 
@@ -65,9 +68,16 @@ export function manualAdminHtml(): string {
       </div>
       <div id="manual-admin-panel-lista" class="manual-admin-panel active">
         <label for="manual-admin-lista-nazwa">Nazwa (combobox)</label>
-        <input type="text" id="manual-admin-lista-nazwa" autocomplete="off" />
-        <label for="manual-admin-lista-dane">Dane do Worda</label>
-        <textarea id="manual-admin-lista-dane" autocomplete="off"></textarea>
+        <input type="text" id="manual-admin-lista-nazwa" autocomplete="off" placeholder="np. BLUECARGO" />
+        <label for="manual-admin-lista-protokol">Nazwa do protokołu</label>
+        <input type="text" id="manual-admin-lista-protokol" autocomplete="off" placeholder="np. BLUECARGO Sp. z o.o." />
+        <label for="manual-admin-lista-adres">Adres</label>
+        <input type="text" id="manual-admin-lista-adres" autocomplete="off" placeholder="np. Rajska 3, 54-028 Wrocław" />
+        <label for="manual-admin-lista-nip">NIP</label>
+        <input type="text" id="manual-admin-lista-nip" autocomplete="off" />
+        <label for="manual-admin-lista-bdo">BDO</label>
+        <input type="text" id="manual-admin-lista-bdo" autocomplete="off" />
+        <p class="manual-admin-hint">Pola są sklejane do kolumny „Dane do Worda” w arkuszu (nazwa, adres, BDO, NIP).</p>
         <button type="button" id="manual-admin-lista-submit" class="manual-admin-submit">Zapisz na liście</button>
       </div>
       <div id="manual-admin-panel-popraw" class="manual-admin-panel">
@@ -102,6 +112,7 @@ export function manualAdminHtml(): string {
 
 export function manualAdminBrowserScript(): string {
   return `
+${referenceFormatsBrowserScript()}
     function setManualAdminStatus(msg, kind) {
       var el = document.getElementById('manual-admin-status');
       if (!el) return;
@@ -227,10 +238,32 @@ export function manualAdminBrowserScript(): string {
       if (listaSubmit) {
         listaSubmit.addEventListener('click', function() {
           var nazwa = String((document.getElementById('manual-admin-lista-nazwa') || {}).value || '').trim();
-          var dane = String((document.getElementById('manual-admin-lista-dane') || {}).value || '').trim();
-          if (!nazwa && !dane) { setManualAdminStatus('Podaj nazwę lub dane.', 'error'); return; }
+          var protokol = String((document.getElementById('manual-admin-lista-protokol') || {}).value || '').trim();
+          var adres = String((document.getElementById('manual-admin-lista-adres') || {}).value || '').trim();
+          var nip = String((document.getElementById('manual-admin-lista-nip') || {}).value || '').trim();
+          var bdo = String((document.getElementById('manual-admin-lista-bdo') || {}).value || '').trim();
+          if (!nazwa && !protokol && !adres && !nip && !bdo) {
+            setManualAdminStatus('Podaj co najmniej nazwę lub dane podwykonawcy.', 'error');
+            return;
+          }
+          if (!nazwa) nazwa = protokol || adres;
+          if (!protokol) protokol = nazwa;
+          var dane = formatPodwykoForWordJs({
+            nazwaDoProtokolu: protokol,
+            adres: adres,
+            nip: nip,
+            bdo: bdo
+          });
           listaSubmit.disabled = true;
-          postReferencePayload({ mode: 'addReferencePodwyko', nazwa: nazwa, dane: dane }).then(function(resp) {
+          postReferencePayload({
+            mode: 'addReferencePodwyko',
+            nazwa: nazwa,
+            nazwaDoProtokolu: protokol,
+            adres: adres,
+            nip: nip,
+            bdo: bdo,
+            dane: dane
+          }).then(function(resp) {
             listaSubmit.disabled = false;
             if (!resp || !resp.ok) {
               setManualAdminStatus(resp && resp.error === 'duplicate' ? 'Duplikat na liście.' : 'Zapis nieudany.', 'error');
@@ -238,6 +271,11 @@ export function manualAdminBrowserScript(): string {
             }
             applyReferencePodwykoEntry(resp.entry);
             setManualAdminStatus('Zapisano na liście podwykonawców.', 'ok');
+            document.getElementById('manual-admin-lista-nazwa').value = '';
+            document.getElementById('manual-admin-lista-protokol').value = '';
+            document.getElementById('manual-admin-lista-adres').value = '';
+            document.getElementById('manual-admin-lista-nip').value = '';
+            document.getElementById('manual-admin-lista-bdo').value = '';
           });
         });
       }

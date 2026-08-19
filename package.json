@@ -8,6 +8,7 @@
     "build": "tsc",
     "generate": "tsx src/run.ts",
     "pull:reference": "tsx src/pullReference.ts",
+    "push:reference": "tsx src/pushReference.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

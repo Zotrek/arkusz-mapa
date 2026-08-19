@@ -50,7 +50,19 @@ Gdy `TRANSPORT_WEBAPP_URL` jest ustawiony:
 
 Zapis idzie od razu do Google Sheets. Aby zobaczyć nową pinezkę po poprawce adresu, uruchom ponownie `npm run generate`.
 
-## Sync JSON (opcjonalnie)
+## Sync z / do Google Sheets
+
+### Wgranie lokalnej listy do arkusza (seed)
+
+Gdy zakładka **Lista podwykonawców** jest pusta, a dane są w `docs/podwyko lista.xlsx`:
+
+```bash
+npm run push:reference
+```
+
+Scalanie: wpisy z XLSX + istniejące w arkuszu (bez duplikatów po parze Nazwa/Dane), zapis na zakładkę **Lista podwykonawców**.
+
+### Pobranie z Web App do JSON (opcjonalnie)
 
 ```bash
 npm run pull:reference

@@ -19,8 +19,37 @@ import {
   parsePoprawAdresSheetRows,
   type PoprawAdresEntry,
 } from './poprawAdres.js';
+import { ensureSheetExists } from './phase4.js';
 import type { PodwykoOption } from './wordMapSupport.js';
 import { finalizePodwykoOptions } from './wordMapSupport.js';
+
+export const PODWYKOLISTA_SHEET_HEADERS = ['Nazwa', 'Dane do Worda'] as const;
+
+type SheetsWriteClient = {
+  spreadsheets: {
+    get(args: { spreadsheetId: string }): Promise<{ data: unknown }>;
+    batchUpdate(args: unknown): Promise<unknown>;
+    values: {
+      clear(args: { spreadsheetId: string; range: string }): Promise<unknown>;
+      update(args: {
+        spreadsheetId: string;
+        range: string;
+        valueInputOption: string;
+        requestBody: { values: string[][] };
+      }): Promise<unknown>;
+    };
+  };
+};
+
+function buildSheetRange(sheetName: string): string {
+  const escaped = sheetName.replace(/'/g, "''");
+  return `'${escaped}'!A:Z`;
+}
+
+function buildSheetStartRange(sheetName: string): string {
+  const escaped = sheetName.replace(/'/g, "''");
+  return `'${escaped}'!A1`;
+}
 
 export interface ReferenceDataBundle {
   podwykoLista: PodwykoOption[];
@@ -267,6 +296,33 @@ export async function fetchReferenceDataFromWebApp(
     poprawAdres,
     poprawAdresIndex: buildPoprawAdresIndex(poprawAdres),
   };
+}
+
+export function podwykoOptionsToSheetRows(podwykoLista: PodwykoOption[]): string[][] {
+  return podwykoLista.map((item) => [item.label, item.dane]);
+}
+
+/** Nadpisuje zakładkę Lista podwykonawców (nagłówek + wiersze). */
+export async function writePodwykoListaToSheets(
+  client: SheetsWriteClient,
+  spreadsheetId: string,
+  podwykoLista: PodwykoOption[],
+): Promise<void> {
+  await ensureSheetExists(client, spreadsheetId, SHEET_NAME_LISTA_PODWYKONAWCOW);
+  const values: string[][] = [
+    [...PODWYKOLISTA_SHEET_HEADERS],
+    ...podwykoOptionsToSheetRows(podwykoLista),
+  ];
+  await client.spreadsheets.values.clear({
+    spreadsheetId,
+    range: buildSheetRange(SHEET_NAME_LISTA_PODWYKONAWCOW),
+  });
+  await client.spreadsheets.values.update({
+    spreadsheetId,
+    range: buildSheetStartRange(SHEET_NAME_LISTA_PODWYKONAWCOW),
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values },
+  });
 }
 
 export async function writeReferencePodwykoJsonFile(

@@ -541,6 +541,42 @@ function normalizeBdo_(value) {
   return cellStr_(value);
 }
 
+function formatPodwykoDaneForWord_(nazwaDoProtokolu, adres, nip, bdo) {
+  var parts = [];
+  var nazwa = cellStr_(nazwaDoProtokolu);
+  var adr = cellStr_(adres);
+  var n = normalizeNip_(nip);
+  var b = normalizeBdo_(bdo);
+  if (nazwa) {
+    parts.push(nazwa);
+  }
+  if (adr) {
+    parts.push(adr);
+  }
+  if (b) {
+    parts.push(/^bdo\b/i.test(b) ? b : 'BDO ' + b);
+  }
+  if (n) {
+    parts.push(/^nip\b/i.test(n) ? n : 'NIP ' + n);
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function resolvePodwykoDaneFromBody_(body) {
+  var nazwa =
+    cellStr_(body && body.nazwa) ||
+    cellStr_(body && body.label) ||
+    cellStr_(body && body.nazwaWyswietlana);
+  var nazwaDoProtokolu = cellStr_(body && body.nazwaDoProtokolu);
+  var adres = cellStr_(body && body.adres);
+  var nip = body && body.nip;
+  var bdo = body && body.bdo;
+  if (nazwaDoProtokolu || adres || nip || bdo) {
+    return formatPodwykoDaneForWord_(nazwaDoProtokolu || nazwa, adres, nip, bdo);
+  }
+  return cellStr_(body && body.dane);
+}
+
 function ensureRefPrzTextColumns_(sheet) {
   if (!sheet) {
     return;
@@ -794,20 +830,30 @@ function normalizeLegacyPodwykoBody_(body, mode) {
     var label = cellStr_(body && body.nazwaWyswietlana) || cellStr_(body && body.label);
     return {
       nazwa: label,
-      dane: cellStr_(body && body.nazwaDoProtokolu) || label,
+      nazwaDoProtokolu: cellStr_(body && body.nazwaDoProtokolu) || label,
+      adres: cellStr_(body && body.adres),
+      nip: body && body.nip,
+      bdo: body && body.bdo,
     };
   }
   return {
     nazwa: cellStr_(body && body.nazwa) || cellStr_(body && body.label),
-    dane: cellStr_(body && body.dane) || cellStr_(body && body.nazwaDoProtokolu),
+    nazwaDoProtokolu: cellStr_(body && body.nazwaDoProtokolu),
+    adres: cellStr_(body && body.adres),
+    nip: body && body.nip,
+    bdo: body && body.bdo,
+    dane: cellStr_(body && body.dane),
   };
 }
 
 function handleAddReferencePodwykoPost_(body) {
-  var entry = normalizePodwykoEntry_(
-    (body && body.nazwa) || (body && body.label) || (body && body.nazwaWyswietlana),
-    (body && body.dane) || (body && body.nazwaDoProtokolu),
-  );
+  var normalized = body || {};
+  var nazwa =
+    cellStr_(normalized.nazwa) ||
+    cellStr_(normalized.label) ||
+    cellStr_(normalized.nazwaWyswietlana);
+  var dane = resolvePodwykoDaneFromBody_(normalized);
+  var entry = normalizePodwykoEntry_(nazwa, dane);
   if (!entry) {
     throw new Error('nazwa or dane required');
   }
