@@ -31,7 +31,7 @@ export interface ReferenceDataBundle {
 type SheetsValuesClient = {
   spreadsheets: {
     values: {
-      get(args: { spreadsheetId: string; range: string }): Promise<{ data: { values?: unknown[][] } }>;
+      get(args: unknown, ...rest: unknown[]): Promise<{ data: unknown }>;
     };
   };
 };
@@ -100,7 +100,8 @@ async function readSheetMatrix(
   const range = `'${escaped}'!A:H`;
   try {
     const res = await client.spreadsheets.values.get({ spreadsheetId, range });
-    const values = res.data.values ?? [];
+    const data = res.data as { values?: unknown[][] };
+    const values = data.values ?? [];
     return values.map((row) => row.map((cell) => (cell == null ? '' : String(cell))));
   } catch {
     return [];
