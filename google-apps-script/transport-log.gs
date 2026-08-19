@@ -7,13 +7,15 @@
  * GET ?action=bulkLastTransportDates  (ostatnie daty odbioru dla wszystkich sklepów — mapa)
  * GET ?action=previewNumber
  * GET ?action=lastTransportDate&podmiot=…&adres=…
- * GET ?action=listReferenceData  → { ok, data: { przewoznicy, miejscaDostawy, poprawAdres } }
+ * GET ?action=listReferenceData  → { ok, data: { podwykoLista, poprawAdres } }
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
- *   mode=addReferencePrzewoznik | addReferenceDostawa | addPoprawAdres
+ *   mode=addReferencePodwyko | addPoprawAdres
+ *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
  *
  * Zakładki referencyjne (ten sam arkusz, poza pierwszą z transportami):
- *   Przewoźnicy, Miejsca dostawy, Popraw adres
+ *   Lista podwykonawców, Popraw adres
+ *   (legacy odczyt: Przewoźnicy, Miejsca dostawy — scalane przy listReferenceData)
  */
 
 var COL = {
@@ -33,10 +35,12 @@ var COL = {
 var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
 var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
 
+var REF_PODWYKO_SHEET_NAME = 'Lista podwykonawców';
 var REF_PRZ_SHEET_NAME = 'Przewoźnicy';
 var REF_DOS_SHEET_NAME = 'Miejsca dostawy';
 var REF_POPRAW_SHEET_NAME = 'Popraw adres';
 
+var REF_PODWYKO_HEADER = ['Nazwa', 'Dane do Worda'];
 var REF_PRZ_HEADER = [
   'Nazwa wyświetlana',
   'Nazwa do protokołu',
@@ -99,11 +103,11 @@ function doPost(e) {
     var raw = (e && e.postData && e.postData.contents) || '{}';
     var body = JSON.parse(raw);
     var mode = body && body.mode ? String(body.mode) : '';
-    if (mode === 'addReferencePrzewoznik') {
-      return handleAddReferencePrzewoznikPost_(body);
+    if (mode === 'addReferencePodwyko') {
+      return handleAddReferencePodwykoPost_(body);
     }
-    if (mode === 'addReferenceDostawa') {
-      return handleAddReferenceDostawaPost_(body);
+    if (mode === 'addReferencePrzewoznik' || mode === 'addReferenceDostawa') {
+      return handleAddReferencePodwykoPost_(normalizeLegacyPodwykoBody_(body, mode));
     }
     if (mode === 'addPoprawAdres') {
       return handleAddPoprawAdresPost_(body);
@@ -622,8 +626,23 @@ function listReferencePrzewoznicy_() {
   return out;
 }
 
-function listReferenceDostawa_() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(REF_DOS_SHEET_NAME);
+function normalizePodwykoEntry_(nazwa, dane) {
+  nazwa = cellStr_(nazwa);
+  dane = cellStr_(dane);
+  if (!nazwa && !dane) {
+    return null;
+  }
+  if (!nazwa) {
+    nazwa = dane.length > 100 ? dane.slice(0, 99).trim() + '…' : dane;
+  }
+  if (!dane) {
+    dane = nazwa;
+  }
+  return { nazwa: nazwa, dane: dane };
+}
+
+function listReferencePodwykoSheet_(sheetName) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sheet) {
     return [];
   }
@@ -632,26 +651,46 @@ function listReferenceDostawa_() {
     return [];
   }
   var numDataRows = lastRow - 1;
-  var values = sheet.getRange(2, 1, numDataRows, REF_DOS_HEADER.length).getValues();
+  var values = sheet.getRange(2, 1, numDataRows, REF_PODWYKO_HEADER.length).getValues();
   var out = [];
   for (var i = 0; i < values.length; i++) {
-    var r = values[i];
-    var nazwa = cellStr_(r[0]);
-    var dane = cellStr_(r[1]);
-    if (!nazwa && !dane) {
-      continue;
+    var entry = normalizePodwykoEntry_(values[i][0], values[i][1]);
+    if (entry) {
+      out.push(entry);
     }
-    if (!nazwa) {
-      nazwa = dane.length > 100 ? dane.slice(0, 99).trim() + '…' : dane;
-    }
-    if (!dane) {
-      dane = nazwa;
-    }
-    out.push({
-      nazwa: nazwa,
-      dane: dane,
-    });
   }
+  return out;
+}
+
+function listReferenceDostawa_() {
+  return listReferencePodwykoSheet_(REF_DOS_SHEET_NAME);
+}
+
+function mergeReferencePodwykoLista_() {
+  var seen = {};
+  var out = [];
+  function pushEntry(nazwa, dane) {
+    var entry = normalizePodwykoEntry_(nazwa, dane);
+    if (!entry) {
+      return;
+    }
+    var key = refDosKey_(entry.nazwa, entry.dane);
+    if (seen[key]) {
+      return;
+    }
+    seen[key] = true;
+    out.push(entry);
+  }
+
+  listReferencePodwykoSheet_(REF_PODWYKO_SHEET_NAME).forEach(function(item) {
+    pushEntry(item.nazwa, item.dane);
+  });
+  listReferencePrzewoznicy_().forEach(function(item) {
+    pushEntry(item.nazwaWyswietlana, item.nazwaDoProtokolu || item.nazwaWyswietlana);
+  });
+  listReferenceDostawa_().forEach(function(item) {
+    pushEntry(item.nazwa, item.dane);
+  });
   return out;
 }
 
@@ -693,8 +732,7 @@ function listReferencePoprawAdres_() {
 
 function listReferenceData_() {
   return {
-    przewoznicy: listReferencePrzewoznicy_(),
-    miejscaDostawy: listReferenceDostawa_(),
+    podwykoLista: mergeReferencePodwykoLista_(),
     poprawAdres: listReferencePoprawAdres_(),
   };
 }
@@ -751,60 +789,36 @@ function findPoprawAdresRow_(sheet, adres, podmiot, sklep) {
   return 0;
 }
 
-function handleAddReferencePrzewoznikPost_(body) {
-  var label = cellStr_(body && body.nazwaWyswietlana) || cellStr_(body && body.label);
-  var nazwaDoProtokolu = cellStr_(body && body.nazwaDoProtokolu) || label;
-  var adres = cellStr_(body && body.adres);
-  var nip = normalizeNip_(body && body.nip);
-  var bdo = normalizeBdo_(body && body.bdo);
-  if (!label) {
-    throw new Error('nazwaWyswietlana required');
+function normalizeLegacyPodwykoBody_(body, mode) {
+  if (mode === 'addReferencePrzewoznik') {
+    var label = cellStr_(body && body.nazwaWyswietlana) || cellStr_(body && body.label);
+    return {
+      nazwa: label,
+      dane: cellStr_(body && body.nazwaDoProtokolu) || label,
+    };
   }
-  var sheet = getOrCreateRefPrzSheet_();
-  if (refPrzExists_(sheet, label)) {
-    return jsonResponse({ ok: false, error: 'duplicate' });
-  }
-  ensureRefPrzTextColumns_(sheet);
-  var newRow = sheet.getLastRow() + 1;
-  sheet.getRange(newRow, 1, 1, REF_PRZ_HEADER.length).setValues([
-    [label, nazwaDoProtokolu, adres, nip, bdo],
-  ]);
-  writeRefPrzIdentifierCells_(sheet, newRow, nip, bdo);
-  return jsonResponse({
-    ok: true,
-    entry: {
-      nazwaWyswietlana: label,
-      nazwaDoProtokolu: nazwaDoProtokolu,
-      adres: adres,
-      nip: nip,
-      bdo: bdo,
-    },
-  });
+  return {
+    nazwa: cellStr_(body && body.nazwa) || cellStr_(body && body.label),
+    dane: cellStr_(body && body.dane) || cellStr_(body && body.nazwaDoProtokolu),
+  };
 }
 
-function handleAddReferenceDostawaPost_(body) {
-  var nazwa = cellStr_(body && body.nazwa) || cellStr_(body && body.label);
-  var dane = cellStr_(body && body.dane) || cellStr_(body && body.nazwaDoProtokolu);
-  if (!nazwa && !dane) {
+function handleAddReferencePodwykoPost_(body) {
+  var entry = normalizePodwykoEntry_(
+    (body && body.nazwa) || (body && body.label) || (body && body.nazwaWyswietlana),
+    (body && body.dane) || (body && body.nazwaDoProtokolu),
+  );
+  if (!entry) {
     throw new Error('nazwa or dane required');
   }
-  if (!nazwa) {
-    nazwa = dane.length > 100 ? dane.slice(0, 99).trim() + '…' : dane;
-  }
-  if (!dane) {
-    dane = nazwa;
-  }
-  var sheet = getOrCreateRefSheet_(REF_DOS_SHEET_NAME, REF_DOS_HEADER);
-  if (refDosExists_(sheet, nazwa, dane)) {
+  var sheet = getOrCreateRefSheet_(REF_PODWYKO_SHEET_NAME, REF_PODWYKO_HEADER);
+  if (refDosExists_(sheet, entry.nazwa, entry.dane)) {
     return jsonResponse({ ok: false, error: 'duplicate' });
   }
-  sheet.appendRow([nazwa, dane]);
+  sheet.appendRow([entry.nazwa, entry.dane]);
   return jsonResponse({
     ok: true,
-    entry: {
-      nazwa: nazwa,
-      dane: dane,
-    },
+    entry: entry,
   });
 }
 

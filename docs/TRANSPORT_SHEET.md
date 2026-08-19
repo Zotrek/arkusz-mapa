@@ -2,7 +2,7 @@
 
 Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HTML na GitHub Pages przez **Google Apps Script Web App**.
 
-**Słowniki referencyjne** (Przewoźnicy, Miejsca dostawy, Popraw adres) — ten sam arkusz i Web App: [REFERENCE_SHEET.md](./REFERENCE_SHEET.md).
+**Słowniki referencyjne** (Lista podwykonawców, Popraw adres) — ten sam arkusz i Web App: [REFERENCE_SHEET.md](./REFERENCE_SHEET.md).
 
 
 

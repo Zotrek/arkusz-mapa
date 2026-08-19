@@ -70,11 +70,19 @@ export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
 export const SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU = 'odebrane z harmonogramu';
 
 /** Zakładki słowników w arkuszu transportów (osobny dokument od plomb). */
+export const SHEET_NAME_LISTA_PODWYKONAWCOW = 'Lista podwykonawców';
+/** Legacy — odczyt scalany z listą główną (migracja). */
 export const SHEET_NAME_PRZEWOZNICY = 'Przewoźnicy';
 export const SHEET_NAME_MIEJSCA_DOSTAWY = 'Miejsca dostawy';
 export const SHEET_NAME_POPRAW_ADRES = 'Popraw adres';
 
 /** JSON zsynchronizowany z Google Sheets (npm run pull:reference). */
+export const DEFAULT_REFERENCE_PODWYKO_PATH = join(
+  ARKUSZ_MAPA_ROOT,
+  'data',
+  'reference-podwyko-lista.json',
+);
+/** Legacy — fallback gdy brak reference-podwyko-lista.json. */
 export const DEFAULT_REFERENCE_PRZEWOZNICY_PATH = join(
   ARKUSZ_MAPA_ROOT,
   'data',

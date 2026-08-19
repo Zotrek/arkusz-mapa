@@ -1,5 +1,5 @@
 /**
- * Panel ręcznego dodawania przewoźników, miejsc dostawy i poprawek adresów (mapa plomb).
+ * Panel ręcznego dodawania do wspólnej listy podwykonawców i poprawek adresów (mapa plomb).
  */
 
 export function manualAdminCss(): string {
@@ -58,31 +58,17 @@ export function manualAdminHtml(): string {
   return `  <div id="manual-admin-modal" class="doc-modal-overlay" style="display:none" aria-hidden="true">
     <div class="doc-modal-panel" role="dialog" aria-labelledby="manual-admin-title">
       <h3 id="manual-admin-title">Dodaj dane ręcznie</h3>
-      <p class="doc-modal-hint">Zapis trwały w arkuszu transportów (zakładki Przewoźnicy, Miejsca dostawy, Popraw adres).</p>
+      <p class="doc-modal-hint">Wspólna lista podwykonawców (Kto odbiera / Miejsce dostawy) oraz poprawki adresów — zapis w arkuszu transportów.</p>
       <div class="manual-admin-tabs" role="tablist">
-        <button type="button" id="manual-admin-tab-prz" class="active" data-tab="prz">Przewoźnik</button>
-        <button type="button" id="manual-admin-tab-dos" data-tab="dos">Miejsce dostawy</button>
+        <button type="button" id="manual-admin-tab-lista" class="active" data-tab="lista">Lista podwykonawców</button>
         <button type="button" id="manual-admin-tab-popraw" data-tab="popraw">Popraw adres</button>
       </div>
-      <div id="manual-admin-panel-prz" class="manual-admin-panel active">
-        <label for="manual-admin-prz-wysw">Nazwa wyświetlana</label>
-        <input type="text" id="manual-admin-prz-wysw" autocomplete="off" />
-        <label for="manual-admin-prz-protokol">Nazwa do protokołu</label>
-        <input type="text" id="manual-admin-prz-protokol" autocomplete="off" />
-        <label for="manual-admin-prz-adres">Adres</label>
-        <input type="text" id="manual-admin-prz-adres" autocomplete="off" />
-        <label for="manual-admin-prz-nip">NIP</label>
-        <input type="text" id="manual-admin-prz-nip" autocomplete="off" />
-        <label for="manual-admin-prz-bdo">nr BDO</label>
-        <input type="text" id="manual-admin-prz-bdo" autocomplete="off" />
-        <button type="button" id="manual-admin-prz-submit" class="manual-admin-submit">Zapisz przewoźnika</button>
-      </div>
-      <div id="manual-admin-panel-dos" class="manual-admin-panel">
-        <label for="manual-admin-dos-nazwa">Nazwa (combobox)</label>
-        <input type="text" id="manual-admin-dos-nazwa" autocomplete="off" />
-        <label for="manual-admin-dos-dane">Dane do Worda</label>
-        <textarea id="manual-admin-dos-dane" autocomplete="off"></textarea>
-        <button type="button" id="manual-admin-dos-submit" class="manual-admin-submit">Zapisz miejsce dostawy</button>
+      <div id="manual-admin-panel-lista" class="manual-admin-panel active">
+        <label for="manual-admin-lista-nazwa">Nazwa (combobox)</label>
+        <input type="text" id="manual-admin-lista-nazwa" autocomplete="off" />
+        <label for="manual-admin-lista-dane">Dane do Worda</label>
+        <textarea id="manual-admin-lista-dane" autocomplete="off"></textarea>
+        <button type="button" id="manual-admin-lista-submit" class="manual-admin-submit">Zapisz na liście</button>
       </div>
       <div id="manual-admin-panel-popraw" class="manual-admin-panel">
         <label for="manual-admin-popraw-podmiot">Podmiot handlowy</label>
@@ -143,15 +129,7 @@ export function manualAdminBrowserScript(): string {
       return false;
     }
 
-    function applyReferencePrzewoznikEntry(entry) {
-      if (!entry || !entry.nazwaWyswietlana) return;
-      var label = entry.nazwaWyswietlana;
-      var dane = entry.nazwaDoProtokolu || label;
-      if (hasPodwykoLabel(label)) return;
-      PODWYKOLISTA.push({ label: label, dane: dane });
-    }
-
-    function applyReferenceDostawaEntry(entry) {
+    function applyReferencePodwykoEntry(entry) {
       if (!entry) return;
       var label = entry.nazwa || entry.label;
       var dane = entry.dane || label;
@@ -167,8 +145,17 @@ export function manualAdminBrowserScript(): string {
         .then(function(r) { return r.json(); })
         .then(function(resp) {
           if (!resp || !resp.ok || !resp.data) return;
-          (resp.data.przewoznicy || []).forEach(applyReferencePrzewoznikEntry);
-          (resp.data.miejscaDostawy || []).forEach(applyReferenceDostawaEntry);
+          if (resp.data.podwykoLista) {
+            (resp.data.podwykoLista || []).forEach(applyReferencePodwykoEntry);
+            return;
+          }
+          (resp.data.przewoznicy || []).forEach(function(item) {
+            applyReferencePodwykoEntry({
+              nazwa: item.nazwaWyswietlana,
+              dane: item.nazwaDoProtokolu || item.nazwaWyswietlana
+            });
+          });
+          (resp.data.miejscaDostawy || []).forEach(applyReferencePodwykoEntry);
         })
         .catch(function() {});
     }
@@ -188,7 +175,7 @@ export function manualAdminBrowserScript(): string {
       if (!modal) return;
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden', 'false');
-      setManualAdminTab(tab || 'prz');
+      setManualAdminTab(tab || 'lista');
       setManualAdminStatus('');
     }
 
@@ -200,7 +187,7 @@ export function manualAdminBrowserScript(): string {
     }
 
     function setManualAdminTab(tab) {
-      ['prz', 'dos', 'popraw'].forEach(function(name) {
+      ['lista', 'popraw'].forEach(function(name) {
         var panel = document.getElementById('manual-admin-panel-' + name);
         var btn = document.getElementById('manual-admin-tab-' + name);
         var active = name === tab;
@@ -224,58 +211,33 @@ export function manualAdminBrowserScript(): string {
     }
 
     function bindManualAdminUi() {
-      ['manual-admin-tab-prz', 'manual-admin-tab-dos', 'manual-admin-tab-popraw'].forEach(function(id) {
+      ['manual-admin-tab-lista', 'manual-admin-tab-popraw'].forEach(function(id) {
         var btn = document.getElementById(id);
         if (!btn) return;
         btn.addEventListener('click', function() {
-          setManualAdminTab(btn.getAttribute('data-tab') || 'prz');
+          setManualAdminTab(btn.getAttribute('data-tab') || 'lista');
         });
       });
       var closeBtn = document.getElementById('manual-admin-close');
       if (closeBtn) closeBtn.addEventListener('click', closeManualAdminModal);
       var openBtn = document.getElementById('map-manual-admin-open');
-      if (openBtn) openBtn.addEventListener('click', function() { openManualAdminModal('prz'); });
+      if (openBtn) openBtn.addEventListener('click', function() { openManualAdminModal('lista'); });
 
-      var przSubmit = document.getElementById('manual-admin-prz-submit');
-      if (przSubmit) {
-        przSubmit.addEventListener('click', function() {
-          var label = String((document.getElementById('manual-admin-prz-wysw') || {}).value || '').trim();
-          if (!label) { setManualAdminStatus('Podaj nazwę wyświetlaną.', 'error'); return; }
-          przSubmit.disabled = true;
-          postReferencePayload({
-            mode: 'addReferencePrzewoznik',
-            nazwaWyswietlana: label,
-            nazwaDoProtokolu: String((document.getElementById('manual-admin-prz-protokol') || {}).value || '').trim() || label,
-            adres: String((document.getElementById('manual-admin-prz-adres') || {}).value || '').trim(),
-            nip: String((document.getElementById('manual-admin-prz-nip') || {}).value || '').trim(),
-            bdo: String((document.getElementById('manual-admin-prz-bdo') || {}).value || '').trim()
-          }).then(function(resp) {
-            przSubmit.disabled = false;
-            if (!resp || !resp.ok) {
-              setManualAdminStatus(resp && resp.error === 'duplicate' ? 'Ten przewoźnik już istnieje.' : 'Zapis nieudany.', 'error');
-              return;
-            }
-            applyReferencePrzewoznikEntry(resp.entry);
-            setManualAdminStatus('Zapisano przewoźnika.', 'ok');
-          });
-        });
-      }
-
-      var dosSubmit = document.getElementById('manual-admin-dos-submit');
-      if (dosSubmit) {
-        dosSubmit.addEventListener('click', function() {
-          var nazwa = String((document.getElementById('manual-admin-dos-nazwa') || {}).value || '').trim();
-          var dane = String((document.getElementById('manual-admin-dos-dane') || {}).value || '').trim();
+      var listaSubmit = document.getElementById('manual-admin-lista-submit');
+      if (listaSubmit) {
+        listaSubmit.addEventListener('click', function() {
+          var nazwa = String((document.getElementById('manual-admin-lista-nazwa') || {}).value || '').trim();
+          var dane = String((document.getElementById('manual-admin-lista-dane') || {}).value || '').trim();
           if (!nazwa && !dane) { setManualAdminStatus('Podaj nazwę lub dane.', 'error'); return; }
-          dosSubmit.disabled = true;
-          postReferencePayload({ mode: 'addReferenceDostawa', nazwa: nazwa, dane: dane }).then(function(resp) {
-            dosSubmit.disabled = false;
+          listaSubmit.disabled = true;
+          postReferencePayload({ mode: 'addReferencePodwyko', nazwa: nazwa, dane: dane }).then(function(resp) {
+            listaSubmit.disabled = false;
             if (!resp || !resp.ok) {
               setManualAdminStatus(resp && resp.error === 'duplicate' ? 'Duplikat na liście.' : 'Zapis nieudany.', 'error');
               return;
             }
-            applyReferenceDostawaEntry(resp.entry);
-            setManualAdminStatus('Zapisano miejsce dostawy.', 'ok');
+            applyReferencePodwykoEntry(resp.entry);
+            setManualAdminStatus('Zapisano na liście podwykonawców.', 'ok');
           });
         });
       }

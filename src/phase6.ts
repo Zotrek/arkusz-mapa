@@ -2357,7 +2357,7 @@ ${
         '</div>'
       : '';
     var manualAdminBtnHtml = (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL)
-      ? '<button type="button" id="map-manual-admin-open" class="map-manual-add-btn">Dodaj przewoźnika / popraw adres</button>'
+      ? '<button type="button" id="map-manual-admin-open" class="map-manual-add-btn">Dodaj do listy / popraw adres</button>'
       : '';
 
     var searchControl = L.control({ position: 'topleft' });

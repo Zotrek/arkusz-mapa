@@ -1,12 +1,11 @@
 /**
- * CLI: pobierz słowniki referencyjne z Web App → data/reference-*.json
+ * CLI: pobierz słowniki referencyjne z Web App → data/reference-podwyko-lista.json
  * Uruchom: npx tsx src/pullReference.ts
  */
 
 import 'dotenv/config';
 import { getTransportWebAppUrl } from './config.js';
-import { fetchReferenceDataFromWebApp, writeReferenceJsonFiles } from './referenceData.js';
-import { finalizePodwykoOptions } from './wordMapSupport.js';
+import { fetchReferenceDataFromWebApp, writeReferencePodwykoJsonFile } from './referenceData.js';
 
 async function main(): Promise<void> {
   const webAppUrl = getTransportWebAppUrl();
@@ -17,17 +16,10 @@ async function main(): Promise<void> {
 
   console.log('[arkusz-mapa] pull:reference start');
   const data = await fetchReferenceDataFromWebApp(webAppUrl);
-  const przewoznicy = data.przewoznicy ?? [];
-  const miejscaDostawy = finalizePodwykoOptions(
-    (data.miejscaDostawy ?? []).map((item) => ({
-      baseLabel: item.label,
-      dane: item.dane,
-    })),
-  );
+  const podwykoLista = data.podwykoLista ?? [];
 
-  await writeReferenceJsonFiles({ przewoznicy, miejscaDostawy });
-  console.log(`  przewoznicy: ${przewoznicy.length}`);
-  console.log(`  miejscaDostawy: ${miejscaDostawy.length}`);
+  await writeReferencePodwykoJsonFile(podwykoLista);
+  console.log(`  podwykoLista: ${podwykoLista.length}`);
   console.log(`  poprawAdres (runtime only): ${data.poprawAdres?.length ?? 0}`);
 }
 
