@@ -20,6 +20,12 @@ import {
   sealRowsFromSheetRows,
   type SealRowLite,
 } from './wordMapSupport.js';
+import { loadPodwykoOptionsWithReferenceFallback } from './referenceData.js';
+import {
+  manualAdminBrowserScript,
+  manualAdminCss,
+  manualAdminHtml,
+} from './buildMapManualAdmin.js';
 
 /** Kolor pinezki dla 15+ wystąpień (wyróżnienie dużych zbiórek). */
 const COLOR_15_PLUS = '#fd7e14';
@@ -634,6 +640,7 @@ export function buildMapHtml(
   });
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
   const transportApiEnabled = wordEnabled && transportWebAppUrl.length > 0;
+  const referenceAdminEnabled = transportWebAppUrl.length > 0;
 
   const wordModal = wordEnabled
     ? `  <div id="doc-modal" class="doc-modal-overlay" style="display:none" aria-hidden="true">
@@ -790,7 +797,7 @@ ${
     @keyframes map-transport-spin { to { transform: rotate(360deg); } }
 `
     : ''
-}${docStyles}  </style>
+}${referenceAdminEnabled ? manualAdminCss() : ''}${docStyles}  </style>
 </head>
 <body>
   <div id="map"></div>
@@ -804,7 +811,7 @@ ${
   </div>
 `
     : ''
-}${wordModal}  <script>
+}${wordModal}${referenceAdminEnabled ? manualAdminHtml() : ''}  <script>
     const adresy = ${JSON.stringify(points)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
     const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
@@ -1084,6 +1091,9 @@ ${
           (window.__bulkSelectedPointIdxs && window.__bulkSelectedPointIdxs[pointIdx] ? ' checked' : '') +
           ' /> Zaznacz do zbiorczego protokołu</label>'
         : '';
+      var poprawBtn = (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL)
+        ? '<button type="button" class="map-popraw-adres-btn btn-popraw-adres" data-point-idx="' + pointIdx + '">Popraw adres</button>'
+        : '';
       return '<div class="popup-address">' + p.adres + '</div>' +
         (podmiotLine || '') +
         buildPopupCountHtml(p) +
@@ -1092,6 +1102,7 @@ ${
         '<div class="popup-woj">' + p.woj + '</div>' +
         confidenceLabel +
         bulkSelect +
+        poprawBtn +
         genDocBtn;
     }
     window.__bulkSelectedPointIdxs = window.__bulkSelectedPointIdxs || {};
@@ -1145,23 +1156,39 @@ ${
       }
     }
     function wirePopupControls(marker, pointIdx) {
-      if (!wordDocEnabled) return;
       var el = marker.getPopup().getElement();
       if (!el) return;
-      var cb = el.querySelector('.popup-bulk-cb');
-      if (cb) {
-        cb.onchange = function () {
-          setBulkPointSelected(pointIdx, cb.checked);
-          marker.setPopupContent(buildPopupContent(adresy[pointIdx], pointIdx));
-          wirePopupControls(marker, pointIdx);
+      if (wordDocEnabled) {
+        var cb = el.querySelector('.popup-bulk-cb');
+        if (cb) {
+          cb.onchange = function () {
+            setBulkPointSelected(pointIdx, cb.checked);
+            marker.setPopupContent(buildPopupContent(adresy[pointIdx], pointIdx));
+            wirePopupControls(marker, pointIdx);
+          };
+        }
+        var btn = el.querySelector('.btn-gen-doc');
+        if (btn && !btn.disabled) {
+          btn.onclick = function (ev) {
+            if (ev.stopPropagation) ev.stopPropagation();
+            openDocModal(pointIdx);
+          };
+        }
+      }
+      var poprawBtn = el.querySelector('.btn-popraw-adres');
+      if (poprawBtn) {
+        poprawBtn.onclick = function (ev) {
+          if (ev.stopPropagation) ev.stopPropagation();
+          var p = adresy[pointIdx];
+          openPoprawAdresFromPoint({
+            podmiotHandlowy: p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '',
+            sklep: p.sklep || '',
+            adres: p.adres,
+            lat: p.lat,
+            lng: p.lng
+          });
         };
       }
-      var btn = el.querySelector('.btn-gen-doc');
-      if (!btn || btn.disabled) return;
-      btn.onclick = function (ev) {
-        if (ev.stopPropagation) ev.stopPropagation();
-        openDocModal(pointIdx);
-      };
     }
     function applyMarkerTransportIcon(entry) {
       var p = entry.p;
@@ -2329,6 +2356,9 @@ ${
         '<button type="button" id="map-bulk-clear" class="map-bulk-clear">Wyczyść</button>' +
         '</div>'
       : '';
+    var manualAdminBtnHtml = (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL)
+      ? '<button type="button" id="map-manual-admin-open" class="map-manual-add-btn">Dodaj przewoźnika / popraw adres</button>'
+      : '';
 
     var searchControl = L.control({ position: 'topleft' });
     searchControl.onAdd = function() {
@@ -2346,6 +2376,7 @@ ${
         harmonogramFilterHtml +
         clusterToggleHtml +
         '<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt.</div>' +
+        manualAdminBtnHtml +
         bulkPanelHtml;
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
@@ -2514,6 +2545,7 @@ ${
       return div;
     };
     legend.addTo(map);
+${referenceAdminEnabled ? manualAdminBrowserScript() : ''}
   </script>
 </body>
 </html>`;
@@ -2537,7 +2569,10 @@ async function resolveWordMapHtmlEmbed(
     const templateBase64 = await readWordTemplateAsBase64ForMap(paths.templatePath);
     let podwykoOptions: PodwykoOption[] = [];
     try {
-      podwykoOptions = await loadPodwykoOptionsFromSpreadsheet(paths.podwykoPath);
+      podwykoOptions = await loadPodwykoOptionsWithReferenceFallback(
+        paths.podwykoPath,
+        loadPodwykoOptionsFromSpreadsheet,
+      );
     } catch {
       /* brak lub uszkodzony plik listy */
     }

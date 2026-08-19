@@ -2,7 +2,7 @@
  * Faza 7: orkiestracja pełnego pipeline + obsługa CLI.
  */
 
-import { getConfig, getPhase5CacheFilePath, getEwidencjaOdbiorowSheetsId, GEOJSON_WOJEWODZTWA_URL } from './config.js';
+import { getConfig, getPhase5CacheFilePath, getEwidencjaOdbiorowSheetsId, getTransportSheetsId, GEOJSON_WOJEWODZTWA_URL } from './config.js';
 import { isCopyOdebraneZHarmonogramuEnabled } from './harmonogramDays.js';
 import { executeOdebraneZHarmonogramu } from './odebraneZHarmonogramu.js';
 import { applyAddressAliases, createSheetsClient, loadAddressAliases, loadSourceRows } from './sheets.js';
@@ -10,6 +10,8 @@ import { executePhase3 } from './phase3.js';
 import { executePhase4 } from './phase4.js';
 import { executePhase5 } from './phase5.js';
 import { executePhase6 } from './phase6.js';
+import { loadReferenceDataFromSheets } from './referenceData.js';
+import type { PoprawAdresEntry } from './poprawAdres.js';
 
 interface LoggerLike {
   info: (message: string, ...args: unknown[]) => void;
@@ -181,9 +183,33 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
 
   deps.logger.info('Executing phase 3 (duplicates + grouping)');
   const phase3 = deps.executePhase3(rowsForPipeline);
+
+  let poprawAdresIndex: Map<string, PoprawAdresEntry> | undefined;
+  try {
+    const referenceData = await withGoogleApiRetry(
+      'loadReferenceDataFromSheets',
+      () => loadReferenceDataFromSheets(sheetsClient!, getTransportSheetsId()),
+      deps.logger,
+    );
+    poprawAdresIndex = referenceData.poprawAdresIndex;
+    if (referenceData.poprawAdres.length > 0) {
+      deps.logger.info(
+        'Loaded %d popraw-adres entries from transport reference sheet',
+        referenceData.poprawAdres.length,
+      );
+    }
+  } catch (error) {
+    const log = deps.logger.warn ?? deps.logger.info;
+    log(
+      'Reference sheet (popraw adres) skipped: %s',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
   deps.logger.info('Executing phase 5 (geocoding)');
   const phase5 = await deps.executePhase5(phase3.groupedByAddress, {
     cacheFilePath: getPhase5CacheFilePath(config.outputDir),
+    poprawAdresIndex,
     batchSize: 20,
     requestTimeoutMs: 5000,
     rateLimitMs: 1100,

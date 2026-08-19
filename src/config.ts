@@ -69,6 +69,26 @@ export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
 /** Kopia plomb maszynowych po minięciu dnia z harmonogramu (tworzona tylko gdy są przypadki). */
 export const SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU = 'odebrane z harmonogramu';
 
+/** Zakładki słowników w arkuszu transportów (osobny dokument od plomb). */
+export const SHEET_NAME_PRZEWOZNICY = 'Przewoźnicy';
+export const SHEET_NAME_MIEJSCA_DOSTAWY = 'Miejsca dostawy';
+export const SHEET_NAME_POPRAW_ADRES = 'Popraw adres';
+
+/** JSON zsynchronizowany z Google Sheets (npm run pull:reference). */
+export const DEFAULT_REFERENCE_PRZEWOZNICY_PATH = join(
+  ARKUSZ_MAPA_ROOT,
+  'data',
+  'reference-przewoznicy.json',
+);
+export const DEFAULT_REFERENCE_DOSTAWA_PATH = join(
+  ARKUSZ_MAPA_ROOT,
+  'data',
+  'reference-miejsca-dostawy.json',
+);
+
+/** Cache Actions (CI) — wpisy spoza repo data/. */
+export const DEFAULT_PHASE5_ACTIONS_CACHE_PATH = join(ARKUSZ_MAPA_ROOT, '.cache', 'phase5-cache.json');
+
 // REQ-1.5: URL GeoJSON granic województw (Polska)
 export const GEOJSON_WOJEWODZTWA_URL =
   'https://gist.githubusercontent.com/filipstachura/391ecb779d56483c070616a4d9239cc7/raw/poland_woj.json';

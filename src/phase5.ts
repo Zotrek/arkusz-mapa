@@ -5,14 +5,21 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { getPhase5AddressOverridesPath } from './config.js';
+import {
+  DEFAULT_PHASE5_CACHE_PATH,
+  DEFAULT_PHASE5_ACTIONS_CACHE_PATH,
+} from './config.js';
 import { normalizeCityForCompare, normalizeCityFromSheet } from './cityNormalize.js';
 import { nominatimAsciiQueryVariant } from './polishText.js';
 import type { AddressGroup } from './phase3.js';
 import type { SheetRow } from './sheets.js';
 import {
-  canonicalCacheKeyFromLegacy,
-  legacyCacheKeyAliases,
+  buildPoprawAdresIndex,
+  findPoprawAdresMatch,
+  loadPoprawAdresFromOverridesJson,
+  type PoprawAdresEntry,
+} from './poprawAdres.js';
+import {
   migrateCacheEntries,
   purgeLegacyAbbreviationCacheKeys,
   resolveCacheEntry,
@@ -102,6 +109,13 @@ export interface Phase5Result {
   badAddressRows: number;
 }
 
+export type CoordinateSource =
+  | 'popraw_adres'
+  | 'popraw_adres_overrides'
+  | 'data_cache'
+  | 'actions_cache'
+  | 'nominatim';
+
 export interface ExecutePhase5Options {
   fetchFn?: typeof fetch;
   sleepFn?: (ms: number) => Promise<void>;
@@ -112,7 +126,14 @@ export interface ExecutePhase5Options {
   /** Liczba ponownych prób przy błędzie sieci/timeout (0 = brak retry). Domyślnie 2 (łącznie 3 próby). */
   requestRetries?: number;
   batchSize?: number;
+  /** Plik cache do zapisu (merged — zwykle .cache/ na CI lub data/ lokalnie). */
   cacheFilePath?: string;
+  /** Repo seed — odczyt przed Actions cache. Domyślnie data/phase5-cache.json. */
+  dataCacheFilePath?: string;
+  /** Cache CI spoza repo — lookup tylko gdy brak w data/. Domyślnie .cache/phase5-cache.json. */
+  actionsCacheFilePath?: string;
+  /** Indeks ręcznych współrzędnych (Google Sheet „Popraw adres”). */
+  poprawAdresIndex?: Map<string, PoprawAdresEntry>;
   logger?: {
     info?: (message: string, ...args: unknown[]) => void;
     warn?: (message: string, ...args: unknown[]) => void;
@@ -918,6 +939,69 @@ type CacheEntry = {
   updatedAt: string;
 };
 
+export type { CacheEntry };
+
+/** Wpisy z Actions cache, których nie ma w repo data/ — krok 3 ladderu. */
+export function buildActionsOnlyCacheEntries(
+  mergedEntries: Record<string, CacheEntry>,
+  dataEntries: Record<string, CacheEntry>,
+): Record<string, CacheEntry> {
+  const out: Record<string, CacheEntry> = {};
+  for (const [address, entry] of Object.entries(mergedEntries)) {
+    if (!(address in dataEntries)) {
+      out[address] = entry;
+    }
+  }
+  return out;
+}
+
+export interface CoordinateLadderLookupResult {
+  source: CoordinateSource;
+  entry: CacheEntry;
+}
+
+/**
+ * Ladder: Popraw adres → data cache → actions-only cache.
+ * Zwraca undefined gdy trzeba geokodować (Nominatim).
+ */
+export function resolveCoordinateFromLadder(
+  address: string,
+  group: AddressGroup,
+  poprawAdresIndex: Map<string, PoprawAdresEntry>,
+  dataCacheEntries: Record<string, CacheEntry>,
+  actionsOnlyEntries: Record<string, CacheEntry>,
+): CoordinateLadderLookupResult | undefined {
+  const poprawHit = findPoprawAdresMatch(poprawAdresIndex, address, group);
+  if (poprawHit) {
+    const fromOverrides =
+      !poprawHit.podmiotHandlowy &&
+      !poprawHit.sklep &&
+      !poprawHit.updatedAt;
+    return {
+      source: fromOverrides ? 'popraw_adres_overrides' : 'popraw_adres',
+      entry: {
+        status: 'ok',
+        lat: poprawHit.lat,
+        lng: poprawHit.lng,
+        wojewodztwo: 'Nieznane',
+        updatedAt: poprawHit.updatedAt ?? new Date().toISOString(),
+      },
+    };
+  }
+
+  const dataHit = resolveCacheEntry(dataCacheEntries, address);
+  if (dataHit) {
+    return { source: 'data_cache', entry: dataHit };
+  }
+
+  const actionsHit = resolveCacheEntry(actionsOnlyEntries, address);
+  if (actionsHit) {
+    return { source: 'actions_cache', entry: actionsHit };
+  }
+
+  return undefined;
+}
+
 /** Tylko te pola są zapisywane i odczytywane z pliku cache (bez zbiorka, count itp.). */
 const CACHE_ENTRY_KEYS: (keyof CacheEntry)[] = ['status', 'lat', 'lng', 'wojewodztwo', 'updatedAt'];
 
@@ -969,24 +1053,22 @@ async function loadCache(
   }
 }
 
-/** Ręczne współrzędne — nie nadpisywać geokodowaniem ani zapisem `bad`. */
-function stampAddressOverrideIntoCache(
-  cacheEntries: Record<string, CacheEntry>,
-  protectedAddresses: Set<string>,
-  address: string,
-  entry: CacheEntry,
-): void {
-  protectedAddresses.add(address);
-  cacheEntries[address] = entry;
-  const canonical = canonicalCacheKeyFromLegacy(address);
-  if (canonical && canonical !== address) {
-    protectedAddresses.add(canonical);
-    cacheEntries[canonical] = entry;
+/** Ręczne współrzędne z JSON — tylko gdy brak indeksu z Google Sheet. */
+async function buildPoprawAdresIndexForPhase5(
+  options: ExecutePhase5Options,
+  readFileFn: (path: string, encoding: BufferEncoding) => Promise<string>,
+): Promise<Map<string, PoprawAdresEntry>> {
+  if (!options.cacheFilePath && !options.poprawAdresIndex?.size) {
+    return new Map();
   }
-  for (const alias of legacyCacheKeyAliases(address)) {
-    protectedAddresses.add(alias);
-    cacheEntries[alias] = entry;
+  const overrides = await loadPoprawAdresFromOverridesJson(readFileFn);
+  const index = buildPoprawAdresIndex(overrides);
+  if (options.poprawAdresIndex) {
+    for (const [key, entry] of options.poprawAdresIndex) {
+      index.set(key, entry);
+    }
   }
+  return index;
 }
 
 function setCacheEntryUnlessProtected(
@@ -999,41 +1081,6 @@ function setCacheEntryUnlessProtected(
     return;
   }
   cacheEntries[address] = entry;
-}
-
-async function loadAddressOverrides(
-  _cacheFilePath: string,
-  readFileFn: (path: string, encoding: BufferEncoding) => Promise<string>,
-): Promise<Record<string, CacheEntry>> {
-  const overridesPath = getPhase5AddressOverridesPath();
-  try {
-    const raw = await readFileFn(overridesPath, 'utf-8');
-    const parsed = JSON.parse(raw) as Record<string, Partial<CacheEntry>>;
-    if (!parsed || typeof parsed !== 'object') return {};
-    const entries: Record<string, CacheEntry> = {};
-    const now = new Date().toISOString();
-    for (const [address, entry] of Object.entries(parsed)) {
-      if (
-        entry &&
-        (entry.status === 'ok' || entry.status === 'ok_no_postcode' || entry.status === 'city_only') &&
-        typeof entry.lat === 'number' &&
-        typeof entry.lng === 'number' &&
-        !(entry.lat === 0 && entry.lng === 0)
-      ) {
-        const sanitized = toCacheEntry({
-          status: entry.status,
-          lat: entry.lat,
-          lng: entry.lng,
-          wojewodztwo: entry.wojewodztwo ?? 'Nieznane',
-          updatedAt: entry.updatedAt ?? now,
-        });
-        if (sanitized) entries[address] = sanitized;
-      }
-    }
-    return entries;
-  } catch {
-    return {};
-  }
 }
 
 async function saveCache(
@@ -1168,26 +1215,35 @@ export async function executePhase5(
   const rowsNiepewneWyniki: SheetRow[] = [];
   const groupedNiepewneAdresy: GroupedNiepewnyAdres[] = [];
   const groupedBledneAdresy: GroupedBlednyAdres[] = [];
-  const cacheEntries: Record<string, CacheEntry> = options.cacheFilePath
-    ? await loadCache(options.cacheFilePath, readFileFn)
-    : {};
+  const poprawAdresIndex = await buildPoprawAdresIndexForPhase5(options, readFileFn);
   const protectedOverrideAddresses = new Set<string>();
+  for (const entry of poprawAdresIndex.values()) {
+    protectedOverrideAddresses.add(entry.adres);
+  }
+  if (poprawAdresIndex.size > 0) {
+    logger?.info?.('Phase 5: popraw adres index — %d entries', poprawAdresIndex.size);
+  }
+
+  let dataCacheEntries: Record<string, CacheEntry> = {};
+  const cacheEntries: Record<string, CacheEntry> = {};
+  let actionsOnlyEntries: Record<string, CacheEntry> = {};
+
   if (options.cacheFilePath) {
-    const overrides = await loadAddressOverrides(options.cacheFilePath, readFileFn);
-    const overrideCount = Object.keys(overrides).length;
-    if (overrideCount > 0) {
-      for (const [address, entry] of Object.entries(overrides)) {
-        stampAddressOverrideIntoCache(cacheEntries, protectedOverrideAddresses, address, entry);
-      }
-      logger?.info?.(
-        'Phase 5: applied %d address overrides from %s',
-        overrideCount,
-        getPhase5AddressOverridesPath(),
-      );
+    const dataCachePath = options.dataCacheFilePath ?? DEFAULT_PHASE5_CACHE_PATH;
+    dataCacheEntries = await loadCache(dataCachePath, readFileFn);
+    Object.assign(cacheEntries, await loadCache(options.cacheFilePath, readFileFn));
+    const actionsCachePath = options.actionsCacheFilePath ?? DEFAULT_PHASE5_ACTIONS_CACHE_PATH;
+    if (actionsCachePath !== dataCachePath) {
+      const actionsMerged = await loadCache(actionsCachePath, readFileFn);
+      actionsOnlyEntries = buildActionsOnlyCacheEntries(actionsMerged, dataCacheEntries);
+    } else if (options.cacheFilePath !== dataCachePath) {
+      actionsOnlyEntries = buildActionsOnlyCacheEntries(cacheEntries, dataCacheEntries);
     }
     logger?.info?.(
-      'Phase 5: cache file ready — %d entries in memory from %s (CI: Actions cache + opcjonalnie data/phase5-cache.json w repo)',
-      Object.keys(cacheEntries).length,
+      'Phase 5: coordinate ladder — popraw=%d, data_cache=%d, actions_only=%d, write_cache=%s',
+      poprawAdresIndex.size,
+      Object.keys(dataCacheEntries).length,
+      Object.keys(actionsOnlyEntries).length,
       options.cacheFilePath,
     );
   }
@@ -1218,14 +1274,18 @@ export async function executePhase5(
 
     for (const [_groupKey, group] of batch) {
       const address = group.address;
-      const cached = protectedOverrideAddresses.has(address)
-        ? cacheEntries[address]
-        : resolveCacheEntry(cacheEntries, address);
-      if (cached) {
+      const ladderHit = resolveCoordinateFromLadder(
+        address,
+        group,
+        poprawAdresIndex,
+        dataCacheEntries,
+        actionsOnlyEntries,
+      );
+      if (ladderHit) {
         applyGeocodingFromCache(
           address,
           group,
-          cached,
+          ladderHit.entry,
           geocoded,
           geocodedNoPostcode,
           uncertainGeocoded,
@@ -1235,13 +1295,27 @@ export async function executePhase5(
           groupedNiepewneAdresy,
           groupedBledneAdresy,
         );
-        logger?.info?.('Phase 5: cache hit for address: %s', address);
+        logger?.info?.('Phase 5: %s hit for address: %s', ladderHit.source, address);
         processedAddresses += 1;
         continue;
       }
 
-      if (protectedOverrideAddresses.has(address)) {
-        logger?.info?.('Phase 5: skipping geocoding for manual override: %s', address);
+      const inRunCacheHit = resolveCacheEntry(cacheEntries, address);
+      if (inRunCacheHit) {
+        applyGeocodingFromCache(
+          address,
+          group,
+          inRunCacheHit,
+          geocoded,
+          geocodedNoPostcode,
+          uncertainGeocoded,
+          cityOnlyGeocoded,
+          rowsBledneAdresy,
+          rowsNiepewneWyniki,
+          groupedNiepewneAdresy,
+          groupedBledneAdresy,
+        );
+        logger?.info?.('Phase 5: in-run cache hit for address: %s', address);
         processedAddresses += 1;
         continue;
       }
