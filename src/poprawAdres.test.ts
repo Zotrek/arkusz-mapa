@@ -45,6 +45,25 @@ describe('poprawAdres', () => {
     expect(rows[0]?.lng).toBe(17.4);
   });
 
+  it('test_parsePoprawAdresSheetRows_when_polish_comma_decimals_should_parse_full_coords', () => {
+    const rows = parsePoprawAdresSheetRows([
+      ['Podmiot', 'Sklep', 'Adres', 'Lat', 'Lon', 'Uwagi', 'UpdatedAt', 'Author'],
+      [
+        'PIĄTKOWSKI P.',
+        'SKLEP SADKOWA',
+        '39-305 SADKOWA SADKOWA 42',
+        '50,3919605513365',
+        '21,33097546',
+        '',
+        '',
+        '',
+      ],
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.lat).toBeCloseTo(50.3919605513365, 10);
+    expect(rows[0]?.lng).toBeCloseTo(21.33097546, 8);
+  });
+
   it('test_findPoprawAdresMatch_when_full_key_should_match', () => {
     const index = buildPoprawAdresIndex([
       {

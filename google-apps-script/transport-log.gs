@@ -521,6 +521,17 @@ function cellStr_(value) {
   return String(value).trim();
 }
 
+/** PL locale: "50,39196" → 50.39196 (parseFloat stops at comma otherwise). */
+function parseCoord_(raw) {
+  if (raw == null || raw === '') {
+    return NaN;
+  }
+  if (typeof raw === 'number') {
+    return raw;
+  }
+  return parseFloat(String(raw).trim().replace(',', '.'));
+}
+
 function normalizeNip_(value) {
   var s = cellStr_(value);
   if (!s) {
@@ -745,10 +756,8 @@ function listReferencePoprawAdres_() {
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
     var adres = cellStr_(r[2]);
-    var latRaw = r[3];
-    var lonRaw = r[4];
-    var lat = latRaw != null && latRaw !== '' ? parseFloat(latRaw) : NaN;
-    var lon = lonRaw != null && lonRaw !== '' ? parseFloat(lonRaw) : NaN;
+    var lat = parseCoord_(r[3]);
+    var lon = parseCoord_(r[4]);
     if (!adres || isNaN(lat) || isNaN(lon)) {
       continue;
     }
@@ -869,10 +878,8 @@ function handleAddReferencePodwykoPost_(body) {
 }
 
 function parsePoprawCoords_(body) {
-  var latRaw = body && body.lat;
-  var lonRaw = body && (body.lon != null ? body.lon : body.lng);
-  var lat = latRaw != null && latRaw !== '' ? parseFloat(latRaw) : NaN;
-  var lon = lonRaw != null && lonRaw !== '' ? parseFloat(lonRaw) : NaN;
+  var lat = parseCoord_(body && body.lat);
+  var lon = parseCoord_(body && (body.lon != null ? body.lon : body.lng));
   if (isNaN(lat) || isNaN(lon)) {
     throw new Error('lat and lon required');
   }

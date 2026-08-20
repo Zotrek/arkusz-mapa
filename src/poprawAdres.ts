@@ -35,9 +35,20 @@ export function buildPoprawAdresLookupKey(
   return `${normalizeKeyPart(adres)}\0${normalizeKeyPart(podmiotHandlowy)}\0${normalizeKeyPart(sklep)}`;
 }
 
+/** PL locale Sheets: "50,39196" → 50.39196 (parseFloat stops at comma otherwise). */
+function parseCoordNumber(raw: unknown): number {
+  if (typeof raw === 'number') {
+    return raw;
+  }
+  const normalized = String(raw ?? '')
+    .trim()
+    .replace(',', '.');
+  return Number.parseFloat(normalized);
+}
+
 function parseLatLng(rawLat: unknown, rawLng: unknown): { lat: number; lng: number } | null {
-  const lat = typeof rawLat === 'number' ? rawLat : Number.parseFloat(String(rawLat ?? ''));
-  const lng = typeof rawLng === 'number' ? rawLng : Number.parseFloat(String(rawLng ?? ''));
+  const lat = parseCoordNumber(rawLat);
+  const lng = parseCoordNumber(rawLng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
     return null;
   }
