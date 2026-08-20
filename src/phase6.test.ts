@@ -49,6 +49,7 @@ function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
     zbiorka: overrides.zbiorka ?? '',
     wgHarmonogramu: overrides.wgHarmonogramu ?? '',
     dniHarmonogramu: overrides.dniHarmonogramu ?? '',
+    firmaTransportowa: overrides.firmaTransportowa ?? '',
     raw: overrides.raw ?? [],
     address: overrides.address ?? '62-320 Miłosław Leśna 1',
     kodPocztowy: overrides.kodPocztowy ?? '62-320',
@@ -327,6 +328,29 @@ describe('phase6', () => {
       expect(html).toContain("Harmonogram: ' + harmLabel");
       expect(html).toContain("harmNorm === 'tak' ? 'tak'");
       expect(html).toContain("harmNorm === 'nie' ? 'nie' : 'brak wartości'");
+    });
+
+    it('test_buildMapHtml_when_harmonogram_tak_with_firma_should_append_firma_in_popup_logic', () => {
+      const html = buildMapHtml(
+        [
+          {
+            address: 'Adres tak',
+            count: 1,
+            lat: 52.1,
+            lng: 21.0,
+            wojewodztwo: 'Mazowieckie',
+            wgHarmonogramu: 'tak',
+            firmaTransportowa: 'Janex Transport',
+            rows: [],
+          },
+        ],
+        [],
+        'https://example.com/woj.json',
+      );
+      expect(html).toContain('firmaTransportowa');
+      expect(html).toContain("harmNorm === 'tak' && p.firmaTransportowa");
+      expect(html).toContain("'tak - ' + p.firmaTransportowa");
+      expect(html).toContain('Janex Transport');
     });
 
     it('test_buildMapHtml_when_no_harmonogram_data_should_omit_filter_controls', () => {

@@ -35,6 +35,8 @@ export interface SheetRow extends AddressParts {
   wgHarmonogramu: string;
   /** Dni harmonogramu – np. pn, cz (surowy tekst z arkusza). */
   dniHarmonogramu: string;
+  /** Firma transportowa (opcjonalna kolumna; np. wstawiona jako F). */
+  firmaTransportowa: string;
   /** Ulica z arkusza przed rozwinięciem skrótów (Gen. → Generała). */
   ulicaRaw: string;
   raw: string[];
@@ -123,6 +125,10 @@ export function resolveSheetColumnMap(headers: string[]): SheetColumnMap {
     dniHarmonogramu: pick(
       ['dni harmonogramu', 'dzien harmonogramu', 'dzień harmonogramu'],
       DEFAULT_SHEET_COLUMN_MAP.dniHarmonogramu,
+    ),
+    firmaTransportowa: pick(
+      ['firma transportowa', 'firma transport'],
+      DEFAULT_SHEET_COLUMN_MAP.firmaTransportowa,
     ),
   };
 }
@@ -228,6 +234,7 @@ export function mapRawRowToSheetRow(
     zbiorka: normalizeCell(raw[columns.zbiorka] ?? ''),
     wgHarmonogramu: normalizeCell(raw[columns.wgHarmonogramu] ?? ''),
     dniHarmonogramu: normalizeCell(raw[columns.dniHarmonogramu] ?? ''),
+    firmaTransportowa: normalizeCell(raw[columns.firmaTransportowa] ?? ''),
     raw,
     address: buildAddress({
       kodPocztowy,

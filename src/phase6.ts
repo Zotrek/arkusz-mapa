@@ -321,6 +321,8 @@ type MapPoint = {
   zbiorka?: string;
   /** Wg harmonogramu: tak / nie */
   wgHarmonogramu?: string;
+  /** Firma transportowa (gdy harmonogram tak — pokazywana w popupie). */
+  firmaTransportowa?: string;
   /** Agregat zbiórki całej pinezki (mapa). Protokół Word i rejestr transportu liczą rodzaj z `sealRows` po filtrze daty. */
   rodzaj_zbiorki: string;
   doc: MapPointDocPayload;
@@ -608,6 +610,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     sealRows: sealRowsFromSheetRows(item.rows),
     zbiorka: item.zbiorka,
     wgHarmonogramu: item.wgHarmonogramu,
+    firmaTransportowa: item.firmaTransportowa,
     rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
     doc: buildMapPointDocPayload(item.rows),
   };
@@ -1078,6 +1081,9 @@ ${
         : '';
       var harmNorm = normalizeWgHarmonogramuMap(p.wgHarmonogramu);
       var harmLabel = harmNorm === 'tak' ? 'tak' : (harmNorm === 'nie' ? 'nie' : 'brak wartości');
+      if (harmNorm === 'tak' && p.firmaTransportowa) {
+        harmLabel = 'tak - ' + p.firmaTransportowa;
+      }
       var harmLine = '<div class="popup-harmonogram">Harmonogram: ' + harmLabel + '</div>';
       var podmiotLine =
         p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0

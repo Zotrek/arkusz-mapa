@@ -27,6 +27,7 @@ function makeGroup(address: string, podmiot = 'PH', sklep = 'Sklep A'): AddressG
         zbiorka: '',
         wgHarmonogramu: '',
         dniHarmonogramu: '',
+        firmaTransportowa: '',
         raw: [],
         address,
       },

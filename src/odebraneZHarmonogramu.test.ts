@@ -23,6 +23,7 @@ function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
     zbiorka: overrides.zbiorka ?? 'Maszyna',
     wgHarmonogramu: overrides.wgHarmonogramu ?? 'tak',
     dniHarmonogramu: overrides.dniHarmonogramu ?? 'pn',
+    firmaTransportowa: overrides.firmaTransportowa ?? '',
     raw: overrides.raw ?? ['raw', overrides.numerPlomby ?? 'P1'],
     address: overrides.address ?? '62-320 Miłosław Leśna 1',
   };

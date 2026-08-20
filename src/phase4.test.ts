@@ -29,6 +29,7 @@ function makeRow(raw: string[]): SheetRow {
     zbiorka: '',
     wgHarmonogramu: '',
     dniHarmonogramu: '',
+    firmaTransportowa: '',
     raw,
     address: '',
   };

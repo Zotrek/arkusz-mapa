@@ -74,6 +74,8 @@ export interface GeocodedAddress {
   zbiorka?: string;
   /** Wg harmonogramu: "tak" / "nie" (agregat z wierszy; brak/mixed → undefined). */
   wgHarmonogramu?: string;
+  /** Firma transportowa (agregat unikalnych wartości z wierszy). */
+  firmaTransportowa?: string;
   rows: SheetRow[];
 }
 
@@ -370,6 +372,23 @@ export function aggregateWgHarmonogramu(rows: SheetRow[]): string | undefined {
     return [...values][0];
   }
   return undefined;
+}
+
+/**
+ * Agregat „Firma transportowa” na pinezkę: unikalne niepuste wartości, sortowane, łączone przecinkiem.
+ */
+export function aggregateFirmaTransportowa(rows: SheetRow[]): string | undefined {
+  const values = new Set<string>();
+  for (const row of rows) {
+    const v = (row.firmaTransportowa ?? '').trim();
+    if (v) {
+      values.add(v);
+    }
+  }
+  if (values.size === 0) {
+    return undefined;
+  }
+  return [...values].sort((a, b) => a.localeCompare(b, 'pl')).join(', ');
 }
 
 function pushQuery(target: string[], query: string): void {
@@ -1131,6 +1150,7 @@ function applyGeocodingFromCache(
     count: group.count,
     zbiorka: aggregateZbiorka(group.rows),
     wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
+    firmaTransportowa: aggregateFirmaTransportowa(group.rows),
     rows: group.rows,
   };
 
@@ -1398,6 +1418,7 @@ export async function executePhase5(
               wojewodztwo,
               zbiorka: aggregateZbiorka(group.rows),
               wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
+              firmaTransportowa: aggregateFirmaTransportowa(group.rows),
               rows: group.rows,
             };
             if (bestPick.status === 'ok') {

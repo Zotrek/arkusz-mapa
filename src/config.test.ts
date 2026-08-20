@@ -30,6 +30,7 @@ import {
   COL_ZBIORKA,
   COL_WG_HARMONOGRAMU,
   COL_DNI_HARMONOGRAMU,
+  COL_FIRMA_TRANSPORTOWA,
   SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU,
   GEOJSON_WOJEWODZTWA_URL,
 } from './config';
@@ -100,6 +101,10 @@ describe('config', () => {
 
     it('should expose column index for Dni harmonogramu (S) as 18', () => {
       expect(COL_DNI_HARMONOGRAMU).toBe(18);
+    });
+
+    it('should expose column index fallback for Firma transportowa (T) as 19', () => {
+      expect(COL_FIRMA_TRANSPORTOWA).toBe(19);
     });
 
     it('should expose odebrane z harmonogramu sheet name', () => {

@@ -18,12 +18,14 @@ const ARKUSZ_MAPA_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // N=13 Tryb zbiórki, O=14 Waga, P=15 Frakcja, Q=16 Typ worka,
 // R=17 Wg harmonogramu (opcjonalna; pozycja wykrywana też po nagłówku)
 // S=18 Dni harmonogramu (opcjonalna; wykrywana po nagłówku)
+// Firma transportowa — opcjonalna (np. wstawiona jako F); pozycja TYLKO po nagłówku
+// (fallback poniżej nie koliduje z Ulicą przy braku nagłówków).
 export const COL_NIP = 0;
 export const COL_PODMIOT_HANDLOWY = 1;
 export const COL_SKLEP = 2;
 export const COL_KOD_POCZTOWY = 3;   // D
 export const COL_MIASTO = 4;          // E
-export const COL_ULICA = 5;           // F
+export const COL_ULICA = 5;           // F (gdy brak wstawionej „Firma transportowa”)
 export const COL_NUMER_BUDYNKU = 6;   // G
 export const COL_GMINA = 7;           // H
 export const COL_WOJEWODZTWO = 8;     // I
@@ -35,6 +37,8 @@ export const COL_ZBIORKA = 13;        // N – Tryb zbiórki
 export const COL_WG_HARMONOGRAMU = 17;
 /** S (18): Dni harmonogramu (pn, cz, …) — fallback gdy brak nagłówka. */
 export const COL_DNI_HARMONOGRAMU = 18;
+/** T (19): Firma transportowa — fallback gdy brak nagłówka (realna pozycja: resolveSheetColumnMap). */
+export const COL_FIRMA_TRANSPORTOWA = 19;
 
 /** Domyślne indeksy kolumn — używane gdy brak wiersza nagłówków; patrz też resolveSheetColumnMap(). */
 export const DEFAULT_SHEET_COLUMN_MAP = {
@@ -50,6 +54,7 @@ export const DEFAULT_SHEET_COLUMN_MAP = {
   zbiorka: COL_ZBIORKA,
   wgHarmonogramu: COL_WG_HARMONOGRAMU,
   dniHarmonogramu: COL_DNI_HARMONOGRAMU,
+  firmaTransportowa: COL_FIRMA_TRANSPORTOWA,
 } as const;
 
 // REQ-1.5: nazwy zakładek w Google Sheets

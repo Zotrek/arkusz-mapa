@@ -24,6 +24,7 @@ import {
   stripStreetPrefix,
   stripAfterSlash,
   aggregateWgHarmonogramu,
+  aggregateFirmaTransportowa,
   normalizeWgHarmonogramuCell,
 } from './phase5';
 
@@ -43,6 +44,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
     zbiorka: params.zbiorka ?? '',
     wgHarmonogramu: params.wgHarmonogramu ?? '',
     dniHarmonogramu: params.dniHarmonogramu ?? '',
+    firmaTransportowa: params.firmaTransportowa ?? '',
     raw: params.raw ?? ['A', 'B'],
     address: params.address ?? '62-320 Miłosław os. Władysława Łokietka 18',
   };
@@ -79,6 +81,28 @@ describe('phase5', () => {
           makeRow({ wgHarmonogramu: 'nie' }),
         ]),
       ).toBeUndefined();
+    });
+  });
+
+  describe('aggregateFirmaTransportowa', () => {
+    it('test_aggregateFirmaTransportowa_when_single_firm_should_return_name', () => {
+      expect(
+        aggregateFirmaTransportowa([makeRow({ firmaTransportowa: 'Janex' })]),
+      ).toBe('Janex');
+    });
+
+    it('test_aggregateFirmaTransportowa_when_empty_should_return_undefined', () => {
+      expect(aggregateFirmaTransportowa([makeRow({ firmaTransportowa: '' })])).toBeUndefined();
+    });
+
+    it('test_aggregateFirmaTransportowa_when_multiple_unique_should_join_sorted', () => {
+      expect(
+        aggregateFirmaTransportowa([
+          makeRow({ firmaTransportowa: 'Beta' }),
+          makeRow({ firmaTransportowa: 'Alpha' }),
+          makeRow({ firmaTransportowa: 'Beta' }),
+        ]),
+      ).toBe('Alpha, Beta');
     });
   });
 

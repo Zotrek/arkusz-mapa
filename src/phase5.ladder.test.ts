@@ -27,6 +27,7 @@ function makeGroup(address: string): AddressGroup {
         zbiorka: '',
         wgHarmonogramu: '',
         dniHarmonogramu: '',
+        firmaTransportowa: '',
         raw: [],
         address,
       },

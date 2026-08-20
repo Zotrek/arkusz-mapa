@@ -30,6 +30,7 @@ import {
   COL_DATA_ZAMKNIECIA_WORKA,
   COL_ZBIORKA,
   COL_WG_HARMONOGRAMU,
+  COL_FIRMA_TRANSPORTOWA,
 } from './config';
 
 const CURRENT_HEADERS = [
@@ -47,6 +48,27 @@ const CURRENT_HEADERS = [
   'Status TMS worka',
   'Data zamknięcia worka',
   'Tryb zbiórki',
+];
+
+/** Nagłówki po wstawieniu kolumny F „Firma transportowa” (Ulica i dalsze przesunięte o 1). */
+const HEADERS_WITH_FIRMA_AT_F = [
+  'NIP',
+  'Podmiot handlowy',
+  'Sklep',
+  'Kod pocztowy',
+  'Miasto',
+  'Firma transportowa',
+  'Ulica',
+  'Numer budynku',
+  'Gmina',
+  'Województwo',
+  'Numer plomby',
+  'Status worka',
+  'Status TMS worka',
+  'Data zamknięcia worka',
+  'Tryb zbiórki',
+  'Wg harmonogramu',
+  'Dni harmonogramu',
 ];
 
 describe('sheets phase 2', () => {
@@ -152,6 +174,28 @@ describe('sheets phase 2', () => {
       ]);
       expect(map.wgHarmonogramu).toBe(14);
       expect(map.dniHarmonogramu).toBe(15);
+    });
+
+    it('test_resolveSheetColumnMap_when_firma_transportowa_inserted_at_f_should_keep_other_columns', () => {
+      const map = resolveSheetColumnMap(HEADERS_WITH_FIRMA_AT_F);
+
+      expect(map.firmaTransportowa).toBe(5);
+      expect(map.kodPocztowy).toBe(3);
+      expect(map.miasto).toBe(4);
+      expect(map.ulica).toBe(6);
+      expect(map.numerBudynku).toBe(7);
+      expect(map.gmina).toBe(8);
+      expect(map.numerPlomby).toBe(10);
+      expect(map.dataZamknieciaWorka).toBe(13);
+      expect(map.zbiorka).toBe(14);
+      expect(map.wgHarmonogramu).toBe(15);
+      expect(map.dniHarmonogramu).toBe(16);
+    });
+
+    it('test_resolveSheetColumnMap_when_no_firma_header_should_use_fallback_index', () => {
+      const map = resolveSheetColumnMap(CURRENT_HEADERS);
+      expect(map.firmaTransportowa).toBe(COL_FIRMA_TRANSPORTOWA);
+      expect(map.ulica).toBe(5);
     });
   });
 
@@ -272,6 +316,37 @@ describe('sheets phase 2', () => {
       ];
       const row = mapRawRowToSheetRow(raw, 2, columns);
       expect(row.dniHarmonogramu).toBe('pn, śr');
+    });
+
+    it('test_mapRawRowToSheetRow_when_firma_at_f_should_read_firma_and_shifted_address', () => {
+      const columns = resolveSheetColumnMap(HEADERS_WITH_FIRMA_AT_F);
+      const raw = [
+        '7790000000',
+        'PH',
+        'Sklep',
+        '62-320',
+        'Miłosław',
+        'Janex',
+        'Leśna',
+        '1',
+        'Gmina',
+        'Wielkopolskie',
+        '123',
+        '',
+        '',
+        '15.04.2026',
+        'Maszyna',
+        'tak',
+        'pn',
+      ];
+      const row = mapRawRowToSheetRow(raw, 2, columns);
+      expect(row.firmaTransportowa).toBe('Janex');
+      expect(row.ulica).toBe('Leśna');
+      expect(row.numerBudynku).toBe('1');
+      expect(row.numerPlomby).toBe('123');
+      expect(row.zbiorka).toBe('Maszyna');
+      expect(row.wgHarmonogramu).toBe('tak');
+      expect(row.address).toBe('62-320 Miłosław Leśna 1');
     });
 
     it('test_mapRawRowToSheetRow_when_srem_has_wrong_postcode_should_correct_to_63_100', () => {
