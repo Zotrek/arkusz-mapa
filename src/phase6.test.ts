@@ -434,9 +434,7 @@ describe('phase6', () => {
       expect(html).toContain('zoomControl: false');
       expect(html).toContain('map-zoom-in');
       expect(html).toContain('map-search-input-row');
-      expect(html).toContain('basemaps.cartocdn.com/light_all');
-      expect(html).toContain('activateCartoFallback');
-      expect(html).toContain('CARTO_FALLBACK_MIN_ERRORS');
+      expect(html).toContain('tile.openstreetmap.org/{z}/{x}/{y}.png');
     });
 
     it('test_buildMapHtml_when_zbiorka_data_present_should_embed_zbiorka_filter_controls', () => {

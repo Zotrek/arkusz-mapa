@@ -828,40 +828,10 @@ ${
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
 
     const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
-    var attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-    var layerCarto = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
-      subdomains: 'abcd',
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; <a href="https://carto.com/attributions/">CARTO</a> | ' + attribution
-    });
-    var layerTileServerS = L.tileLayer('https://tileservers.com/hot/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      attribution: '&copy; <a href="https://tileservers.com/">TileServers</a> | ' + attribution
-    });
-    layerCarto.addTo(map);
-    var cartoTileErrors = 0;
-    var cartoTileLoaded = false;
-    var cartoFallbackActive = false;
-    var CARTO_FALLBACK_MIN_ERRORS = 4;
-    function activateCartoFallback() {
-      if (cartoFallbackActive) return;
-      cartoFallbackActive = true;
-      layerCarto.off('tileerror');
-      layerCarto.off('tileload');
-      map.removeLayer(layerCarto);
-      map.addLayer(layerTileServerS);
-    }
-    layerCarto.on('tileerror', function() {
-      if (cartoFallbackActive || cartoTileLoaded) return;
-      cartoTileErrors++;
-      if (cartoTileErrors >= CARTO_FALLBACK_MIN_ERRORS) {
-        activateCartoFallback();
-      }
-    });
-    layerCarto.on('tileload', function() {
-      cartoTileLoaded = true;
-      cartoTileErrors = 0;
-    });
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
 
     var colorBulkSelected = ${JSON.stringify(COLOR_BULK_SELECTED)};
     function pinIcon(kolor, highlight) {
