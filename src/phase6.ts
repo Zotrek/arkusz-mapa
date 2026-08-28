@@ -978,8 +978,9 @@ ${
     function buildTransportShopKeyMap(podmiot, adres) {
       return normalizeForAddressSearchMap(podmiot) + '\\0' + normalizeForAddressSearchMap(adres);
     }
-    function getPointTransportCutoff(p) {
+    function getPointTransportLastInfo(p) {
       var byKey = window.__transportDateByKey;
+      var ktoByKey = window.__transportKtoOdbieraByKey;
       if (!byKey) return null;
       if (!normalizeForAddressSearchMap(p.adres)) return null;
       var podmioty = [];
@@ -997,12 +998,21 @@ ${
         for (var pi = 0; pi < p.podmiotyHandlowe.length; pi++) addPodmiot(p.podmiotyHandlowe[pi]);
       }
       if (podmioty.length === 0) return null;
-      var best = null;
+      var bestMs = null;
+      var bestKto = '';
       for (var pj = 0; pj < podmioty.length; pj++) {
-        var ms = byKey[buildTransportShopKeyMap(podmioty[pj], p.adres)];
-        if (ms != null && isFinite(ms) && (best == null || ms > best)) best = ms;
+        var key = buildTransportShopKeyMap(podmioty[pj], p.adres);
+        var ms = byKey[key];
+        if (ms != null && isFinite(ms) && (bestMs == null || ms > bestMs)) {
+          bestMs = ms;
+          bestKto = (ktoByKey && ktoByKey[key]) ? String(ktoByKey[key]) : '';
+        }
       }
-      return best;
+      return bestMs == null ? null : { ms: bestMs, ktoOdbiera: bestKto };
+    }
+    function getPointTransportCutoff(p) {
+      var info = getPointTransportLastInfo(p);
+      return info ? info.ms : null;
     }
     function countSealRows(sealRows) {
       return (sealRows || []).length;
@@ -1010,7 +1020,8 @@ ${
     function getPointSealCounts(p) {
       var total = countSealRows(p.sealRows);
       if (total === 0) total = p.count || 0;
-      var cutoffMs = transportApiEnabled && window.__transportDatesLoaded ? getPointTransportCutoff(p) : null;
+      var lastInfo = transportApiEnabled && window.__transportDatesLoaded ? getPointTransportLastInfo(p) : null;
+      var cutoffMs = lastInfo ? lastInfo.ms : null;
       var filtered = cutoffMs != null
         ? filterSealRowsByMinDate(p.sealRows || [], cutoffMs).length
         : total;
@@ -1019,7 +1030,8 @@ ${
         var d = new Date(cutoffMs);
         cutoffYmd = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
       }
-      return { total: total, filtered: filtered, cutoffMs: cutoffMs, cutoffYmd: cutoffYmd };
+      var ktoOdbiera = lastInfo && lastInfo.ktoOdbiera ? String(lastInfo.ktoOdbiera).trim() : '';
+      return { total: total, filtered: filtered, cutoffMs: cutoffMs, cutoffYmd: cutoffYmd, ktoOdbiera: ktoOdbiera };
     }
     function displayCountForPoint(p) {
       return getPointSealCounts(p).filtered;
@@ -1037,7 +1049,10 @@ ${
       var transportDate = c.cutoffYmd
         ? '<div class="popup-count-detail">Ostatni transport: ' + formatYmdToDisplay(c.cutoffYmd) + '</div>'
         : '';
-      return main + transportDate + '<div class="popup-count-detail">Wszystkie worki: ' + c.total + '</div>';
+      var transportKto = c.ktoOdbiera
+        ? '<div class="popup-count-detail">Ostatni odbiór: ' + c.ktoOdbiera + '</div>'
+        : '';
+      return main + transportDate + transportKto + '<div class="popup-count-detail">Wszystkie worki: ' + c.total + '</div>';
     }
     function buildPopupContent(p, pointIdx) {
       var confidenceLabel =
@@ -1234,6 +1249,7 @@ ${
     }
     function loadBulkTransportDates() {
       window.__transportDateByKey = {};
+      window.__transportKtoOdbieraByKey = {};
       window.__transportDatesLoaded = false;
       if (!transportApiEnabled) {
         window.__transportDatesLoaded = true;
@@ -1243,14 +1259,19 @@ ${
       setTransportDatesLoading(true);
       return fetchTransportGet({ action: 'bulkLastTransportDates' }).then(function (resp) {
         var byKey = {};
+        var ktoByKey = {};
         if (resp && resp.ok && resp.shops) {
           resp.shops.forEach(function (s) {
             if (s && s.key != null && s.lastTransportDateMs != null) {
               byKey[s.key] = s.lastTransportDateMs;
+              if (s.lastKtoOdbiera) {
+                ktoByKey[s.key] = String(s.lastKtoOdbiera).trim();
+              }
             }
           });
         }
         window.__transportDateByKey = byKey;
+        window.__transportKtoOdbieraByKey = ktoByKey;
         window.__transportDatesLoaded = true;
       }).catch(function (err) {
         console.error(err);
@@ -2034,13 +2055,18 @@ ${
         komentarz2: kom2El ? String(kom2El.value).trim() : ''
       };
     }
-    function updateTransportCutoffAfterAppend(p, dz) {
+    function updateTransportCutoffAfterAppend(p, dz, ktoOdbiera) {
       if (!window.__transportDateByKey) window.__transportDateByKey = {};
+      if (!window.__transportKtoOdbieraByKey) window.__transportKtoOdbieraByKey = {};
       var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
       var key = buildTransportShopKeyMap(podmiot, p.adres);
       var ms = parseSealClosureDateMs(dz);
       if (isFinite(ms) && ms !== Number.NEGATIVE_INFINITY) {
         window.__transportDateByKey[key] = ms;
+      }
+      var kto = String(ktoOdbiera || '').trim();
+      if (kto) {
+        window.__transportKtoOdbieraByKey[key] = kto;
       }
     }
     function delayMs(ms) {
@@ -2098,7 +2124,7 @@ ${
               }
               var numerZlecenia = String(resp.numer || '');
               renderDocxAndDownload(p, form.pr, form.md, form.prOpt, form.dz, form.dzPlik, numerZlecenia, job.filteredSeals, job.preparedLists, { closeModal: false });
-              updateTransportCutoffAfterAppend(p, form.dz);
+              updateTransportCutoffAfterAppend(p, form.dz, form.prOpt.label);
               if (typeof markerEntries !== 'undefined') {
                 markerEntries.forEach(function (entry) {
                   if (entry.pointIdx === job.pointIdx) refreshMarkerDisplay(entry);
@@ -2205,6 +2231,13 @@ ${
           appendTransportRow(transportPayload).then(function (resp) {
             if (!resp || !resp.ok) {
               alert('Dokument pobrany, ale zapis w arkuszu nie powiódł się: ' + (resp && resp.error ? resp.error : 'błąd API'));
+              return;
+            }
+            updateTransportCutoffAfterAppend(p, dz, prOpt.label);
+            if (typeof markerEntries !== 'undefined') {
+              markerEntries.forEach(function (entry) {
+                if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
+              });
             }
           }).catch(function (err) {
             console.error(err);
@@ -2217,6 +2250,12 @@ ${
             alert('Nie udało się zapisać transportu w arkuszu: ' + (resp && resp.error ? resp.error : 'błąd API'));
             if (okBtn) okBtn.disabled = false;
             return;
+          }
+          updateTransportCutoffAfterAppend(p, dz, prOpt.label);
+          if (typeof markerEntries !== 'undefined') {
+            markerEntries.forEach(function (entry) {
+              if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
+            });
           }
           finishWithNumber(String(resp.numer || ''));
         }).catch(function (err) {

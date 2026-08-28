@@ -728,6 +728,10 @@ describe('phase6', () => {
       expect(html).toContain('markersCluster.refreshClusters()');
       expect(html).toContain('Worki do odebrania');
       expect(html).toContain('Ostatni transport');
+      expect(html).toContain('Ostatni odbiór');
+      expect(html).toContain('lastKtoOdbiera');
+      expect(html).toContain('__transportKtoOdbieraByKey');
+      expect(html).toContain('getPointTransportLastInfo');
       expect(html).toContain('Wszystkie worki');
       expect(html).not.toContain('Nie odebrane');
       expect(html).toContain('btn-gen-doc:disabled');

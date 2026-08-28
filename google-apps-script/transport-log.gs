@@ -4,9 +4,9 @@
  *   Execute as: Me | Who has access: Anyone
  *
  * GET ?action=modalData&podmiot=…&adres=…  (zalecane — jeden request)
- * GET ?action=bulkLastTransportDates  (ostatnie daty odbioru dla wszystkich sklepów — mapa)
+ * GET ?action=bulkLastTransportDates  (ostatnie daty + kto odbiera dla wszystkich sklepów — mapa)
  * GET ?action=previewNumber
- * GET ?action=lastTransportDate&podmiot=…&adres=…
+ * GET ?action=lastTransportDate&podmiot=…&adres=…  (data + kto odbiera)
  * GET ?action=listReferenceData  → { ok, data: { podwykoLista, poprawAdres } }
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
@@ -80,11 +80,13 @@ function doGet(e) {
     if (action === 'lastTransportDate') {
       var podmiotLegacy = (e.parameter.podmiot || '').toString();
       var adresLegacy = (e.parameter.adres || '').toString();
-      var ms = findLastTransportDateMs_(podmiotLegacy, adresLegacy);
+      var info = findLastTransportInfo_(podmiotLegacy, adresLegacy);
+      var ms = info ? info.ms : null;
       return jsonResponse({
         ok: true,
         lastTransportDateMs: ms,
         lastTransportDateYmd: ms != null ? formatYmdFromMs_(ms) : null,
+        lastKtoOdbiera: info && info.ktoOdbiera ? info.ktoOdbiera : '',
       });
     }
     if (action === 'listReferenceData') {
@@ -146,12 +148,14 @@ function getDataSheet_() {
 
 function buildModalDataResponse_(podmiot, adres) {
   var numer = getPreviewNumber_();
-  var ms = findLastTransportDateMs_(podmiot, adres);
+  var info = findLastTransportInfo_(podmiot, adres);
+  var ms = info ? info.ms : null;
   return {
     ok: true,
     numer: String(numer),
     lastTransportDateMs: ms,
     lastTransportDateYmd: ms != null ? formatYmdFromMs_(ms) : null,
+    lastKtoOdbiera: info && info.ktoOdbiera ? info.ktoOdbiera : '',
   };
 }
 
@@ -351,7 +355,10 @@ function rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres) {
   return buildTransportShopKey_(rowPodmiot, rowAdres) === targetKey;
 }
 
-/** Jednorazowy skan arkusza: klucz sklepu → max data odbioru (ms). */
+/**
+ * Jednorazowy skan arkusza: klucz sklepu → { ms, ktoOdbiera } z wiersza o max dacie odbioru.
+ * Przy tej samej dacie wygrywa późniejszy wiersz (kolejność w arkuszu).
+ */
 function buildBulkLastTransportDatesMap_() {
   var sheet = getDataSheet_();
   var lastRow = sheet.getLastRow();
@@ -359,12 +366,13 @@ function buildBulkLastTransportDatesMap_() {
   if (lastRow < 2) {
     return result;
   }
-  var range = sheet.getRange(2, COL.adres, lastRow, COL.dataOdbioru);
+  var range = sheet.getRange(2, COL.adres, lastRow, COL.ktoOdbiera);
   var rows = range.getValues();
   for (var i = 0; i < rows.length; i++) {
     var rowAdres = rows[i][0];
     var rowPodmiot = rows[i][1];
     var rowData = rows[i][3];
+    var rowKto = rows[i][4];
     var key = buildTransportShopKey_(rowPodmiot, rowAdres);
     if (!key || key === '\0') {
       continue;
@@ -373,8 +381,12 @@ function buildBulkLastTransportDatesMap_() {
     if (ms == null) {
       continue;
     }
-    if (result[key] == null || ms > result[key]) {
-      result[key] = ms;
+    var prev = result[key];
+    if (prev == null || ms >= prev.ms) {
+      result[key] = {
+        ms: ms,
+        ktoOdbiera: String(rowKto || '').trim(),
+      };
     }
   }
   return result;
@@ -386,17 +398,20 @@ function buildBulkLastTransportDatesResponse_() {
   var keys = Object.keys(raw);
   for (var i = 0; i < keys.length; i++) {
     var key = keys[i];
-    var ms = raw[key];
+    var entry = raw[key];
+    var ms = entry.ms;
     shops.push({
       key: key,
       lastTransportDateMs: ms,
       lastTransportDateYmd: formatYmdFromMs_(ms),
+      lastKtoOdbiera: entry.ktoOdbiera || '',
     });
   }
   return { ok: true, shops: shops };
 }
 
-function findLastTransportDateMs_(podmiot, adres) {
+/** @returns {{ ms: number, ktoOdbiera: string }|null} */
+function findLastTransportInfo_(podmiot, adres) {
   if (!normalizeTransportKeyPart_(adres)) {
     return null;
   }
@@ -405,23 +420,32 @@ function findLastTransportDateMs_(podmiot, adres) {
   if (lastRow < 2) {
     return null;
   }
-  var range = sheet.getRange(2, COL.adres, lastRow, COL.dataOdbioru);
+  var range = sheet.getRange(2, COL.adres, lastRow, COL.ktoOdbiera);
   var rows = range.getValues();
-  var maxMs = null;
+  var best = null;
 
   for (var i = 0; i < rows.length; i++) {
     var rowAdres = rows[i][0];
     var rowPodmiot = rows[i][1];
     var rowData = rows[i][3];
+    var rowKto = rows[i][4];
     if (!rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres)) {
       continue;
     }
     var ms = parseDateToMs_(rowData);
-    if (ms != null && (maxMs == null || ms > maxMs)) {
-      maxMs = ms;
+    if (ms != null && (best == null || ms >= best.ms)) {
+      best = {
+        ms: ms,
+        ktoOdbiera: String(rowKto || '').trim(),
+      };
     }
   }
-  return maxMs;
+  return best;
+}
+
+function findLastTransportDateMs_(podmiot, adres) {
+  var info = findLastTransportInfo_(podmiot, adres);
+  return info ? info.ms : null;
 }
 
 function buildTransportShopKey_(podmiot, adres) {

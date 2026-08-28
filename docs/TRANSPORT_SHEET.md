@@ -66,11 +66,13 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 |--------|-----------|------|
 
-| GET | `action=modalData&podmiot=…&adres=…` | **Zalecane** — numer + ostatnia data w jednym requestcie |
+| GET | `action=modalData&podmiot=…&adres=…` | **Zalecane** — numer + ostatnia data + kto odbiera w jednym requestcie |
 
 | GET | `action=previewNumber` | Podgląd następnego numeru (cache Script Properties) |
 
-| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) dla klucza **podmiot + adres** |
+| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres** |
+
+| GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup) |
 
 | POST | JSON w body (`Content-Type: text/plain`) | Atomowy zapis wiersza (`LockService`) + zwraca `numer`. Opcjonalne `numer` w body — jeśli użytkownik wpisał ręcznie, ten numer trafia do arkusza zamiast automatycznego |
 
@@ -144,9 +146,11 @@ Bez `TRANSPORT_WEBAPP_URL` mapa generuje protokoły **bez** zapisu do arkusza (n
 
 1. **Otwarcie modala** — pobranie ostatniej daty transportu (podmiot + adres) i podglądu numeru.
 
-2. **Filtrowanie plomb** — z protokołu usuwane są worki ze datą zamknięcia **wcześniejszą** niż ostatni transport (kolumna E). Przy dacie transportu 20.06.2026 zostają plomby z 20.06, 25.06 itd., a znikają np. 10.06, 15.06. **Rodzaj zbiórki** (Word `{{rodzaj_zbiorki}}` i kolumna H arkusza) liczy się tylko z tych pozostawionych worków, nie z całej historii pinezki.
+2. **Popup pinezki** — po `bulkLastTransportDates` pokazuje **Ostatni transport** (data) oraz **Ostatni odbiór** (skrócona nazwa z kolumny F „Kto odbiera” z wiersza o najnowszej dacie).
 
-3. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera. Pola **Komentarz 1** / **Komentarz 2** w modalu trafiają tylko do arkusza (kolumny J/K), nie do protokołu Word.
+3. **Filtrowanie plomb** — z protokołu usuwane są worki ze datą zamknięcia **wcześniejszą** niż ostatni transport (kolumna E). Przy dacie transportu 20.06.2026 zostają plomby z 20.06, 25.06 itd., a znikają np. 10.06, 15.06. **Rodzaj zbiórki** (Word `{{rodzaj_zbiorki}}` i kolumna H arkusza) liczy się tylko z tych pozostawionych worków, nie z całej historii pinezki.
+
+4. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera. Pola **Komentarz 1** / **Komentarz 2** w modalu trafiają tylko do arkusza (kolumny J/K), nie do protokołu Word.
 
 
 
