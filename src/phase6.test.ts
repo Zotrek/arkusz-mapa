@@ -639,6 +639,9 @@ describe('phase6', () => {
       expect(html).toContain('runBulkDocGenerate');
       expect(html).toContain('openBulkDocModal');
       expect(html).toContain('map-bulk-panel');
+      expect(html).toContain('map-bulk-bags');
+      expect(html).toContain('sumBulkBagsToCollect');
+      expect(html).toContain('Worki do odebrania: 0');
       expect(html).toContain('colorBulkSelected');
       expect(html).toContain('markerDisplayIcon');
       expect(html).toContain('Zaznaczenie zbiorcze');

@@ -716,7 +716,9 @@ export function buildMapHtml(
     .popup-bulk-select input { margin: 0; flex-shrink: 0; }
     .map-bulk-panel { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .map-bulk-panel[hidden] { display: none !important; }
-    .map-bulk-count { font-size: 12px; color: #333; flex: 1; min-width: 120px; }
+    .map-bulk-stats { flex: 1; min-width: 120px; display: flex; flex-direction: column; gap: 2px; }
+    .map-bulk-count { font-size: 12px; color: #333; }
+    .map-bulk-bags { font-size: 12px; color: #0d6efd; }
     .map-bulk-generate { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #198754; background: #198754; color: #fff; cursor: pointer; }
     .map-bulk-generate:hover { filter: brightness(1.05); }
     .map-bulk-clear { padding: 6px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #ccc; background: #f8f9fa; cursor: pointer; }
@@ -1112,15 +1114,30 @@ ${
       window.__bulkSelectedPointIdxs = {};
       updateBulkSelectionUi();
     }
+    function sumBulkBagsToCollect(indices) {
+      var sum = 0;
+      for (var i = 0; i < indices.length; i++) {
+        sum += displayCountForPoint(adresy[indices[i]]);
+      }
+      return sum;
+    }
     function updateBulkSelectionUi() {
       var indices = getBulkSelectedIndices();
       var panel = document.getElementById('map-bulk-panel');
       var countEl = document.getElementById('map-bulk-count');
+      var bagsEl = document.getElementById('map-bulk-bags');
       if (panel) panel.hidden = indices.length === 0;
       if (countEl) {
         countEl.textContent = indices.length === 1
           ? '1 punkt zaznaczony'
           : indices.length + ' punktów zaznaczonych';
+      }
+      if (bagsEl) {
+        if (transportApiEnabled && !window.__transportDatesLoaded) {
+          bagsEl.textContent = 'Worki do odebrania: …';
+        } else {
+          bagsEl.textContent = 'Worki do odebrania: ' + sumBulkBagsToCollect(indices);
+        }
       }
       if (typeof markerEntries !== 'undefined') {
         markerEntries.forEach(function (entry) {
@@ -1198,9 +1215,11 @@ ${
             return;
           }
           refreshClusterIcons();
+          updateBulkSelectionUi();
           resolve();
         }
         if (markerEntries.length === 0) {
+          updateBulkSelectionUi();
           resolve();
           return;
         }
@@ -2329,7 +2348,10 @@ ${
       '</div>';
     var bulkPanelHtml = wordDocEnabled
       ? '<div id="map-bulk-panel" class="map-bulk-panel" hidden>' +
+        '<div class="map-bulk-stats">' +
         '<span id="map-bulk-count" class="map-bulk-count">0 punktów zaznaczonych</span>' +
+        '<span id="map-bulk-bags" class="map-bulk-bags">Worki do odebrania: 0</span>' +
+        '</div>' +
         '<button type="button" id="map-bulk-generate" class="map-bulk-generate">Generuj protokoły</button>' +
         '<button type="button" id="map-bulk-clear" class="map-bulk-clear">Wyczyść</button>' +
         '</div>'
