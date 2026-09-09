@@ -14,6 +14,15 @@ const HEADER_HINT = /^(przew|miejsce|nazwa|podwykon|lista|lp\.?|nr\.?|#)/iu;
 export const DOCX_BODY_FONT_SIZE_PT = 10;
 /** Wiersz listy plomb (lp. + tab + data mm-dd + tab + numer, opcjonalnie + tab + rodzaj zbiórki) wstawiany przez {{@lista_plomb_xml}} (pt). */
 export const DOCX_LISTA_PLOMB_FONT_SIZE_PT = 14;
+
+/** Liczba pustych wierszy (kropki) zamiast listy plomb w protokole. */
+export const DOC_LISTA_PLOMB_PLACEHOLDER_ROWS = 10;
+
+/**
+ * Domyślna długość numeru plomby, gdy w workach brak numerów
+ * (typowa plomba z arkusza, np. 700000000349130).
+ */
+export const DOC_DEFAULT_SEAL_NUMBER_LENGTH = 15;
 /** Akapit „Uwagi: … Brak KPO …” w szablonie Word — poniżej rozmiar niż {@link DOCX_BODY_FONT_SIZE_PT}. */
 export const DOCX_UWAGI_NOTICE_FONT_SIZE_PT = 9;
 
@@ -175,6 +184,34 @@ export function buildListaPlombNumbered(rows: SheetRow[]): string {
   return buildListaPlombLines(rows).join('\n');
 }
 
+/** Maks. długość `numerPlomby` spośród wierszy (puste pomijane). */
+export function maxNumerPlombyLength(rows: Array<{ numerPlomby?: string }>): number {
+  let max = 0;
+  for (const r of rows) {
+    const n = String(r.numerPlomby ?? '').trim();
+    if (n.length > max) {
+      max = n.length;
+    }
+  }
+  return max;
+}
+
+/**
+ * Puste wiersze do wpisania plomb ręcznie: `rowCount` linii kropek,
+ * liczba kropek = długość numeru plomby × 2.
+ */
+export function buildListaPlombPlaceholderLines(
+  sealNumberLength: number,
+  rowCount: number = DOC_LISTA_PLOMB_PLACEHOLDER_ROWS,
+): string[] {
+  const rawLen = Math.floor(Number(sealNumberLength));
+  const sealLen =
+    Number.isFinite(rawLen) && rawLen > 0 ? rawLen : DOC_DEFAULT_SEAL_NUMBER_LENGTH;
+  const dots = '.'.repeat(sealLen * 2);
+  const n = Math.max(0, Math.floor(Number(rowCount)) || 0);
+  return Array.from({ length: n }, () => dots);
+}
+
 export function escapeXmlForWordText(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -184,11 +221,9 @@ export function escapeXmlForWordText(s: string): string {
 }
 
 /**
- * Fragment WordprocessingML: jeden `w:p` na wiersz listy, czcionka {@link DOCX_LISTA_PLOMB_FONT_SIZE_PT} pt.
- * Do znacznika `{{@lista_plomb_xml}}` w osobnym akapicie szablonu (zastępuje cały ten akapit).
+ * Fragment WordprocessingML: jeden `w:p` na wiersz, czcionka {@link DOCX_LISTA_PLOMB_FONT_SIZE_PT} pt.
  */
-export function buildListaPlombOoxml(rows: SheetRow[]): string {
-  const lines = buildListaPlombLines(rows);
+export function buildListaPlombOoxmlFromLines(lines: string[]): string {
   const hp = String(DOCX_LISTA_PLOMB_FONT_SIZE_PT * 2);
   const rpr = `<w:rPr><w:sz w:val="${hp}"/><w:szCs w:val="${hp}"/></w:rPr>`;
   if (lines.length === 0) {
@@ -200,6 +235,34 @@ export function buildListaPlombOoxml(rows: SheetRow[]): string {
         `<w:p><w:r>${rpr}<w:t xml:space="preserve">${escapeXmlForWordText(line)}</w:t></w:r></w:p>`,
     )
     .join('');
+}
+
+/**
+ * Fragment WordprocessingML: jeden `w:p` na wiersz listy, czcionka {@link DOCX_LISTA_PLOMB_FONT_SIZE_PT} pt.
+ * Do znacznika `{{@lista_plomb_xml}}` w osobnym akapicie szablonu (zastępuje cały ten akapit).
+ */
+export function buildListaPlombOoxml(rows: SheetRow[]): string {
+  return buildListaPlombOoxmlFromLines(buildListaPlombLines(rows));
+}
+
+/** Pola listy plomb do Worda — normalna lista albo 10 wierszy kropek. */
+export function buildDocListaPlombFields(
+  rows: SheetRow[],
+  options?: { withoutListaPlomb?: boolean },
+): { lista_plomb: string; lista_plomb_xml: string } {
+  if (options?.withoutListaPlomb) {
+    const sealLen = maxNumerPlombyLength(rows) || DOC_DEFAULT_SEAL_NUMBER_LENGTH;
+    const lines = buildListaPlombPlaceholderLines(sealLen);
+    return {
+      lista_plomb: lines.join('\n'),
+      lista_plomb_xml: buildListaPlombOoxmlFromLines(lines),
+    };
+  }
+  const lines = buildListaPlombLines(rows);
+  return {
+    lista_plomb: lines.join('\n'),
+    lista_plomb_xml: buildListaPlombOoxmlFromLines(lines),
+  };
 }
 
 /**

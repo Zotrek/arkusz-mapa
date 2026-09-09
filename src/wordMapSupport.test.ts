@@ -3,6 +3,9 @@ import type { SheetRow } from './sheets.js';
 import {
   buildListaPlombNumbered,
   buildListaPlombOoxml,
+  buildListaPlombPlaceholderLines,
+  buildDocListaPlombFields,
+  maxNumerPlombyLength,
   buildMapPointDocPayload,
   buildMapPointDocPayloadFromSealRows,
   buildMiejsceZaladunkuText,
@@ -27,6 +30,8 @@ import {
   DOCX_BODY_FONT_SIZE_PT,
   DOCX_LISTA_PLOMB_FONT_SIZE_PT,
   DOCX_UWAGI_NOTICE_FONT_SIZE_PT,
+  DOC_LISTA_PLOMB_PLACEHOLDER_ROWS,
+  DOC_DEFAULT_SEAL_NUMBER_LENGTH,
 } from './wordMapSupport.js';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
@@ -64,6 +69,48 @@ describe('wordMapSupport', () => {
       makeSheetRow({ numerPlomby: 'B' }),
     ]);
     expect(s).toBe('1.\tA\n2.\tB');
+  });
+
+  it('test_maxNumerPlombyLength_when_mixed_lengths_should_return_max', () => {
+    expect(
+      maxNumerPlombyLength([
+        { numerPlomby: '12' },
+        { numerPlomby: '700000000349130' },
+        { numerPlomby: '  ' },
+      ]),
+    ).toBe(15);
+  });
+
+  it('test_buildListaPlombPlaceholderLines_when_seal_length_given_should_use_length_times_two_dots', () => {
+    const lines = buildListaPlombPlaceholderLines(4);
+    expect(lines).toHaveLength(DOC_LISTA_PLOMB_PLACEHOLDER_ROWS);
+    expect(lines.every((line) => line === '........')).toBe(true);
+  });
+
+  it('test_buildListaPlombPlaceholderLines_when_invalid_length_should_fallback_to_default', () => {
+    const lines = buildListaPlombPlaceholderLines(0);
+    expect(lines).toHaveLength(DOC_LISTA_PLOMB_PLACEHOLDER_ROWS);
+    expect(lines[0]).toBe('.'.repeat(DOC_DEFAULT_SEAL_NUMBER_LENGTH * 2));
+  });
+
+  it('test_buildDocListaPlombFields_when_without_lista_should_return_ten_dot_rows', () => {
+    const fields = buildDocListaPlombFields(
+      [
+        makeSheetRow({ numerPlomby: 'ABCD' }),
+        makeSheetRow({ numerPlomby: 'XY' }),
+      ],
+      { withoutListaPlomb: true },
+    );
+    const expected = Array.from({ length: 10 }, () => '........').join('\n');
+    expect(fields.lista_plomb).toBe(expected);
+    expect(fields.lista_plomb_xml.split('<w:p>').length - 1).toBe(10);
+    expect(fields.lista_plomb_xml).toContain('........');
+    expect(fields.lista_plomb_xml).not.toContain('ABCD');
+  });
+
+  it('test_buildDocListaPlombFields_when_with_lista_should_keep_numbered_seals', () => {
+    const fields = buildDocListaPlombFields([makeSheetRow({ numerPlomby: 'X' })]);
+    expect(fields.lista_plomb).toBe('1.\tX');
   });
 
   it('test_buildListaPlombNumbered_when_closure_date_in_L_should_put_mm_dd_before_seal', () => {

@@ -676,6 +676,10 @@ export function buildMapHtml(
       <input type="text" id="doc-inp-komentarz-1" maxlength="500" placeholder="Opcjonalnie — trafia do rejestru transportów" autocomplete="off" spellcheck="true" />
       <label for="doc-inp-komentarz-2">Komentarz 2 <span class="doc-field-hint">(tylko arkusz)</span></label>
       <input type="text" id="doc-inp-komentarz-2" maxlength="500" placeholder="Opcjonalnie — trafia do rejestru transportów" autocomplete="off" spellcheck="true" />
+      <label class="doc-checkbox-row" for="doc-chk-bez-listy-plomb">
+        <input type="checkbox" id="doc-chk-bez-listy-plomb" />
+        Bez listy plomb <span class="doc-field-hint">(10 wierszy kropek do wpisania)</span>
+      </label>
       <p id="doc-bulk-numer-info" class="doc-bulk-numer-info" hidden aria-live="polite"></p>
       <p id="doc-filter-info" class="doc-filter-info" aria-live="polite"></p>
       <div class="doc-modal-actions">
@@ -698,6 +702,8 @@ export function buildMapHtml(
     .doc-modal-panel h3 { margin: 0 0 14px 0; font-size: 16px; }
     .doc-modal-panel label { display: block; font-size: 13px; margin: 10px 0 4px; color: #333; }
     .doc-field-hint { font-weight: normal; color: #888; font-size: 12px; }
+    .doc-checkbox-row { display: flex !important; align-items: center; gap: 8px; margin: 12px 0 4px !important; cursor: pointer; user-select: none; }
+    .doc-checkbox-row input { margin: 0; flex-shrink: 0; }
     .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"], .doc-modal-panel .doc-combobox-input { width: 100%; padding: 8px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
     .doc-combobox-wrap { position: relative; }
     .doc-combobox-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); max-height: 220px; overflow-y: auto; z-index: 10; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
@@ -1306,6 +1312,8 @@ ${
     var DOC_LS_PRZEWOZNIK = 'arkusz-mapa-doc-last-przewoznik-label';
     var DOC_LS_MIEJSCE = 'arkusz-mapa-doc-last-miejsce-label';
     var DOC_LISTA_PLOMB_HP = '28';
+    var DOC_LISTA_PLOMB_PLACEHOLDER_ROWS = 10;
+    var DOC_DEFAULT_SEAL_NUMBER_LENGTH = 15;
     function saveDocComboboxLastLabel(storageKey, label) {
       if (!storageKey || !label) return;
       try { localStorage.setItem(storageKey, label); } catch (e) {}
@@ -1429,6 +1437,29 @@ ${
       });
       return lines;
     }
+    function isDocBezListyPlombChecked() {
+      var el = document.getElementById('doc-chk-bez-listy-plomb');
+      return !!(el && el.checked);
+    }
+    function maxNumerPlombyLengthFromSealRows(sealRows) {
+      var max = 0;
+      (sealRows || []).forEach(function (r) {
+        var n = String(r.numerPlomby || '').trim();
+        if (n.length > max) max = n.length;
+      });
+      return max;
+    }
+    function buildListaPlombPlaceholderLines(sealNumberLength) {
+      var raw = Math.floor(Number(sealNumberLength));
+      var sealLen = (isFinite(raw) && raw > 0) ? raw : DOC_DEFAULT_SEAL_NUMBER_LENGTH;
+      var dots = new Array(sealLen * 2 + 1).join('.');
+      var lines = [];
+      var i;
+      for (i = 0; i < DOC_LISTA_PLOMB_PLACEHOLDER_ROWS; i++) {
+        lines.push(dots);
+      }
+      return lines;
+    }
     function escapeXmlForWordTextMap(s) {
       return String(s)
         .replace(/&/g, '&amp;')
@@ -1449,7 +1480,9 @@ ${
       return buildListaPlombOoxmlFromLines(buildListaPlombFromSealRows(sealRows));
     }
     function buildDocListsFromSealRows(sealRows) {
-      var lines = buildListaPlombFromSealRows(sealRows);
+      var lines = isDocBezListyPlombChecked()
+        ? buildListaPlombPlaceholderLines(maxNumerPlombyLengthFromSealRows(sealRows) || DOC_DEFAULT_SEAL_NUMBER_LENGTH)
+        : buildListaPlombFromSealRows(sealRows);
       return {
         lista_plomb: lines.join('\\n'),
         lista_plomb_xml: buildListaPlombOoxmlFromLines(lines)
@@ -1457,6 +1490,19 @@ ${
     }
     function rebuildDocPreparedLists(sealRows) {
       window.__docPreparedLists = buildDocListsFromSealRows(sealRows || []);
+    }
+    function refreshAllDocPreparedLists() {
+      if (window.__docModalMode === 'bulk') {
+        (window.__docBulkPointJobs || []).forEach(function (job) {
+          job.preparedLists = buildDocListsFromSealRows(job.filteredSeals);
+        });
+        return;
+      }
+      rebuildDocPreparedLists(window.__docFilteredSeals || []);
+    }
+    function resetDocBezListyPlombCheckbox() {
+      var el = document.getElementById('doc-chk-bez-listy-plomb');
+      if (el) el.checked = false;
     }
     function formatYmdToDisplay(ymd) {
       if (!ymd) return '';
@@ -1860,6 +1906,7 @@ ${
       if (kom1) kom1.value = '';
       var kom2 = document.getElementById('doc-inp-komentarz-2');
       if (kom2) kom2.value = '';
+      resetDocBezListyPlombCheckbox();
       ensureDocxLibrariesLoaded();
       prewarmDocxTemplateCache();
       loadDocModalData(pointIdx);
@@ -1885,6 +1932,7 @@ ${
       if (kom1) kom1.value = '';
       var kom2 = document.getElementById('doc-inp-komentarz-2');
       if (kom2) kom2.value = '';
+      resetDocBezListyPlombCheckbox();
       ensureDocxLibrariesLoaded();
       prewarmDocxTemplateCache();
       loadBulkDocModalData(indices);
@@ -2123,7 +2171,8 @@ ${
                 throw new Error(resp && resp.error ? resp.error : 'błąd API');
               }
               var numerZlecenia = String(resp.numer || '');
-              renderDocxAndDownload(p, form.pr, form.md, form.prOpt, form.dz, form.dzPlik, numerZlecenia, job.filteredSeals, job.preparedLists, { closeModal: false });
+              var preparedLists = buildDocListsFromSealRows(job.filteredSeals);
+              renderDocxAndDownload(p, form.pr, form.md, form.prOpt, form.dz, form.dzPlik, numerZlecenia, job.filteredSeals, preparedLists, { closeModal: false });
               updateTransportCutoffAfterAppend(p, form.dz, form.prOpt.label);
               if (typeof markerEntries !== 'undefined') {
                 markerEntries.forEach(function (entry) {
@@ -2185,9 +2234,7 @@ ${
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
       var okBtn = document.getElementById('doc-btn-ok');
       if (okBtn) okBtn.disabled = true;
-      if (!window.__docPreparedLists) {
-        rebuildDocPreparedLists(filteredSeals);
-      }
+      rebuildDocPreparedLists(filteredSeals);
       var preparedLists = window.__docPreparedLists;
       function finishWithNumber(numerZlecenia) {
         ensureDocxLibrariesLoaded().then(function () {
@@ -2273,6 +2320,10 @@ ${
       initDocComboboxes();
       document.getElementById('doc-btn-cancel').onclick = closeDocModal;
       document.getElementById('doc-btn-ok').onclick = runDocGenerate;
+      var bezListyChk = document.getElementById('doc-chk-bez-listy-plomb');
+      if (bezListyChk) {
+        bezListyChk.onchange = function () { refreshAllDocPreparedLists(); };
+      }
       document.getElementById('doc-modal').onclick = function(ev) {
         if (ev.target.id === 'doc-modal') closeDocModal();
       };

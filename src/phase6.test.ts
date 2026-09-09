@@ -630,6 +630,10 @@ describe('phase6', () => {
       expect(html).toContain('id="doc-inp-numer-zlecenia"');
       expect(html).toContain('id="doc-inp-komentarz-1"');
       expect(html).toContain('id="doc-inp-komentarz-2"');
+      expect(html).toContain('id="doc-chk-bez-listy-plomb"');
+      expect(html).toContain('Bez listy plomb');
+      expect(html).toContain('buildListaPlombPlaceholderLines');
+      expect(html).toContain('isDocBezListyPlombChecked');
       expect(html).toContain('komentarz1');
       expect(html).toContain('komentarz2');
       expect(html).toContain('numer_zlecenia_transportowego');
