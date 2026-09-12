@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Mapa">
+  <rect width="32" height="32" rx="6" fill="#eef2ff"/>
+  <g stroke="#c7d2fe" stroke-width="0.6">
+    <path d="M0 8h32M0 16h32M0 24h32"/>
+    <path d="M8 0v32M16 0v32M24 0v32"/>
+  </g>
+  <path fill="#0d6efd" d="M16 6.5c-3.59 0-6.5 2.74-6.5 6.12 0 4.55 6.5 12.38 6.5 12.38s6.5-7.83 6.5-12.38C22.5 9.24 19.59 6.5 16 6.5z"/>
+  <circle cx="16" cy="12.5" r="2.35" fill="#fff"/>
+</svg>
