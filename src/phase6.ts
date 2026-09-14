@@ -1609,21 +1609,21 @@ ${
         });
       });
       var totalWorkow = 0;
-      var skipped = 0;
+      var emptyCount = 0;
       window.__docBulkPointJobs.forEach(function (job) {
         totalWorkow += job.filteredSeals.length;
-        if (job.filteredSeals.length === 0) skipped += 1;
+        if (job.filteredSeals.length === 0) emptyCount += 1;
       });
       if (filterInfo) {
         var msg = indices.length + ' punktów · ' + totalWorkow + ' worków łącznie';
-        if (skipped > 0) msg += ' (' + skipped + ' bez worków — pominięte)';
+        if (emptyCount > 0) msg += ' (' + emptyCount + ' bez worków)';
         filterInfo.textContent = msg;
       }
       function finishBulkLoading(previewNumer) {
         if (bulkNumerInfo) {
           if (transportApiEnabled && previewNumer) {
-            var validCount = window.__docBulkPointJobs.filter(function (j) { return j.filteredSeals.length > 0; }).length;
-            if (validCount <= 1) {
+            var jobCount = (window.__docBulkPointJobs || []).length;
+            if (jobCount <= 1) {
               bulkNumerInfo.textContent = 'Numer zostanie nadany automatycznie.';
             } else {
               bulkNumerInfo.textContent = 'Numery zostaną nadane automatycznie kolejno (od ' + previewNumer + ').';
@@ -2131,11 +2131,9 @@ ${
       }
       var form = parseDocFormValues();
       if (!form) return;
-      var jobs = (window.__docBulkPointJobs || []).filter(function (job) {
-        return job.filteredSeals && job.filteredSeals.length > 0;
-      });
+      var jobs = window.__docBulkPointJobs || [];
       if (jobs.length === 0) {
-        alert('Brak worków do protokołu we wszystkich zaznaczonych punktach.');
+        alert('Brak zaznaczonych punktów do protokołu.');
         return;
       }
       var okBtn = document.getElementById('doc-btn-ok');
@@ -2227,10 +2225,6 @@ ${
       var dzPlik = form.dzPlik;
       var p = adresy[idx];
       var filteredSeals = window.__docFilteredSeals || p.sealRows || [];
-      if (filteredSeals.length === 0) {
-        alert('Brak worków do protokołu po filtrze dat (od ostatniego transportu).');
-        return;
-      }
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
       var okBtn = document.getElementById('doc-btn-ok');
       if (okBtn) okBtn.disabled = true;
