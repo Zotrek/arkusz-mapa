@@ -16,7 +16,8 @@ Tylko maszyny z harmonogramem, gdy:
 - minął już dzień odbioru z harmonogramu (np. poniedziałek / czwartek),
 - i nie są to święta wolne od pracy.
 
-Jeśli punkt jest już na liście (ten sam numer plomby), system go nie duplikuje.
+Przy każdym uruchomieniu zakładka jest czyszczona i zapisywana od nowa (aktualna lista).
+W jednej partii ten sam numer plomby nie jest powielany.
 
 
 Różnica względem zwykłego „Pages”
