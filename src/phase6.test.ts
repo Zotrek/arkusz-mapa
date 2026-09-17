@@ -440,6 +440,9 @@ describe('phase6', () => {
       expect(html).toContain('map-wojewodztwo-dropdown');
       expect(html).toContain('map-wojewodztwo-toggle');
       expect(html).toContain('map-wojewodztwo-menu');
+      expect(html).toContain('map-wojewodztwo-clear');
+      expect(html).toContain('Wyczyść filtr');
+      expect(html).toContain('clearWojewodztwoFilter');
       expect(html).toContain('Województwo');
       expect(html).toContain('mapPointMatchesWojewodztwoFilterMap');
       expect(html).toContain('getWojewodztwoFilterSelection');

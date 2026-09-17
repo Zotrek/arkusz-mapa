@@ -865,6 +865,8 @@ export function buildMapHtml(
     .map-wojewodztwo-toggle-caret { flex-shrink: 0; color: #666; font-size: 10px; line-height: 1; }
     .map-wojewodztwo-menu { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; max-height: 180px; overflow-y: auto; padding: 6px; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
     .map-wojewodztwo-dropdown.is-open .map-wojewodztwo-menu { display: block; }
+    .map-wojewodztwo-clear { display: block; width: 100%; box-sizing: border-box; margin: 0 0 6px; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa; color: #333; cursor: pointer; text-align: center; }
+    .map-wojewodztwo-clear:hover { background: #eee; }
     .map-wojewodztwo-menu label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; padding: 3px 2px; }
     .map-wojewodztwo-menu input { margin: 0; flex-shrink: 0; }
     .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
@@ -1077,6 +1079,13 @@ ${
       var labelEl = document.getElementById('map-wojewodztwo-summary');
       if (!labelEl) return;
       labelEl.textContent = formatWojewodztwoFilterSummaryMap(getWojewodztwoFilterSelection());
+    }
+    function clearWojewodztwoFilter() {
+      var boxes = document.querySelectorAll('input[name="map-wojewodztwo-filter"]');
+      for (var i = 0; i < boxes.length; i++) {
+        boxes[i].checked = false;
+      }
+      updateWojewodztwoFilterSummary();
     }
     function setWojewodztwoDropdownOpen(open) {
       var drop = document.getElementById('map-wojewodztwo-dropdown');
@@ -2556,6 +2565,7 @@ ${
         '<span class="map-wojewodztwo-toggle-caret" aria-hidden="true">▾</span>' +
         '</button>' +
         '<div id="map-wojewodztwo-menu" class="map-wojewodztwo-menu" role="listbox" aria-multiselectable="true" aria-label="Wybierz województwa">' +
+        '<button type="button" id="map-wojewodztwo-clear" class="map-wojewodztwo-clear">Wyczyść filtr</button>' +
         ${JSON.stringify(wojewodztwaOptions)}.map(function(w) {
           var esc = String(w).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
           var label = String(w).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -2622,10 +2632,18 @@ ${
         var wojToggle = wrap.querySelector('#map-wojewodztwo-toggle');
         var wojDrop = wrap.querySelector('#map-wojewodztwo-dropdown');
         var wojBoxes = wrap.querySelectorAll('input[name="map-wojewodztwo-filter"]');
+        var wojClear = wrap.querySelector('#map-wojewodztwo-clear');
         if (wojToggle && wojDrop) {
           wojToggle.addEventListener('click', function (ev) {
             ev.preventDefault();
             setWojewodztwoDropdownOpen(!wojDrop.classList.contains('is-open'));
+          });
+        }
+        if (wojClear) {
+          wojClear.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            clearWojewodztwoFilter();
+            applyAddressSearch();
           });
         }
         for (var wi = 0; wi < wojBoxes.length; wi++) {
