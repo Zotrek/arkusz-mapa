@@ -1,0 +1,37 @@
+Arkusz-mapa — Pages + odebrane
+
+To automatyczne odświeżenie mapy i jednocześnie uzupełnienie listy punktów, które według harmonogramu powinny już być odebrane.
+
+
+Co dostajecie po uruchomieniu
+
+1. Aktualną mapę na stronie WWW — na podstawie danych z arkusza trasówek.
+2. Dopisanie do ewidencji punktów, które „wypadają” jako odebrane z harmonogramu — bez ręcznego przepisywania.
+
+
+Które punkty trafiają na listę „odebrane”
+
+Tylko maszyny z harmonogramem, gdy:
+- worek został zamknięty wcześniej,
+- minął już dzień odbioru z harmonogramu (np. poniedziałek / czwartek),
+- i nie są to święta wolne od pracy.
+
+Jeśli punkt jest już na liście (ten sam numer plomby), system go nie duplikuje.
+
+
+Różnica względem zwykłego „Pages”
+
+- Zwykłe Pages: odświeża mapę, nie uzupełnia ewidencji.
+- Pages + odebrane: odświeża mapę i uzupełnia ewidencję „odebrane z harmonogramu”.
+
+Jak uruchomić (ręcznie)
+
+1. Wejdź na GitHub do projektu arkusz-mapa.
+2. Otwórz zakładkę Actions.
+3. Po lewej wybierz: „arkusz-mapa — Pages + odebrane”.
+4. Kliknij „Run workflow” (po prawej).
+5. Potwierdź uruchomienie.
+
+Po zakończeniu (zielony status) mapa na stronie jest zaktualizowana, a lista „odebrane z harmonogramu” w ewidencji — uzupełniona o nowe punkty.
+
+Uwaga: zwykłe „arkusz-mapa — Pages” robi tylko mapę, bez dopisywania do ewidencji.

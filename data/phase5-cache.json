@@ -11928,6 +11928,104 @@
       "lng": 20.9460827,
       "wojewodztwo": "Mazowieckie",
       "updatedAt": "2026-09-09T15:07:42.492Z"
+    },
+    "63-112 IŁÓWIEC IŁÓWIEC 4A": {
+      "status": "ok",
+      "lat": 52.1698,
+      "lng": 16.80711,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-09-17T06:17:36.377Z"
+    },
+    "50-424 Wrocław Krakowska 51/69": {
+      "status": "ok",
+      "lat": 51.0899525,
+      "lng": 17.0630776,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-09-17T06:17:39.445Z"
+    },
+    "34-511 Kościelisko Kiry 38": {
+      "status": "ok",
+      "lat": 49.2778477,
+      "lng": 19.8654417,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-09-17T06:17:42.182Z"
+    },
+    "62-511 Lichnowo Lichnowo 9": {
+      "status": "ok",
+      "lat": 52.2452591,
+      "lng": 18.4089813,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-09-17T06:17:43.433Z"
+    },
+    "83-000 Pruszcz Gdański Cicha 6": {
+      "status": "ok",
+      "lat": 54.260836,
+      "lng": 18.6255412,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-09-17T06:17:46.305Z"
+    },
+    "83-050 Kolbudy Wybickiego 29D": {
+      "status": "ok",
+      "lat": 54.2753495,
+      "lng": 18.4759438,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-09-17T06:17:49.509Z"
+    },
+    "03-808 Warszawa Mińska 25": {
+      "status": "ok",
+      "lat": 52.2496393,
+      "lng": 21.0605964,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-09-17T06:17:51.172Z"
+    },
+    "13-230 Zalesie Zalesie 43": {
+      "status": "ok",
+      "lat": 53.28818,
+      "lng": 19.71805,
+      "wojewodztwo": "Warmińsko-mazurskie",
+      "updatedAt": "2026-09-17T06:17:53.063Z"
+    },
+    "43-200 Pszczyna Bielska 46": {
+      "status": "ok",
+      "lat": 49.9654,
+      "lng": 18.9565141,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-09-17T06:17:54.496Z"
+    },
+    "97-330 PRZYGŁÓW PRZYGŁÓW LAS 120": {
+      "status": "ok",
+      "lat": 51.3759587,
+      "lng": 19.8219268,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-09-17T06:17:56.279Z"
+    },
+    "28-305 KORYTNICA KORYTNICA 242": {
+      "status": "ok",
+      "lat": 50.6580848,
+      "lng": 20.5124386,
+      "wojewodztwo": "Świętokrzyskie",
+      "updatedAt": "2026-09-17T06:17:57.726Z"
+    },
+    "30-337 Kraków Monte Cassino 2": {
+      "status": "ok",
+      "lat": 50.0474639,
+      "lng": 19.9298971,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-09-17T06:18:01.562Z"
+    },
+    "00-659 Warszawa Koszykowa 55": {
+      "status": "ok",
+      "lat": 52.2220148,
+      "lng": 21.012797,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-09-17T06:18:04.861Z"
+    },
+    "62-800 Kalisz Poznańska 80/86": {
+      "status": "ok",
+      "lat": 51.7635075,
+      "lng": 18.0595901,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-09-17T06:18:07.769Z"
     }
   }
 }

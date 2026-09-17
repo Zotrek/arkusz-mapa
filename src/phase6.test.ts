@@ -26,6 +26,9 @@ import {
   mapPointMatchesZbiorkaFilter,
   normalizeWgHarmonogramu,
   mapPointMatchesWgHarmonogramuFilter,
+  normalizeWojewodztwoLabel,
+  uniqueWojewodztwaFromMapPoints,
+  mapPointMatchesWojewodztwoFilter,
   haversineMeters,
   spreadCloseMarkerPositions,
   findCloseMapPointPairs,
@@ -356,6 +359,85 @@ describe('phase6', () => {
     it('test_buildMapHtml_when_no_harmonogram_data_should_omit_filter_controls', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
       expect(html).toContain('showHarmonogramFilter = false');
+    });
+  });
+
+  describe('wojewodztwo filter', () => {
+    it('test_normalizeWojewodztwoLabel_when_empty_should_return_nieznane', () => {
+      expect(normalizeWojewodztwoLabel('')).toBe('Nieznane');
+      expect(normalizeWojewodztwoLabel('  ')).toBe('Nieznane');
+      expect(normalizeWojewodztwoLabel(undefined)).toBe('Nieznane');
+      expect(normalizeWojewodztwoLabel(' Mazowieckie ')).toBe('Mazowieckie');
+    });
+
+    it('test_uniqueWojewodztwaFromMapPoints_when_duplicates_should_dedupe_and_sort_pl', () => {
+      expect(
+        uniqueWojewodztwaFromMapPoints([
+          { woj: 'Śląskie' },
+          { woj: 'Mazowieckie' },
+          { woj: 'Mazowieckie' },
+          { woj: '' },
+          { woj: 'Wielkopolskie' },
+        ]),
+      ).toEqual(['Mazowieckie', 'Nieznane', 'Śląskie', 'Wielkopolskie']);
+    });
+
+    it('test_mapPointMatchesWojewodztwoFilter_when_wszystkie_should_match_any', () => {
+      expect(mapPointMatchesWojewodztwoFilter('Mazowieckie', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter('', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter(undefined, '')).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter('Mazowieckie', [])).toBe(true);
+    });
+
+    it('test_mapPointMatchesWojewodztwoFilter_when_selected_should_match_exact_label', () => {
+      expect(mapPointMatchesWojewodztwoFilter('Mazowieckie', 'Mazowieckie')).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter('Wielkopolskie', 'Mazowieckie')).toBe(false);
+      expect(mapPointMatchesWojewodztwoFilter('', 'Nieznane')).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter(undefined, 'Nieznane')).toBe(true);
+    });
+
+    it('test_mapPointMatchesWojewodztwoFilter_when_multi_selected_should_match_any_of_them', () => {
+      expect(mapPointMatchesWojewodztwoFilter('Mazowieckie', ['Mazowieckie', 'Wielkopolskie'])).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter('Wielkopolskie', ['Mazowieckie', 'Wielkopolskie'])).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter('Małopolskie', ['Mazowieckie', 'Wielkopolskie'])).toBe(false);
+    });
+
+    it('test_buildMapHtml_when_multiple_wojewodztwa_should_embed_filter_checkboxes', () => {
+      const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
+      expect(html).toContain('showWojewodztwoFilter = true');
+      expect(html).toContain('map-wojewodztwo-filter');
+      expect(html).toContain('Województwo');
+      expect(html).toContain('mapPointMatchesWojewodztwoFilterMap');
+      expect(html).toContain('getWojewodztwoFilterSelection');
+      expect(html).toContain('name="map-wojewodztwo-filter"');
+      expect(html).toContain('type="checkbox"');
+      expect(html).toContain('puste = wszystkie');
+      expect(html).toContain('Mazowieckie');
+      expect(html).toContain('Wielkopolskie');
+      expect(html).toContain('Małopolskie');
+    });
+
+    it('test_buildMapHtml_when_single_wojewodztwo_should_omit_filter', () => {
+      const geo: GeocodedAddress[] = [
+        {
+          address: 'Adres A',
+          count: 1,
+          lat: 52.1,
+          lng: 21.0,
+          wojewodztwo: 'Mazowieckie',
+          rows: [],
+        },
+        {
+          address: 'Adres B',
+          count: 1,
+          lat: 52.2,
+          lng: 21.1,
+          wojewodztwo: 'Mazowieckie',
+          rows: [],
+        },
+      ];
+      const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
+      expect(html).toContain('showWojewodztwoFilter = false');
     });
   });
 

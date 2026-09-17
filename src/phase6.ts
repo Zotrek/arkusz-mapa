@@ -553,6 +553,40 @@ export function mapPointMatchesWgHarmonogramuFilter(
   return normalizeWgHarmonogramu(wgHarmonogramu) === mode;
 }
 
+/** Etykieta województwa na mapie (pusty → „Nieznane”). */
+export function normalizeWojewodztwoLabel(raw: string | undefined): string {
+  const t = String(raw ?? '').trim();
+  return t.length > 0 ? t : 'Nieznane';
+}
+
+/** Unikalne województwa z punktów mapy (sortowanie pl). */
+export function uniqueWojewodztwaFromMapPoints(points: ReadonlyArray<{ woj: string }>): string[] {
+  const seen = new Set<string>();
+  for (const p of points) {
+    seen.add(normalizeWojewodztwoLabel(p.woj));
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b, 'pl'));
+}
+
+/**
+ * Czy punkt jest widoczny przy filtrze województwa (multiwybór).
+ * Pusta lista / brak zaznaczenia / samo „wszystkie” → wszystkie punkty.
+ */
+export function mapPointMatchesWojewodztwoFilter(
+  woj: string | undefined,
+  selected: string | readonly string[],
+): boolean {
+  const raw = Array.isArray(selected) ? selected : [selected];
+  const selectedList = raw
+    .map((s) => String(s ?? '').trim())
+    .filter((s) => s.length > 0 && s !== 'wszystkie');
+  if (selectedList.length === 0) {
+    return true;
+  }
+  const label = normalizeWojewodztwoLabel(woj);
+  return selectedList.includes(label);
+}
+
 /** Unikalne wartości kolumny A z wierszy punktu (deduplikacja po {@link normalizeForAddressSearch}). */
 export function uniquePodmiotyHandloweFromRows(rows: SheetRow[]): string[] {
   const seen = new Set<string>();
@@ -642,6 +676,8 @@ export function buildMapHtml(
     const v = normalizeWgHarmonogramu(p.wgHarmonogramu);
     return v === 'tak' || v === 'nie';
   });
+  const wojewodztwaOptions = uniqueWojewodztwaFromMapPoints(points);
+  const showWojewodztwoFilter = wojewodztwaOptions.length >= 2;
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
   const transportApiEnabled = wordEnabled && transportWebAppUrl.length > 0;
   const referenceAdminEnabled = transportWebAppUrl.length > 0;
@@ -797,6 +833,12 @@ export function buildMapHtml(
     .map-harmonogram-filter-options { display: flex; flex-direction: column; gap: 4px; }
     .map-harmonogram-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-harmonogram-filter-options input { margin: 0; flex-shrink: 0; }
+    .map-wojewodztwo-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
+    .map-wojewodztwo-filter-title { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
+    .map-wojewodztwo-filter-hint { display: block; font-size: 11px; color: #777; margin: -2px 0 6px; }
+    .map-wojewodztwo-filter-options { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
+    .map-wojewodztwo-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
+    .map-wojewodztwo-filter-options input { margin: 0; flex-shrink: 0; }
     .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
     .map-cluster-filter label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-cluster-filter input { margin: 0; flex-shrink: 0; }
@@ -829,6 +871,7 @@ ${
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
     const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
     const showHarmonogramFilter = ${JSON.stringify(showHarmonogramFilter)};
+    const showWojewodztwoFilter = ${JSON.stringify(showWojewodztwoFilter)};
     const wordDocEnabled = ${JSON.stringify(wordEnabled)};
     const transportApiEnabled = ${JSON.stringify(transportApiEnabled)};
     const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
@@ -965,6 +1008,26 @@ ${
     function getWgHarmonogramuFilterMode() {
       var el = document.querySelector('input[name="map-harmonogram-filter"]:checked');
       return el ? String(el.value) : 'wszystkie';
+    }
+    function mapPointMatchesWojewodztwoFilterMap(woj, selected) {
+      var list = Array.isArray(selected) ? selected : [selected];
+      var selectedList = [];
+      for (var i = 0; i < list.length; i++) {
+        var mode = String(list[i] || '').trim();
+        if (mode && mode !== 'wszystkie') selectedList.push(mode);
+      }
+      if (selectedList.length === 0) return true;
+      var label = String(woj || '').trim();
+      if (!label) label = 'Nieznane';
+      return selectedList.indexOf(label) !== -1;
+    }
+    function getWojewodztwoFilterSelection() {
+      var boxes = document.querySelectorAll('input[name="map-wojewodztwo-filter"]:checked');
+      var out = [];
+      for (var i = 0; i < boxes.length; i++) {
+        out.push(String(boxes[i].value));
+      }
+      return out;
     }
     function setMarkerClickable(marker, clickable) {
       var el = marker.getElement ? marker.getElement() : null;
@@ -2426,6 +2489,18 @@ ${
         '<label><input type="radio" name="map-harmonogram-filter" value="nie" /> Nie</label>' +
         '</div></div>'
       : '';
+    var wojewodztwoFilterHtml = showWojewodztwoFilter
+      ? '<div class="map-wojewodztwo-filter" role="group" aria-labelledby="map-wojewodztwo-filter-title">' +
+        '<span id="map-wojewodztwo-filter-title" class="map-wojewodztwo-filter-title">Województwo</span>' +
+        '<span class="map-wojewodztwo-filter-hint">Zaznacz jedno lub więcej (puste = wszystkie)</span>' +
+        '<div class="map-wojewodztwo-filter-options">' +
+        ${JSON.stringify(wojewodztwaOptions)}.map(function(w) {
+          var esc = String(w).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+          var label = String(w).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return '<label><input type="checkbox" name="map-wojewodztwo-filter" value="' + esc + '" /> ' + label + '</label>';
+        }).join('') +
+        '</div></div>'
+      : '';
     var clusterToggleHtml =
       '<div class="map-cluster-filter">' +
       '<label for="map-cluster-toggle"><input type="checkbox" id="map-cluster-toggle" /> Grupuj nachodzące punkty</label>' +
@@ -2458,6 +2533,7 @@ ${
         '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>' +
         zbiorkaFilterHtml +
         harmonogramFilterHtml +
+        wojewodztwoFilterHtml +
         clusterToggleHtml +
         '<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt.</div>' +
         manualAdminBtnHtml +
@@ -2478,6 +2554,12 @@ ${
         var harmRadios = wrap.querySelectorAll('input[name="map-harmonogram-filter"]');
         for (var hi = 0; hi < harmRadios.length; hi++) {
           harmRadios[hi].addEventListener('change', applyAddressSearch);
+        }
+      }
+      if (showWojewodztwoFilter) {
+        var wojBoxes = wrap.querySelectorAll('input[name="map-wojewodztwo-filter"]');
+        for (var wi = 0; wi < wojBoxes.length; wi++) {
+          wojBoxes[wi].addEventListener('change', applyAddressSearch);
         }
       }
       var clusterToggle = wrap.querySelector('#map-cluster-toggle');
@@ -2531,10 +2613,12 @@ ${
         if (String(r).trim().length === 0) return;
         var zMode = getZbiorkaFilterMode();
         var hMode = getWgHarmonogramuFilterMode();
+        var wMode = getWojewodztwoFilterSelection();
         var matched = markerEntries.filter(function(e) {
           var zOk = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(e.p.zbiorka, zMode);
           var hOk = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(e.p.wgHarmonogramu, hMode);
-          return zOk && hOk && mapPointMatchesSearchMap(e.p, r);
+          var wOk = !showWojewodztwoFilter || mapPointMatchesWojewodztwoFilterMap(e.p.woj, wMode);
+          return zOk && hOk && wOk && mapPointMatchesSearchMap(e.p, r);
         });
         if (matched.length === 0) return;
         if (matched.length === 1) {
@@ -2561,12 +2645,14 @@ ${
       var hasSearchFilter = String(raw).trim().length > 0;
       var zbiorkaMode = getZbiorkaFilterMode();
       var harmMode = getWgHarmonogramuFilterMode();
+      var wojMode = getWojewodztwoFilterSelection();
       var matchCount = 0;
       var filterCount = 0;
       markerEntries.forEach(function(entry) {
         var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
         var hMatch = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(entry.p.wgHarmonogramu, harmMode);
-        if (!zMatch || !hMatch) {
+        var wMatch = !showWojewodztwoFilter || mapPointMatchesWojewodztwoFilterMap(entry.p.woj, wojMode);
+        if (!zMatch || !hMatch || !wMatch) {
           setMarkerVisible(entry.marker, false);
           entry.marker.setOpacity(1);
           entry.marker.setZIndexOffset(0);
