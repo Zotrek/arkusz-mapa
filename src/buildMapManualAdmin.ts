@@ -3,6 +3,14 @@
  */
 
 import { referenceFormatsBrowserScript } from './referenceFormats.js';
+import { POLISH_VOIVODESHIPS } from './polishVoivodeships.js';
+
+function wojewodztwoSelectOptionsHtml(): string {
+  return (
+    '<option value="">— wybierz —</option>' +
+    POLISH_VOIVODESHIPS.map((w) => `<option value="${w}">${w}</option>`).join('')
+  );
+}
 
 export function manualAdminCss(): string {
   return `
@@ -41,8 +49,9 @@ export function manualAdminCss(): string {
     .manual-admin-panel { display: none; }
     .manual-admin-panel.active { display: block; }
     .manual-admin-panel label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 5px; }
-    .manual-admin-panel input, .manual-admin-panel textarea {
+    .manual-admin-panel input, .manual-admin-panel textarea, .manual-admin-panel select {
       width: 100%; padding: 9px 11px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 6px;
+      box-sizing: border-box; background: #fff;
     }
     .manual-admin-coords-row { display: flex; gap: 10px; }
     .manual-admin-coords-row > div { flex: 1; }
@@ -97,6 +106,10 @@ export function manualAdminHtml(): string {
             <input type="text" id="manual-admin-popraw-lon" inputmode="decimal" autocomplete="off" />
           </div>
         </div>
+        <label for="manual-admin-popraw-wojewodztwo">Województwo</label>
+        <select id="manual-admin-popraw-wojewodztwo" aria-label="Województwo">
+          ${wojewodztwoSelectOptionsHtml()}
+        </select>
         <label for="manual-admin-popraw-uwagi">Uwagi</label>
         <input type="text" id="manual-admin-popraw-uwagi" autocomplete="off" />
         <button type="button" id="manual-admin-popraw-submit" class="manual-admin-submit">Zapisz poprawkę adresu</button>
@@ -181,6 +194,15 @@ ${referenceFormatsBrowserScript()}
       return { lat: lat, lon: lon };
     }
 
+    function setPoprawWojewodztwoSelect(value) {
+      var sel = document.getElementById('manual-admin-popraw-wojewodztwo');
+      if (!sel) return;
+      var v = String(value || '').trim();
+      if (v === 'Nieznane') v = '';
+      sel.value = v;
+      if (sel.value !== v) sel.value = '';
+    }
+
     function openManualAdminModal(tab) {
       var modal = document.getElementById('manual-admin-modal');
       if (!modal) return;
@@ -219,6 +241,7 @@ ${referenceFormatsBrowserScript()}
       if (adres) adres.value = point && point.adres ? point.adres : '';
       if (lat) lat.value = point && point.lat != null ? String(point.lat) : '';
       if (lon) lon.value = point && point.lng != null ? String(point.lng) : '';
+      setPoprawWojewodztwoSelect(point && point.woj ? point.woj : '');
     }
 
     function bindManualAdminUi() {
@@ -287,6 +310,7 @@ ${referenceFormatsBrowserScript()}
           if (!adres) { setManualAdminStatus('Podaj adres.', 'error'); return; }
           var coords = parseManualLatLon('manual-admin-popraw-lat', 'manual-admin-popraw-lon');
           if (coords.error) { setManualAdminStatus(coords.error, 'error'); return; }
+          var wojewodztwo = String((document.getElementById('manual-admin-popraw-wojewodztwo') || {}).value || '').trim();
           poprawSubmit.disabled = true;
           postReferencePayload({
             mode: 'addPoprawAdres',
@@ -295,6 +319,7 @@ ${referenceFormatsBrowserScript()}
             adres: adres,
             lat: coords.lat,
             lon: coords.lon,
+            wojewodztwo: wojewodztwo,
             uwagi: String((document.getElementById('manual-admin-popraw-uwagi') || {}).value || '').trim()
           }).then(function(resp) {
             poprawSubmit.disabled = false;

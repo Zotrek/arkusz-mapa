@@ -38,12 +38,13 @@ function makeGroup(address: string, podmiot = 'PH', sklep = 'Sklep A'): AddressG
 describe('poprawAdres', () => {
   it('test_parsePoprawAdresSheetRows_when_valid_rows_should_parse_coords', () => {
     const rows = parsePoprawAdresSheetRows([
-      ['Podmiot', 'Sklep', 'Adres', 'Lat', 'Lon', 'Uwagi', 'UpdatedAt', 'Author'],
-      ['A', 'B', '62-320 Miłosław Test 1', '52.1', '17.4', '', '', ''],
+      ['Podmiot', 'Sklep', 'Adres', 'Lat', 'Lon', 'Uwagi', 'UpdatedAt', 'Author', 'Województwo'],
+      ['A', 'B', '62-320 Miłosław Test 1', '52.1', '17.4', '', '', '', 'Wielkopolskie'],
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.lat).toBe(52.1);
     expect(rows[0]?.lng).toBe(17.4);
+    expect(rows[0]?.wojewodztwo).toBe('Wielkopolskie');
   });
 
   it('test_parsePoprawAdresSheetRows_when_polish_comma_decimals_should_parse_full_coords', () => {

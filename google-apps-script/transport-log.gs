@@ -58,6 +58,7 @@ var REF_POPRAW_HEADER = [
   'Uwagi',
   'UpdatedAt',
   'Author',
+  'Województwo',
 ];
 
 var REF_PRZ_NIP_COL = 4;
@@ -641,6 +642,30 @@ function getOrCreateRefSheet_(sheetName, headerRow) {
   return sheet;
 }
 
+/** Dopina brakujące kolumny nagłówka (np. Województwo) bez ruszania istniejących danych. */
+function ensureRefSheetHeader_(sheet, headerRow) {
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var existing = sheet.getRange(1, 1, 1, Math.max(lastCol, headerRow.length)).getValues()[0];
+  var changed = false;
+  for (var i = 0; i < headerRow.length; i++) {
+    var want = headerRow[i];
+    var have = existing[i] != null ? String(existing[i]).trim() : '';
+    if (have !== want) {
+      existing[i] = want;
+      changed = true;
+    }
+  }
+  if (changed) {
+    sheet.getRange(1, 1, 1, headerRow.length).setValues([existing.slice(0, headerRow.length)]);
+  }
+  return sheet;
+}
+
+function getOrCreateRefPoprawSheet_() {
+  var sheet = getOrCreateRefSheet_(REF_POPRAW_SHEET_NAME, REF_POPRAW_HEADER);
+  return ensureRefSheetHeader_(sheet, REF_POPRAW_HEADER);
+}
+
 function getOrCreateRefPrzSheet_() {
   var sheet = getOrCreateRefSheet_(REF_PRZ_SHEET_NAME, REF_PRZ_HEADER);
   ensureRefPrzTextColumns_(sheet);
@@ -794,6 +819,7 @@ function listReferencePoprawAdres_() {
       uwagi: cellStr_(r[5]),
       updatedAt: cellStr_(r[6]),
       author: cellStr_(r[7]),
+      wojewodztwo: cellStr_(r[8]),
     });
   }
   return out;
@@ -918,11 +944,12 @@ function handleAddPoprawAdresPost_(body) {
   var sklep = cellStr_(body && body.sklep);
   var adres = cellStr_(body && body.adres);
   var uwagi = cellStr_(body && body.uwagi);
+  var wojewodztwo = cellStr_(body && body.wojewodztwo);
   var coords = parsePoprawCoords_(body);
   if (!adres) {
     throw new Error('adres required');
   }
-  var sheet = getOrCreateRefSheet_(REF_POPRAW_SHEET_NAME, REF_POPRAW_HEADER);
+  var sheet = getOrCreateRefPoprawSheet_();
   var existingRow = findPoprawAdresRow_(sheet, adres, podmiot, sklep);
   var now = new Date().toISOString();
   var author = Session.getActiveUser().getEmail() || '';
@@ -935,6 +962,7 @@ function handleAddPoprawAdresPost_(body) {
     uwagi,
     now,
     author,
+    wojewodztwo,
   ];
   if (existingRow > 0) {
     sheet.getRange(existingRow, 1, 1, REF_POPRAW_HEADER.length).setValues([rowValues]);
@@ -952,6 +980,7 @@ function handleAddPoprawAdresPost_(body) {
       uwagi: uwagi,
       updatedAt: now,
       author: author,
+      wojewodztwo: wojewodztwo,
     },
   });
 }

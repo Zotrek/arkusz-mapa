@@ -39,7 +39,7 @@ describe('phase5 coordinate ladder', () => {
   it('test_resolveCoordinateFromLadder_when_popraw_adres_should_win_over_cache', () => {
     const address = '62-320 Miłosław Test 18';
     const poprawIndex = buildPoprawAdresIndex([
-      { podmiotHandlowy: '', sklep: '', adres: address, lat: 1.1, lng: 2.2 },
+      { podmiotHandlowy: '', sklep: '', adres: address, lat: 1.1, lng: 2.2, wojewodztwo: 'Wielkopolskie' },
     ]);
     const dataCache: Record<string, CacheEntry> = {
       [address]: {
@@ -59,6 +59,7 @@ describe('phase5 coordinate ladder', () => {
     );
     expect(hit?.source).toMatch(/^popraw_adres/);
     expect(hit?.entry.lat).toBe(1.1);
+    expect(hit?.entry.wojewodztwo).toBe('Wielkopolskie');
   });
 
   it('test_resolveCoordinateFromLadder_when_no_popraw_should_use_data_cache', () => {

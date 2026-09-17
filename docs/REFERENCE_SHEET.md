@@ -12,7 +12,7 @@ Jak historycznie `docs/podwyko lista.xlsx`: **jedna lista** dla obu comboboxów 
 |----------|---------|------|
 | *(pierwsza)* | Rejestr transportów | Bez zmian — patrz [TRANSPORT_SHEET.md](./TRANSPORT_SHEET.md) |
 | **Lista podwykonawców** | Nazwa, Dane do Worda | Wspólna lista comboboxów |
-| **Popraw adres** | Podmiot handlowy, Sklep, Adres, Lat, Lon, Uwagi, UpdatedAt, Author | Najwyższy priorytet współrzędnych przy `npm run generate` |
+| **Popraw adres** | Podmiot handlowy, Sklep, Adres, Lat, Lon, Uwagi, UpdatedAt, Author, Województwo | Najwyższy priorytet współrzędnych przy `npm run generate` |
 
 Zakładki tworzą się automatycznie przy pierwszym zapisie z mapy (Apps Script) lub ręcznie z nagłówkami jak wyżej.
 
@@ -46,7 +46,7 @@ Kolejność przy generowaniu mapy:
 Gdy `TRANSPORT_WEBAPP_URL` jest ustawiony:
 
 - Przycisk **„Dodaj do listy / popraw adres”** w panelu wyszukiwania
-- **„Popraw adres”** w popupie pinezki (prefill podmiot / sklep / adres / współrzędne)
+- **„Popraw adres”** w popupie pinezki (prefill podmiot / sklep / adres / współrzędne / województwo)
 
 Zapis idzie od razu do Google Sheets. Aby zobaczyć nową pinezkę po poprawce adresu, uruchom ponownie `npm run generate`.
 

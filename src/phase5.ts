@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import {
   DEFAULT_PHASE5_CACHE_PATH,
   DEFAULT_PHASE5_ACTIONS_CACHE_PATH,
+  GEOJSON_WOJEWODZTWA_URL,
 } from './config.js';
 import { normalizeCityForCompare, normalizeCityFromSheet } from './cityNormalize.js';
 import { nominatimAsciiQueryVariant } from './polishText.js';
@@ -35,8 +36,19 @@ import {
 } from './streetNormalize.js';
 
 import { polishAsciiFold } from './polishText.js';
+import {
+  enrichWojewodztwoIfMissing,
+  isUnknownWojewodztwo,
+  loadWojewodztwaGeoJsonFeatures,
+  type WojewodztwoGeoJsonFeature,
+} from './wojewodztwoFromLatLng.js';
 
 export { stripStreetPrefix } from './streetNormalize.js';
+export {
+  enrichWojewodztwoIfMissing,
+  isUnknownWojewodztwo,
+  resolveWojewodztwoFromLatLng,
+} from './wojewodztwoFromLatLng.js';
 
 interface NominatimResult {
   lat?: string;
@@ -136,6 +148,13 @@ export interface ExecutePhase5Options {
   actionsCacheFilePath?: string;
   /** Indeks ręcznych współrzędnych (Google Sheet „Popraw adres”). */
   poprawAdresIndex?: Map<string, PoprawAdresEntry>;
+  /**
+   * Gotowe feature'y GeoJSON województw (testy / offline).
+   * Gdy podane — bez pobierania URL.
+   */
+  wojewodztwaGeoJsonFeatures?: WojewodztwoGeoJsonFeature[];
+  /** URL GeoJSON granic województw. Domyślnie {@link GEOJSON_WOJEWODZTWA_URL}. */
+  wojewodztwaGeoJsonUrl?: string;
   logger?: {
     info?: (message: string, ...args: unknown[]) => void;
     warn?: (message: string, ...args: unknown[]) => void;
@@ -996,13 +1015,14 @@ export function resolveCoordinateFromLadder(
       !poprawHit.podmiotHandlowy &&
       !poprawHit.sklep &&
       !poprawHit.updatedAt;
+    const woj = String(poprawHit.wojewodztwo ?? '').trim();
     return {
       source: fromOverrides ? 'popraw_adres_overrides' : 'popraw_adres',
       entry: {
         status: 'ok',
         lat: poprawHit.lat,
         lng: poprawHit.lng,
-        wojewodztwo: 'Nieznane',
+        wojewodztwo: woj.length > 0 ? woj : 'Nieznane',
         updatedAt: poprawHit.updatedAt ?? new Date().toISOString(),
       },
     };
@@ -1019,6 +1039,65 @@ export function resolveCoordinateFromLadder(
   }
 
   return undefined;
+}
+
+/** Uzupełnia brakujące województwo z GeoJSON; przy zmianie zapisuje do write-cache. */
+function applyWojewodztwoEnrichment(
+  address: string,
+  entry: CacheEntry,
+  features: readonly WojewodztwoGeoJsonFeature[] | null,
+  cacheEntries: Record<string, CacheEntry>,
+  writeCacheEnabled: boolean,
+  logger?: ExecutePhase5Options['logger'],
+): CacheEntry {
+  const enriched = enrichWojewodztwoIfMissing(entry, features);
+  if (enriched.wojewodztwo === entry.wojewodztwo) {
+    return entry;
+  }
+  if (isUnknownWojewodztwo(entry.wojewodztwo) && !isUnknownWojewodztwo(enriched.wojewodztwo)) {
+    logger?.info?.(
+      'Phase 5: uzupełniono województwo z lat/lng dla %s → %s',
+      address,
+      enriched.wojewodztwo,
+    );
+  }
+  if (writeCacheEnabled) {
+    const prev = cacheEntries[address];
+    cacheEntries[address] = {
+      ...(prev ?? enriched),
+      ...enriched,
+      updatedAt: enriched.updatedAt || prev?.updatedAt || new Date().toISOString(),
+    };
+  }
+  return enriched;
+}
+
+async function loadWojewodztwaFeaturesForPhase5(
+  options: ExecutePhase5Options,
+  fetchFn: typeof fetch,
+  logger?: ExecutePhase5Options['logger'],
+): Promise<WojewodztwoGeoJsonFeature[] | null> {
+  if (options.wojewodztwaGeoJsonFeatures) {
+    return options.wojewodztwaGeoJsonFeatures;
+  }
+  try {
+    const features = await loadWojewodztwaGeoJsonFeatures(
+      fetchFn,
+      options.wojewodztwaGeoJsonUrl ?? GEOJSON_WOJEWODZTWA_URL,
+    );
+    if (features.length === 0) {
+      logger?.warn?.('Phase 5: GeoJSON województw pusty — pomijam uzupełnianie z lat/lng');
+      return null;
+    }
+    logger?.info?.('Phase 5: załadowano GeoJSON województw (%d polygonów)', features.length);
+    return features;
+  } catch (err) {
+    logger?.warn?.(
+      'Phase 5: nie udało się pobrać GeoJSON województw — pomijam uzupełnianie z lat/lng (%s)',
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  }
 }
 
 /** Tylko te pola są zapisywane i odczytywane z pliku cache (bez zbiorka, count itp.). */
@@ -1268,6 +1347,43 @@ export async function executePhase5(
     );
   }
 
+  const writeCacheEnabled = Boolean(options.cacheFilePath);
+
+  /** undefined = jeszcze nie ładowano; null = brak / błąd; array = gotowe. */
+  let wojFeatures: WojewodztwoGeoJsonFeature[] | null | undefined =
+    options.wojewodztwaGeoJsonFeatures !== undefined
+      ? options.wojewodztwaGeoJsonFeatures.length > 0
+        ? options.wojewodztwaGeoJsonFeatures
+        : null
+      : undefined;
+
+  async function resolveWojFeatures(): Promise<WojewodztwoGeoJsonFeature[] | null> {
+    if (wojFeatures !== undefined) {
+      return wojFeatures;
+    }
+    wojFeatures = await loadWojewodztwaFeaturesForPhase5(options, fetchFn, logger);
+    return wojFeatures;
+  }
+
+  async function enrichEntryIfNeeded(address: string, entry: CacheEntry): Promise<CacheEntry> {
+    if (
+      !isUnknownWojewodztwo(entry.wojewodztwo) ||
+      typeof entry.lat !== 'number' ||
+      typeof entry.lng !== 'number'
+    ) {
+      return entry;
+    }
+    const features = await resolveWojFeatures();
+    return applyWojewodztwoEnrichment(
+      address,
+      entry,
+      features,
+      cacheEntries,
+      writeCacheEnabled,
+      logger,
+    );
+  }
+
   const groupedEntries = Array.from(groupedByAddress.entries());
   const total = groupedEntries.length;
   const totalBatches = Math.max(1, Math.ceil(total / batchSize));
@@ -1302,10 +1418,11 @@ export async function executePhase5(
         actionsOnlyEntries,
       );
       if (ladderHit) {
+        const enrichedEntry = await enrichEntryIfNeeded(address, ladderHit.entry);
         applyGeocodingFromCache(
           address,
           group,
-          ladderHit.entry,
+          enrichedEntry,
           geocoded,
           geocodedNoPostcode,
           uncertainGeocoded,
@@ -1322,10 +1439,11 @@ export async function executePhase5(
 
       const inRunCacheHit = resolveCacheEntry(cacheEntries, address);
       if (inRunCacheHit) {
+        const enrichedEntry = await enrichEntryIfNeeded(address, inRunCacheHit);
         applyGeocodingFromCache(
           address,
           group,
-          inRunCacheHit,
+          enrichedEntry,
           geocoded,
           geocodedNoPostcode,
           uncertainGeocoded,

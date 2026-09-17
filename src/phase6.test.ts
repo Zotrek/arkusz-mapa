@@ -29,6 +29,7 @@ import {
   normalizeWojewodztwoLabel,
   uniqueWojewodztwaFromMapPoints,
   mapPointMatchesWojewodztwoFilter,
+  formatWojewodztwoFilterSummary,
   haversineMeters,
   spreadCloseMarkerPositions,
   findCloseMapPointPairs,
@@ -402,16 +403,25 @@ describe('phase6', () => {
       expect(mapPointMatchesWojewodztwoFilter('Małopolskie', ['Mazowieckie', 'Wielkopolskie'])).toBe(false);
     });
 
-    it('test_buildMapHtml_when_multiple_wojewodztwa_should_embed_filter_checkboxes', () => {
+    it('test_formatWojewodztwoFilterSummary_when_none_one_many_should_format', () => {
+      expect(formatWojewodztwoFilterSummary([])).toBe('Wszystkie');
+      expect(formatWojewodztwoFilterSummary(['Mazowieckie'])).toBe('Mazowieckie');
+      expect(formatWojewodztwoFilterSummary(['Mazowieckie', 'Wielkopolskie'])).toBe('2 wybrane');
+    });
+
+    it('test_buildMapHtml_when_multiple_wojewodztwa_should_embed_filter_dropdown', () => {
       const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
       expect(html).toContain('showWojewodztwoFilter = true');
       expect(html).toContain('map-wojewodztwo-filter');
+      expect(html).toContain('map-wojewodztwo-dropdown');
+      expect(html).toContain('map-wojewodztwo-toggle');
+      expect(html).toContain('map-wojewodztwo-menu');
       expect(html).toContain('Województwo');
       expect(html).toContain('mapPointMatchesWojewodztwoFilterMap');
       expect(html).toContain('getWojewodztwoFilterSelection');
       expect(html).toContain('name="map-wojewodztwo-filter"');
       expect(html).toContain('type="checkbox"');
-      expect(html).toContain('puste = wszystkie');
+      expect(html).toContain('aria-multiselectable="true"');
       expect(html).toContain('Mazowieckie');
       expect(html).toContain('Wielkopolskie');
       expect(html).toContain('Małopolskie');

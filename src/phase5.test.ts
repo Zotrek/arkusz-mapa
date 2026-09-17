@@ -1593,5 +1593,121 @@ describe('phase5', () => {
       expect(result.geocoded[0].lat).toBe(49.8967);
       expect(result.uncertainGeocoded).toHaveLength(0);
     });
+
+    it('test_executePhase5_when_cache_wojewodztwo_nieznane_should_enrich_from_lat_lng', async () => {
+      const row = makeRow({
+        kodPocztowy: '80-806',
+        miasto: 'Gdańsk',
+        ulica: 'TARG SIENNY',
+        numerBudynku: '7',
+        address: '80-806 Gdańsk TARG SIENNY 7',
+      });
+      const grouped = asGrouped([row]);
+      const pomorskiePoly = {
+        type: 'Feature' as const,
+        properties: { name: 'Pomorskie' },
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [
+            [
+              [18.0, 54.0],
+              [19.5, 54.0],
+              [19.5, 54.9],
+              [18.0, 54.9],
+              [18.0, 54.0],
+            ],
+          ],
+        },
+      };
+      const cachePayload = JSON.stringify({
+        version: 2,
+        entries: {
+          [row.address]: {
+            status: 'ok',
+            lat: 54.3488736,
+            lng: 18.643381,
+            wojewodztwo: 'Nieznane',
+            updatedAt: '2026-03-18T11:31:58.552Z',
+          },
+        },
+      });
+      const readFileFn = vi.fn().mockResolvedValue(cachePayload);
+      const writeFileFn = vi.fn().mockResolvedValue(undefined);
+      const mkdirFn = vi.fn().mockResolvedValue(undefined);
+      const fetchFn = vi.fn();
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        cacheFilePath: '/tmp/phase5-cache-test.json',
+        dataCacheFilePath: '/tmp/phase5-cache-test.json',
+        actionsCacheFilePath: '/tmp/phase5-cache-test.json',
+        readFileFn,
+        writeFileFn,
+        mkdirFn,
+        wojewodztwaGeoJsonFeatures: [pomorskiePoly],
+      });
+
+      expect(fetchFn).not.toHaveBeenCalled();
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.geocoded[0].wojewodztwo).toBe('Pomorskie');
+      expect(writeFileFn).toHaveBeenCalled();
+      const savedRaw = writeFileFn.mock.calls.find((c) => String(c[0]).includes('phase5-cache-test'))?.[1];
+      expect(typeof savedRaw).toBe('string');
+      const saved = JSON.parse(savedRaw as string) as {
+        entries: Record<string, { wojewodztwo?: string }>;
+      };
+      expect(saved.entries[row.address]?.wojewodztwo).toBe('Pomorskie');
+    });
+
+    it('test_executePhase5_when_popraw_adres_without_woj_should_enrich_from_lat_lng', async () => {
+      const row = makeRow({
+        address: '84-100 Celbowo Celbowo 23',
+        miasto: 'Celbowo',
+        kodPocztowy: '84-100',
+        ulica: 'Celbowo',
+        numerBudynku: '23',
+      });
+      const grouped = asGrouped([row]);
+      const pomorskiePoly = {
+        type: 'Feature' as const,
+        properties: { name: 'Pomorskie' },
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [
+            [
+              [18.0, 54.0],
+              [19.5, 54.0],
+              [19.5, 54.9],
+              [18.0, 54.9],
+              [18.0, 54.0],
+            ],
+          ],
+        },
+      };
+      const { buildPoprawAdresIndex } = await import('./poprawAdres');
+      const poprawAdresIndex = buildPoprawAdresIndex([
+        {
+          podmiotHandlowy: '',
+          sklep: '',
+          adres: row.address,
+          lat: 54.685163628735,
+          lng: 18.368911291880643,
+        },
+      ]);
+
+      const result = await executePhase5(grouped, {
+        fetchFn: vi.fn(),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        poprawAdresIndex,
+        wojewodztwaGeoJsonFeatures: [pomorskiePoly],
+        // bez cache — tylko w pamięci na wynik geocoded
+        readFileFn: vi.fn().mockRejectedValue(new Error('no file')),
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.geocoded[0].lat).toBeCloseTo(54.685, 2);
+      expect(result.geocoded[0].wojewodztwo).toBe('Pomorskie');
+    });
   });
 });

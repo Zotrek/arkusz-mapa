@@ -16,6 +16,8 @@ export interface PoprawAdresEntry {
   uwagi?: string;
   updatedAt?: string;
   author?: string;
+  /** Oficjalna nazwa województwa (opcjonalnie — z formularza / arkusza). */
+  wojewodztwo?: string;
 }
 
 export interface PoprawAdresMatch {
@@ -85,6 +87,7 @@ export function parsePoprawAdresSheetRows(rows: string[][]): PoprawAdresEntry[] 
       uwagi: rowCell(row, 5) || undefined,
       updatedAt: rowCell(row, 6) || undefined,
       author: rowCell(row, 7) || undefined,
+      wojewodztwo: rowCell(row, 8) || undefined,
     });
   }
   return out;
@@ -152,7 +155,7 @@ export async function loadPoprawAdresFromOverridesJson(
     const raw = await readFileFn(path, 'utf-8');
     const parsed = JSON.parse(raw) as Record<
       string,
-      { lat?: number; lng?: number; status?: string }
+      { lat?: number; lng?: number; status?: string; wojewodztwo?: string }
     >;
     const entries: PoprawAdresEntry[] = [];
     for (const [adres, entry] of Object.entries(parsed)) {
@@ -160,12 +163,14 @@ export async function loadPoprawAdresFromOverridesJson(
       if (!coords) {
         continue;
       }
+      const wojewodztwo = typeof entry.wojewodztwo === 'string' ? entry.wojewodztwo.trim() : '';
       entries.push({
         podmiotHandlowy: '',
         sklep: '',
         adres,
         lat: coords.lat,
         lng: coords.lng,
+        ...(wojewodztwo ? { wojewodztwo } : {}),
       });
     }
     return entries;

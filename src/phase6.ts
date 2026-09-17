@@ -587,6 +587,20 @@ export function mapPointMatchesWojewodztwoFilter(
   return selectedList.includes(label);
 }
 
+/** Tekst na przycisku listy województw (0 = Wszystkie, 1 = nazwa, 2+ = „N wybrane”). */
+export function formatWojewodztwoFilterSummary(selected: readonly string[]): string {
+  const list = selected
+    .map((s) => String(s ?? '').trim())
+    .filter((s) => s.length > 0 && s !== 'wszystkie');
+  if (list.length === 0) {
+    return 'Wszystkie';
+  }
+  if (list.length === 1) {
+    return list[0];
+  }
+  return list.length + ' wybrane';
+}
+
 /** Unikalne wartości kolumny A z wierszy punktu (deduplikacja po {@link normalizeForAddressSearch}). */
 export function uniquePodmiotyHandloweFromRows(rows: SheetRow[]): string[] {
   const seen = new Set<string>();
@@ -835,10 +849,15 @@ export function buildMapHtml(
     .map-harmonogram-filter-options input { margin: 0; flex-shrink: 0; }
     .map-wojewodztwo-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
     .map-wojewodztwo-filter-title { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
-    .map-wojewodztwo-filter-hint { display: block; font-size: 11px; color: #777; margin: -2px 0 6px; }
-    .map-wojewodztwo-filter-options { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
-    .map-wojewodztwo-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
-    .map-wojewodztwo-filter-options input { margin: 0; flex-shrink: 0; }
+    .map-wojewodztwo-dropdown { position: relative; }
+    .map-wojewodztwo-toggle { width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #333; cursor: pointer; text-align: left; }
+    .map-wojewodztwo-toggle:hover { background: #f7f7f7; }
+    .map-wojewodztwo-toggle-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .map-wojewodztwo-toggle-caret { flex-shrink: 0; color: #666; font-size: 10px; line-height: 1; }
+    .map-wojewodztwo-menu { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; max-height: 180px; overflow-y: auto; padding: 6px; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+    .map-wojewodztwo-dropdown.is-open .map-wojewodztwo-menu { display: block; }
+    .map-wojewodztwo-menu label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; padding: 3px 2px; }
+    .map-wojewodztwo-menu input { margin: 0; flex-shrink: 0; }
     .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
     .map-cluster-filter label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-cluster-filter input { margin: 0; flex-shrink: 0; }
@@ -1028,6 +1047,29 @@ ${
         out.push(String(boxes[i].value));
       }
       return out;
+    }
+    function formatWojewodztwoFilterSummaryMap(selected) {
+      var list = [];
+      for (var i = 0; i < selected.length; i++) {
+        var mode = String(selected[i] || '').trim();
+        if (mode && mode !== 'wszystkie') list.push(mode);
+      }
+      if (list.length === 0) return 'Wszystkie';
+      if (list.length === 1) return list[0];
+      return list.length + ' wybrane';
+    }
+    function updateWojewodztwoFilterSummary() {
+      var labelEl = document.getElementById('map-wojewodztwo-summary');
+      if (!labelEl) return;
+      labelEl.textContent = formatWojewodztwoFilterSummaryMap(getWojewodztwoFilterSelection());
+    }
+    function setWojewodztwoDropdownOpen(open) {
+      var drop = document.getElementById('map-wojewodztwo-dropdown');
+      var btn = document.getElementById('map-wojewodztwo-toggle');
+      if (!drop || !btn) return;
+      if (open) drop.classList.add('is-open');
+      else drop.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
     function setMarkerClickable(marker, clickable) {
       var el = marker.getElement ? marker.getElement() : null;
@@ -1264,7 +1306,8 @@ ${
             sklep: p.sklep || '',
             adres: p.adres,
             lat: p.lat,
-            lng: p.lng
+            lng: p.lng,
+            woj: p.woj || ''
           });
         };
       }
@@ -2492,14 +2535,18 @@ ${
     var wojewodztwoFilterHtml = showWojewodztwoFilter
       ? '<div class="map-wojewodztwo-filter" role="group" aria-labelledby="map-wojewodztwo-filter-title">' +
         '<span id="map-wojewodztwo-filter-title" class="map-wojewodztwo-filter-title">Województwo</span>' +
-        '<span class="map-wojewodztwo-filter-hint">Zaznacz jedno lub więcej (puste = wszystkie)</span>' +
-        '<div class="map-wojewodztwo-filter-options">' +
+        '<div id="map-wojewodztwo-dropdown" class="map-wojewodztwo-dropdown">' +
+        '<button type="button" id="map-wojewodztwo-toggle" class="map-wojewodztwo-toggle" aria-expanded="false" aria-controls="map-wojewodztwo-menu" aria-haspopup="listbox">' +
+        '<span id="map-wojewodztwo-summary" class="map-wojewodztwo-toggle-label">Wszystkie</span>' +
+        '<span class="map-wojewodztwo-toggle-caret" aria-hidden="true">▾</span>' +
+        '</button>' +
+        '<div id="map-wojewodztwo-menu" class="map-wojewodztwo-menu" role="listbox" aria-multiselectable="true" aria-label="Wybierz województwa">' +
         ${JSON.stringify(wojewodztwaOptions)}.map(function(w) {
           var esc = String(w).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
           var label = String(w).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           return '<label><input type="checkbox" name="map-wojewodztwo-filter" value="' + esc + '" /> ' + label + '</label>';
         }).join('') +
-        '</div></div>'
+        '</div></div></div>'
       : '';
     var clusterToggleHtml =
       '<div class="map-cluster-filter">' +
@@ -2557,10 +2604,30 @@ ${
         }
       }
       if (showWojewodztwoFilter) {
+        var wojToggle = wrap.querySelector('#map-wojewodztwo-toggle');
+        var wojDrop = wrap.querySelector('#map-wojewodztwo-dropdown');
         var wojBoxes = wrap.querySelectorAll('input[name="map-wojewodztwo-filter"]');
-        for (var wi = 0; wi < wojBoxes.length; wi++) {
-          wojBoxes[wi].addEventListener('change', applyAddressSearch);
+        if (wojToggle && wojDrop) {
+          wojToggle.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            setWojewodztwoDropdownOpen(!wojDrop.classList.contains('is-open'));
+          });
         }
+        for (var wi = 0; wi < wojBoxes.length; wi++) {
+          wojBoxes[wi].addEventListener('change', function () {
+            updateWojewodztwoFilterSummary();
+            applyAddressSearch();
+          });
+        }
+        document.addEventListener('click', function (ev) {
+          if (!wojDrop || !wojDrop.classList.contains('is-open')) return;
+          if (wojDrop.contains(ev.target)) return;
+          setWojewodztwoDropdownOpen(false);
+        });
+        document.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape') setWojewodztwoDropdownOpen(false);
+        });
+        updateWojewodztwoFilterSummary();
       }
       var clusterToggle = wrap.querySelector('#map-cluster-toggle');
       if (clusterToggle) clusterToggle.addEventListener('change', applyClusteringMode);
