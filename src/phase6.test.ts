@@ -597,8 +597,11 @@ describe('phase6', () => {
 
     it('test_buildMapHtml_when_points_given_should_embed_filter_point_count_below_filters', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain('map-clear-all-filters');
+      expect(html).toContain('Wyczyść wszystkie filtry');
+      expect(html).toContain('clearAllMapFilters');
       expect(html).toMatch(
-        /clusterToggleHtml \+\s*'<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt\.<\/div>'/,
+        /clusterToggleHtml \+\s*'<button type="button" id="map-clear-all-filters" class="map-clear-all-filters">Wyczyść wszystkie filtry<\/button>' \+\s*'<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt\.<\/div>'/,
       );
       expect(html).toContain('var filterCount = 0');
       expect(html).toContain('filterCount++');

@@ -886,6 +886,8 @@ export function buildMapHtml(
     .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
     .map-cluster-filter label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
     .map-cluster-filter input { margin: 0; flex-shrink: 0; }
+    .map-clear-all-filters { display: block; width: 100%; box-sizing: border-box; margin-top: 10px; padding: 7px 10px; font-size: 12px; font-weight: 600; border: 1px solid #ccc; border-radius: 6px; background: #f8f9fa; color: #333; cursor: pointer; text-align: center; }
+    .map-clear-all-filters:hover { background: #eee; }
     .map-filter-count { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; font-size: 13px; font-weight: 600; color: #1a1a1a; }
 ${
   transportApiEnabled
@@ -1111,6 +1113,17 @@ ${
         boxes[i].checked = false;
       }
       updateWojewodztwoFilterSummary();
+    }
+    function clearAllMapFilters() {
+      var inputEl = document.getElementById('map-address-search');
+      if (inputEl) inputEl.value = '';
+      var zDefault = document.querySelector('input[name="map-zbiorka-filter"][value="wszystkie"]');
+      if (zDefault) zDefault.checked = true;
+      var hDefault = document.querySelector('input[name="map-harmonogram-filter"][value="wszystkie"]');
+      if (hDefault) hDefault.checked = true;
+      clearWojewodztwoFilter();
+      setWojewodztwoDropdownOpen(false);
+      applyAddressSearch();
     }
     function setWojewodztwoDropdownOpen(open) {
       var drop = document.getElementById('map-wojewodztwo-dropdown');
@@ -2632,6 +2645,7 @@ ${
         harmonogramFilterHtml +
         wojewodztwoFilterHtml +
         clusterToggleHtml +
+        '<button type="button" id="map-clear-all-filters" class="map-clear-all-filters">Wyczyść wszystkie filtry</button>' +
         '<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt.</div>' +
         manualAdminBtnHtml +
         bulkPanelHtml;
@@ -2641,6 +2655,13 @@ ${
       var zOut = wrap.querySelector('#map-zoom-out');
       if (zIn) zIn.onclick = function() { map.zoomIn(); };
       if (zOut) zOut.onclick = function() { map.zoomOut(); };
+      var clearAllBtn = wrap.querySelector('#map-clear-all-filters');
+      if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          clearAllMapFilters();
+        });
+      }
       if (showZbiorkaFilter) {
         var zbiorkaRadios = wrap.querySelectorAll('input[name="map-zbiorka-filter"]');
         for (var zi = 0; zi < zbiorkaRadios.length; zi++) {
