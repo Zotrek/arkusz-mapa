@@ -13,6 +13,7 @@ import {
   firstPodmiotHandlowyFromRows,
   firstSklepFromRows,
   sealRowsFromSheetRows,
+  sealRowsFromSheetRowsWithOdebraneFlag,
   escapeXmlForWordText,
   formatDataZamknieciaWorkaAsMmDd,
   parseDataZamknieciaWorkaToSortMs,
@@ -240,8 +241,17 @@ describe('wordMapSupport', () => {
     expect(firstPodmiotHandlowyFromRows(rows)).toBe('PH');
     expect(firstSklepFromRows(rows)).toBe('S1');
     expect(sealRowsFromSheetRows(rows)).toEqual([
-      { numerPlomby: 'P1', dataZamknieciaWorka: '2026-02-01', zbiorka: '' },
+      { numerPlomby: 'P1', dataZamknieciaWorka: '2026-02-01', zbiorka: '', odebraneZHarmonogramu: false },
     ]);
+  });
+
+  it('test_sealRowsFromSheetRowsWithOdebraneFlag_when_predicate_true_should_mark', () => {
+    const rows = [
+      makeSheetRow({ numerPlomby: 'A', zbiorka: 'Maszyna' }),
+      makeSheetRow({ numerPlomby: 'B', zbiorka: 'Ręczna' }),
+    ];
+    const out = sealRowsFromSheetRowsWithOdebraneFlag(rows, (r) => r.zbiorka === 'Maszyna');
+    expect(out.map((s) => s.odebraneZHarmonogramu)).toEqual([true, false]);
   });
 
   it('test_buildMapPointDocPayloadFromSealRows_should_build_lista', () => {

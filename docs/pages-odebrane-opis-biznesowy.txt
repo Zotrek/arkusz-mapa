@@ -6,6 +6,8 @@ To automatyczne odświeżenie mapy i jednocześnie uzupełnienie listy punktów,
 Co dostajecie po uruchomieniu
 
 1. Aktualną mapę na stronie WWW — na podstawie danych z arkusza trasówek.
+   Worki spełniające kryteria „odebrane z harmonogramu” nie wchodzą do licznika
+   „Worki do odebrania” / koloru pinezki (zostają w „Wszystkie worki”).
 2. Dopisanie do ewidencji punktów, które „wypadają” jako odebrane z harmonogramu — bez ręcznego przepisywania.
 
 

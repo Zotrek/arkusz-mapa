@@ -3,7 +3,7 @@
  * Reguła: data_zamknięcia < D < dziś (D = roboczy dzień z harmonogramu, Europe/Warsaw).
  */
 
-import { classifyMapPointZbiorka, normalizeWgHarmonogramu } from './phase6.js';
+import { classifyMapPointZbiorka, normalizeWgHarmonogramu } from './zbiorkaClassify.js';
 import { parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 
 /** JS getDay(): 0=nd … 6=sb */

@@ -20,7 +20,7 @@ import {
   type PodwykoOption,
   firstPodmiotHandlowyFromRows,
   firstSklepFromRows,
-  sealRowsFromSheetRows,
+  sealRowsFromSheetRowsWithOdebraneFlag,
   type SealRowLite,
 } from './wordMapSupport.js';
 import { loadPodwykoOptionsWithReferenceFallback } from './referenceData.js';
@@ -29,6 +29,21 @@ import {
   manualAdminCss,
   manualAdminHtml,
 } from './buildMapManualAdmin.js';
+import { shouldCopyToOdebraneZHarmonogramu } from './harmonogramDays.js';
+import {
+  classifyMapPointZbiorka,
+  normalizeWgHarmonogramu,
+} from './zbiorkaClassify.js';
+
+export type {
+  MapPointZbiorkaKind,
+  ZbiorkaFlags,
+} from './zbiorkaClassify.js';
+export {
+  classifyMapPointZbiorka,
+  normalizeWgHarmonogramu,
+  parseZbiorkaFlags,
+} from './zbiorkaClassify.js';
 
 /** Kolor pinezki dla 15+ wystąpień (wyróżnienie dużych zbiórek). */
 const COLOR_15_PLUS = '#fd7e14';
@@ -470,52 +485,6 @@ export function resolveTransportCutoffMsForPoint(
 /** Filtr warstwy zbiórki na mapie (domyślnie: wszystkie punkty). */
 export type ZbiorkaFilterMode = 'wszystkie' | 'obie' | 'reczna' | 'maszyna';
 
-export type MapPointZbiorkaKind = 'obie' | 'reczna' | 'maszyna' | 'unknown';
-
-export interface ZbiorkaFlags {
-  hasReczna: boolean;
-  hasMaszyna: boolean;
-}
-
-/** Parsuje agregat kolumny zbiórki (jak {@link aggregateZbiorka} / popup na mapie). */
-export function parseZbiorkaFlags(zbiorka: string | undefined): ZbiorkaFlags {
-  const raw = (zbiorka ?? '').trim();
-  if (raw.length === 0) {
-    return { hasReczna: false, hasMaszyna: false };
-  }
-  const lower = raw.toLowerCase();
-  const segments = lower
-    .split('/')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  const toScan = segments.length > 0 ? segments : [lower];
-  let hasReczna = false;
-  let hasMaszyna = false;
-  for (const seg of toScan) {
-    if (seg.includes('ręcz') || seg === 'r') {
-      hasReczna = true;
-    } else if (seg.includes('maszyn') || seg === 'm' || seg.includes('automat')) {
-      hasMaszyna = true;
-    }
-  }
-  return { hasReczna, hasMaszyna };
-}
-
-/** Klasyfikacja punktu mapy wg trybu zbiórki. */
-export function classifyMapPointZbiorka(zbiorka: string | undefined): MapPointZbiorkaKind {
-  const { hasReczna, hasMaszyna } = parseZbiorkaFlags(zbiorka);
-  if (hasReczna && hasMaszyna) {
-    return 'obie';
-  }
-  if (hasReczna) {
-    return 'reczna';
-  }
-  if (hasMaszyna) {
-    return 'maszyna';
-  }
-  return 'unknown';
-}
-
 /** Czy punkt jest widoczny przy wybranym filtrze zbiórki. */
 export function mapPointMatchesZbiorkaFilter(
   zbiorka: string | undefined,
@@ -529,20 +498,6 @@ export function mapPointMatchesZbiorkaFilter(
 
 /** Filtr „Wg harmonogramu” na mapie. */
 export type WgHarmonogramuFilterMode = 'wszystkie' | 'tak' | 'nie';
-
-/** Normalizuje wartość kolumny do tak / nie / ''. */
-export function normalizeWgHarmonogramu(raw: string | undefined): 'tak' | 'nie' | '' {
-  const s = String(raw ?? '')
-    .trim()
-    .toLowerCase();
-  if (s === 'tak') {
-    return 'tak';
-  }
-  if (s === 'nie') {
-    return 'nie';
-  }
-  return '';
-}
 
 /** Czy punkt jest widoczny przy filtrze „Wg harmonogramu”. */
 export function mapPointMatchesWgHarmonogramuFilter(
@@ -678,7 +633,14 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     podmiotyHandlowe: uniquePodmiotyHandloweFromRows(item.rows),
     podmiotHandlowy: firstPodmiotHandlowyFromRows(item.rows),
     sklep: firstSklepFromRows(item.rows),
-    sealRows: sealRowsFromSheetRows(item.rows),
+    sealRows: sealRowsFromSheetRowsWithOdebraneFlag(item.rows, (r) =>
+      shouldCopyToOdebraneZHarmonogramu({
+        zbiorka: r.zbiorka,
+        wgHarmonogramu: r.wgHarmonogramu,
+        dniHarmonogramu: r.dniHarmonogramu,
+        dataZamknieciaWorka: r.dataZamknieciaWorka,
+      }),
+    ),
     zbiorka: item.zbiorka,
     wgHarmonogramu: item.wgHarmonogramu,
     firmaTransportowa: item.firmaTransportowa,
@@ -850,45 +812,133 @@ export function buildMapHtml(
     .map-legend .legend-swatch { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.2); flex-shrink: 0; }
     .map-legend .legend-section { margin-bottom: 10px; }
     .map-legend .legend-section:last-child { margin-bottom: 0; }
-    .map-search-panel { background: #fff; padding: 10px 12px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.35); min-width: 220px; max-width: min(420px, calc(100vw - 48px)); }
-    .map-search-label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
+    .map-search-panel {
+      --map-accent: #0d9488;
+      --map-accent-deep: #0f766e;
+      --map-accent-soft: rgba(13, 148, 136, 0.12);
+      --map-ink: #0f172a;
+      --map-muted: #64748b;
+      --map-line: rgba(148, 163, 184, 0.35);
+      background: rgba(255, 255, 255, 0.84);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 1px 3px rgba(15, 23, 42, 0.06);
+      min-width: 240px;
+      max-width: min(420px, calc(100vw - 48px));
+      font-family: system-ui, "Segoe UI", sans-serif;
+      color: var(--map-ink);
+    }
+    .map-search-label { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; margin-bottom: 7px; color: var(--map-ink); }
     .map-search-input-row { display: flex; align-items: center; gap: 8px; }
-    .map-search-input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-    .map-zoom-inline { display: flex; flex-direction: row; flex-shrink: 0; }
-    .map-zoom-inline button { width: 32px; height: 32px; padding: 0; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 18px; line-height: 1; color: #333; display: flex; align-items: center; justify-content: center; }
-    .map-zoom-inline button:hover { background: #f4f4f4; }
-    .map-zoom-inline button:first-child { border-radius: 4px 0 0 4px; border-right: none; }
-    .map-zoom-inline button:last-child { border-radius: 0 4px 4px 0; }
-    .map-search-status { margin-top: 6px; font-size: 11px; color: #555; min-height: 1.2em; }
-    .map-zbiorka-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
-    .map-zbiorka-filter-title { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
-    .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 4px; }
-    .map-zbiorka-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
-    .map-zbiorka-filter-options input { margin: 0; flex-shrink: 0; }
-    .map-harmonogram-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
-    .map-harmonogram-filter-title { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
-    .map-harmonogram-filter-options { display: flex; flex-direction: column; gap: 4px; }
-    .map-harmonogram-filter-options label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
-    .map-harmonogram-filter-options input { margin: 0; flex-shrink: 0; }
-    .map-wojewodztwo-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
-    .map-wojewodztwo-filter-title { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #333; }
+    .map-search-input {
+      flex: 1; min-width: 0; padding: 9px 11px; font-size: 13px; color: var(--map-ink);
+      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 10px;
+      background: rgba(255, 255, 255, 0.92); box-sizing: border-box; outline: none;
+    }
+    .map-search-input:focus { border-color: var(--map-accent); box-shadow: 0 0 0 3px var(--map-accent-soft); }
+    .map-search-input::placeholder { color: #94a3b8; }
+    .map-zoom-inline {
+      display: flex; flex-direction: row; flex-shrink: 0;
+      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 10px; overflow: hidden;
+      background: rgba(255, 255, 255, 0.92);
+    }
+    .map-zoom-inline button {
+      width: 34px; height: 34px; padding: 0; border: none; background: transparent;
+      cursor: pointer; font-size: 17px; line-height: 1; color: #334155;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .map-zoom-inline button:hover { background: var(--map-accent-soft); color: var(--map-accent-deep); }
+    .map-zoom-inline button:first-child { border-right: 1px solid rgba(148, 163, 184, 0.45); }
+    .map-zoom-inline button:last-child { border-radius: 0; }
+    .map-search-status { margin-top: 6px; font-size: 11px; color: var(--map-muted); min-height: 1.2em; }
+    .map-zbiorka-filter,
+    .map-harmonogram-filter,
+    .map-wojewodztwo-filter,
+    .map-cluster-filter { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--map-line); }
+    .map-zbiorka-filter-title,
+    .map-harmonogram-filter-title,
+    .map-wojewodztwo-filter-title {
+      display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; margin-bottom: 8px; color: var(--map-muted);
+    }
+    .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 2px; }
+    .map-zbiorka-filter-options label {
+      display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500;
+      color: #334155; cursor: pointer; margin: 0; padding: 7px 8px; border-radius: 8px;
+    }
+    .map-zbiorka-filter-options label:hover { background: rgba(148, 163, 184, 0.12); }
+    .map-zbiorka-filter-options label:has(input:checked) {
+      background: var(--map-accent-soft); color: var(--map-accent-deep); font-weight: 600;
+    }
+    .map-zbiorka-filter-options input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
+    .map-harmonogram-filter-options {
+      display: flex; flex-direction: row; gap: 0;
+      padding: 3px; border-radius: 10px;
+      background: rgba(148, 163, 184, 0.16);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .map-harmonogram-filter-options label {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      gap: 0; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer;
+      margin: 0; padding: 7px 6px; border-radius: 8px; position: relative; user-select: none;
+    }
+    .map-harmonogram-filter-options input {
+      position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+    }
+    .map-harmonogram-filter-options label:has(input:checked) {
+      background: var(--map-accent); color: #fff;
+      box-shadow: 0 1px 3px rgba(15, 118, 110, 0.35);
+    }
     .map-wojewodztwo-dropdown { position: relative; }
-    .map-wojewodztwo-toggle { width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #333; cursor: pointer; text-align: left; }
-    .map-wojewodztwo-toggle:hover { background: #f7f7f7; }
+    .map-wojewodztwo-toggle {
+      width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 9px 11px; font-size: 13px;
+      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 10px;
+      background: rgba(255, 255, 255, 0.92); color: var(--map-ink); cursor: pointer; text-align: left;
+    }
+    .map-wojewodztwo-toggle:hover { background: #f8fafc; border-color: var(--map-accent); }
     .map-wojewodztwo-toggle-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .map-wojewodztwo-toggle-caret { flex-shrink: 0; color: #666; font-size: 10px; line-height: 1; }
-    .map-wojewodztwo-menu { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; max-height: 180px; overflow-y: auto; padding: 6px; background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+    .map-wojewodztwo-toggle-caret { flex-shrink: 0; color: var(--map-muted); font-size: 10px; line-height: 1; }
+    .map-wojewodztwo-menu {
+      display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
+      max-height: 180px; overflow-y: auto; padding: 8px;
+      background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 10px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+    }
     .map-wojewodztwo-dropdown.is-open .map-wojewodztwo-menu { display: block; }
-    .map-wojewodztwo-clear { display: block; width: 100%; box-sizing: border-box; margin: 0 0 6px; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa; color: #333; cursor: pointer; text-align: center; }
-    .map-wojewodztwo-clear:hover { background: #eee; }
-    .map-wojewodztwo-menu label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; padding: 3px 2px; }
-    .map-wojewodztwo-menu input { margin: 0; flex-shrink: 0; }
-    .map-cluster-filter { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; }
-    .map-cluster-filter label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: #444; cursor: pointer; margin: 0; }
-    .map-cluster-filter input { margin: 0; flex-shrink: 0; }
-    .map-clear-all-filters { display: block; width: 100%; box-sizing: border-box; margin-top: 10px; padding: 7px 10px; font-size: 12px; font-weight: 600; border: 1px solid #ccc; border-radius: 6px; background: #f8f9fa; color: #333; cursor: pointer; text-align: center; }
-    .map-clear-all-filters:hover { background: #eee; }
-    .map-filter-count { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e8e8e8; font-size: 13px; font-weight: 600; color: #1a1a1a; }
+    .map-wojewodztwo-clear {
+      display: block; width: 100%; box-sizing: border-box; margin: 0 0 6px; padding: 6px 8px;
+      font-size: 12px; font-weight: 600; border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 8px;
+      background: #f8fafc; color: #334155; cursor: pointer; text-align: center;
+    }
+    .map-wojewodztwo-clear:hover { background: var(--map-accent-soft); color: var(--map-accent-deep); border-color: rgba(13, 148, 136, 0.35); }
+    .map-wojewodztwo-menu label {
+      display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500;
+      color: #334155; cursor: pointer; margin: 0; padding: 5px 4px; border-radius: 6px;
+    }
+    .map-wojewodztwo-menu label:hover { background: rgba(148, 163, 184, 0.12); }
+    .map-wojewodztwo-menu input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
+    .map-cluster-filter label {
+      display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500;
+      color: #334155; cursor: pointer; margin: 0; padding: 2px 0;
+    }
+    .map-cluster-filter input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); width: 15px; height: 15px; }
+    .map-clear-all-filters {
+      display: block; width: 100%; box-sizing: border-box; margin-top: 12px; padding: 6px 8px;
+      font-size: 12px; font-weight: 600; border: none; border-radius: 8px;
+      background: transparent; color: var(--map-accent-deep); cursor: pointer; text-align: center;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .map-clear-all-filters:hover { background: var(--map-accent-soft); text-decoration: none; }
+    .map-filter-count {
+      display: inline-flex; align-items: center; margin-top: 10px; padding: 6px 11px;
+      border-radius: 999px; border: 1px solid rgba(13, 148, 136, 0.22);
+      background: var(--map-accent-soft); font-size: 12px; font-weight: 700; color: var(--map-accent-deep);
+    }
 ${
   transportApiEnabled
     ? `    .map-transport-loader { position: fixed; z-index: 15000; left: 50%; top: 14px; transform: translateX(-50%); pointer-events: none; }
@@ -1190,14 +1240,20 @@ ${
     function countSealRows(sealRows) {
       return (sealRows || []).length;
     }
+    function sealRowsForCollection(sealRows) {
+      return (sealRows || []).filter(function (r) {
+        return !r.odebraneZHarmonogramu;
+      });
+    }
     function getPointSealCounts(p) {
       var total = countSealRows(p.sealRows);
       if (total === 0) total = p.count || 0;
+      var collectible = sealRowsForCollection(p.sealRows);
       var lastInfo = transportApiEnabled && window.__transportDatesLoaded ? getPointTransportLastInfo(p) : null;
       var cutoffMs = lastInfo ? lastInfo.ms : null;
       var filtered = cutoffMs != null
-        ? filterSealRowsByMinDate(p.sealRows || [], cutoffMs).length
-        : total;
+        ? filterSealRowsByMinDate(collectible, cutoffMs).length
+        : collectible.length;
       var cutoffYmd = null;
       if (cutoffMs != null) {
         var d = new Date(cutoffMs);
@@ -1216,7 +1272,11 @@ ${
           '<div class="popup-count-detail">Trwa pobieranie danych transportu</div>';
       }
       if (!transportApiEnabled) {
-        return '<div class="popup-count">Liczba wystąpień: <strong>' + c.total + '</strong></div>';
+        var mainOffline = '<div class="popup-count">Liczba wystąpień: <strong>' + c.filtered + '</strong></div>';
+        if (c.filtered !== c.total) {
+          mainOffline += '<div class="popup-count-detail">Wszystkie worki: ' + c.total + ' (odebrane z harmonogramu wyłączone z licznika)</div>';
+        }
+        return mainOffline;
       }
       var main = '<div class="popup-count">Worki do odebrania: <strong>' + c.filtered + '</strong></div>';
       var transportDate = c.cutoffYmd
@@ -1732,7 +1792,8 @@ ${
       if (!p) return { filteredSeals: [], cutoffYmd: null, total: 0 };
       var cutoffMs = transportApiEnabled && window.__transportDatesLoaded ? getPointTransportCutoff(p) : null;
       var all = p.sealRows || [];
-      var filteredSeals = filterSealRowsByMinDate(all, cutoffMs);
+      var collectible = sealRowsForCollection(all);
+      var filteredSeals = filterSealRowsByMinDate(collectible, cutoffMs);
       var cutoffYmd = null;
       if (cutoffMs != null) {
         var d = new Date(cutoffMs);
@@ -1818,7 +1879,7 @@ ${
       window.__docCutoffMs = null;
       window.__docModalDataReady = false;
       window.__docPreviewNumer = '';
-      window.__docFilteredSeals = (p && p.sealRows) ? p.sealRows.slice() : [];
+      window.__docFilteredSeals = (p && p.sealRows) ? sealRowsForCollection(p.sealRows) : [];
       var filterInfo = document.getElementById('doc-filter-info');
       var okBtn = document.getElementById('doc-btn-ok');
       if (filterInfo) filterInfo.textContent = 'Ładowanie danych transportu…';
@@ -1830,7 +1891,7 @@ ${
       }
       if (!transportApiEnabled) {
         if (numEl) numEl.value = '';
-        updateDocFilterInfo(window.__docFilteredSeals.length, window.__docFilteredSeals.length, null);
+        updateDocFilterInfo((p && p.sealRows ? p.sealRows.length : 0), window.__docFilteredSeals.length, null);
         rebuildDocPreparedLists(window.__docFilteredSeals);
         finishLoading();
         return Promise.resolve();
@@ -1853,15 +1914,15 @@ ${
         }
         window.__docCutoffMs = cutoffMs;
         var all = p.sealRows || [];
-        window.__docFilteredSeals = filterSealRowsByMinDate(all, cutoffMs);
+        window.__docFilteredSeals = filterSealRowsByMinDate(sealRowsForCollection(all), cutoffMs);
         updateDocFilterInfo(all.length, window.__docFilteredSeals.length, cutoffYmd);
         rebuildDocPreparedLists(window.__docFilteredSeals);
       }).catch(function (err) {
         console.error(err);
         if (filterInfo) {
-          filterInfo.textContent = 'Nie udało się pobrać danych transportu — użyto wszystkich worków.';
+          filterInfo.textContent = 'Nie udało się pobrać danych transportu — użyto worków do odebrania (bez odebranych z harmonogramu).';
         }
-        window.__docFilteredSeals = (p.sealRows || []).slice();
+        window.__docFilteredSeals = sealRowsForCollection(p.sealRows || []);
         rebuildDocPreparedLists(window.__docFilteredSeals);
       }).then(function () {
         finishLoading();

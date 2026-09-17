@@ -16,17 +16,18 @@ export function manualAdminCss(): string {
   return `
     .map-manual-add-btn {
       width: 100%;
-      padding: 8px 10px;
-      font-size: 12px;
+      padding: 10px 12px;
+      font-size: 12.5px;
       font-weight: 600;
-      border-radius: 6px;
-      border: 1px dashed #6366f1;
-      background: #eef2ff;
-      color: #4338ca;
+      border-radius: 10px;
+      border: 1px solid #0f766e;
+      background: #0d9488;
+      color: #fff;
       cursor: pointer;
-      margin-top: 6px;
+      margin-top: 10px;
+      box-shadow: 0 1px 3px rgba(15, 118, 110, 0.28);
     }
-    .map-manual-add-btn:hover { background: #6366f1; border-color: #6366f1; color: #fff; }
+    .map-manual-add-btn:hover { background: #0f766e; border-color: #0f766e; color: #fff; filter: brightness(1.03); }
     .map-popraw-adres-btn {
       width: 100%;
       margin-top: 6px;

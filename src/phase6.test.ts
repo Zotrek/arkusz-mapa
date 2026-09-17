@@ -282,6 +282,41 @@ describe('phase6', () => {
       expect(mapPointMatchesWgHarmonogramuFilter(undefined, 'nie')).toBe(false);
     });
 
+    it('test_buildMapHtml_when_odebrane_z_harmonogramu_row_should_embed_flag_and_collection_filter', () => {
+      const geo: GeocodedAddress[] = [
+        {
+          address: 'Adres odebrane',
+          count: 2,
+          lat: 52.1,
+          lng: 21.0,
+          wojewodztwo: 'Mazowieckie',
+          wgHarmonogramu: 'tak',
+          rows: [
+            makeSheetRow({
+              numerPlomby: 'ODEBRANA',
+              zbiorka: 'Maszyna',
+              wgHarmonogramu: 'tak',
+              dniHarmonogramu: 'pn',
+              dataZamknieciaWorka: '07.08.2026',
+            }),
+            makeSheetRow({
+              numerPlomby: 'BIEZACA',
+              zbiorka: 'Ręczna',
+              wgHarmonogramu: 'nie',
+              dniHarmonogramu: '',
+              dataZamknieciaWorka: '10.09.2026',
+            }),
+          ],
+        },
+      ];
+      const html = buildMapHtml(geo, [], 'https://example.com/woj.json');
+      expect(html).toContain('sealRowsForCollection');
+      expect(html).toContain('"odebraneZHarmonogramu":true');
+      expect(html).toContain('"odebraneZHarmonogramu":false');
+      expect(html).toContain('ODEBRANA');
+      expect(html).toContain('BIEZACA');
+    });
+
     it('test_buildMapHtml_when_harmonogram_data_present_should_embed_filter_controls', () => {
       const geo: GeocodedAddress[] = [
         {

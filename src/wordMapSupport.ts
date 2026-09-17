@@ -332,6 +332,11 @@ export interface SealRowLite {
   numerPlomby: string;
   dataZamknieciaWorka: string;
   zbiorka: string;
+  /**
+   * Worek według reguł „odebrane z harmonogramu” — nie liczy się do „Worki do odebrania”
+   * / koloru pinezki (zostaje w „Wszystkie worki”).
+   */
+  odebraneZHarmonogramu?: boolean;
 }
 
 export function sealRowsFromSheetRows(rows: SheetRow[]): SealRowLite[] {
@@ -339,6 +344,20 @@ export function sealRowsFromSheetRows(rows: SheetRow[]): SealRowLite[] {
     numerPlomby: r.numerPlomby.trim(),
     dataZamknieciaWorka: r.dataZamknieciaWorka,
     zbiorka: r.zbiorka,
+    odebraneZHarmonogramu: false,
+  }));
+}
+
+/** Buduje sealRows z flagą „odebrane z harmonogramu” wg {@link shouldCopyToOdebraneZHarmonogramu}. */
+export function sealRowsFromSheetRowsWithOdebraneFlag(
+  rows: SheetRow[],
+  isOdebrane: (row: SheetRow) => boolean,
+): SealRowLite[] {
+  return rows.map((r) => ({
+    numerPlomby: r.numerPlomby.trim(),
+    dataZamknieciaWorka: r.dataZamknieciaWorka,
+    zbiorka: r.zbiorka,
+    odebraneZHarmonogramu: isOdebrane(r),
   }));
 }
 
