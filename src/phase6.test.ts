@@ -380,6 +380,13 @@ describe('phase6', () => {
       expect(normalizeWojewodztwoLabel('ŚLĄSKIE')).toBe('Śląskie');
     });
 
+    it('test_normalizeWojewodztwoLabel_when_missing_diacritics_should_map_to_official', () => {
+      expect(normalizeWojewodztwoLabel('Swietokrzyskie')).toBe('Świętokrzyskie');
+      expect(normalizeWojewodztwoLabel('Malopolskie')).toBe('Małopolskie');
+      expect(normalizeWojewodztwoLabel('Lodzkie')).toBe('Łódzkie');
+      expect(normalizeWojewodztwoLabel('Slaskie')).toBe('Śląskie');
+    });
+
     it('test_uniqueWojewodztwaFromMapPoints_when_duplicates_should_dedupe_and_sort_pl', () => {
       expect(
         uniqueWojewodztwaFromMapPoints([

@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { getOptionalWordMapAssetPaths, getTransportWebAppUrl } from './config.js';
 import type { GeocodedAddress } from './phase5.js';
 import type { SheetRow } from './sheets.js';
+import { POLISH_VOIVODESHIPS } from './polishVoivodeships.js';
+import { polishAsciiLower } from './polishText.js';
 import {
   buildMapPointDocPayload,
   formatRodzajZbiorkiForDoc,
@@ -553,7 +555,13 @@ export function mapPointMatchesWgHarmonogramuFilter(
   return normalizeWgHarmonogramu(wgHarmonogramu) === mode;
 }
 
-/** Etykieta województwa na mapie (pusty / placeholder → „Nieznane”; ujednolicona wielkość liter). */
+/** Kanoniczna etykieta wyświetlana (pierwsza litera wielka, reszta mała). */
+function displayWojewodztwoLabel(name: string): string {
+  const lower = name.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** Etykieta województwa na mapie (pusty / placeholder → „Nieznane”; ujednolicone litery i ogonki). */
 export function normalizeWojewodztwoLabel(raw: string | undefined): string {
   const t = String(raw ?? '').trim();
   if (t.length === 0) {
@@ -563,8 +571,14 @@ export function normalizeWojewodztwoLabel(raw: string | undefined): string {
   if (lower === 'do uzupełnienia' || lower === 'do uzupelnienia') {
     return 'Nieznane';
   }
-  // Np. Kujawsko-Pomorskie i Kujawsko-pomorskie → jedna etykieta filtra.
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+  const asciiKey = polishAsciiLower(t);
+  for (const official of POLISH_VOIVODESHIPS) {
+    if (polishAsciiLower(official) === asciiKey) {
+      // Np. Swietokrzyskie → Świętokrzyskie; Kujawsko-Pomorskie → Kujawsko-pomorskie.
+      return displayWojewodztwoLabel(official);
+    }
+  }
+  return displayWojewodztwoLabel(t);
 }
 
 /** Unikalne województwa z punktów mapy (sortowanie pl). */
@@ -1044,6 +1058,17 @@ ${
       if (!t) return 'Nieznane';
       var lower = t.toLowerCase();
       if (lower === 'do uzupełnienia' || lower === 'do uzupelnienia') return 'Nieznane';
+      function asciiKey(s) {
+        return String(s || '').toLowerCase().normalize('NFD').replace(/\\p{M}/gu, '').replace(/ł/g, 'l');
+      }
+      var key = asciiKey(t);
+      var official = ${JSON.stringify([...POLISH_VOIVODESHIPS])};
+      for (var i = 0; i < official.length; i++) {
+        if (asciiKey(official[i]) === key) {
+          var o = String(official[i]).toLowerCase();
+          return o.charAt(0).toUpperCase() + o.slice(1);
+        }
+      }
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     }
     function mapPointMatchesWojewodztwoFilterMap(woj, selected) {
