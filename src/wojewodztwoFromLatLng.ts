@@ -29,7 +29,11 @@ export interface WojewodztwoGeoJsonFeatureCollection {
 /** Czy etykieta województwa jest pusta / zastępcza. */
 export function isUnknownWojewodztwo(woj: string | undefined): boolean {
   const t = String(woj ?? '').trim();
-  return t.length === 0 || t === 'Nieznane';
+  if (t.length === 0 || t === 'Nieznane') {
+    return true;
+  }
+  const lower = t.toLowerCase();
+  return lower === 'do uzupełnienia' || lower === 'do uzupelnienia';
 }
 
 function pointInRing(lng: number, lat: number, ring: number[][]): boolean {

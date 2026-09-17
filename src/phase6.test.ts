@@ -368,7 +368,16 @@ describe('phase6', () => {
       expect(normalizeWojewodztwoLabel('')).toBe('Nieznane');
       expect(normalizeWojewodztwoLabel('  ')).toBe('Nieznane');
       expect(normalizeWojewodztwoLabel(undefined)).toBe('Nieznane');
+      expect(normalizeWojewodztwoLabel('Do uzupełnienia')).toBe('Nieznane');
       expect(normalizeWojewodztwoLabel(' Mazowieckie ')).toBe('Mazowieckie');
+    });
+
+    it('test_normalizeWojewodztwoLabel_when_mixed_case_should_unify_casing', () => {
+      expect(normalizeWojewodztwoLabel('Kujawsko-Pomorskie')).toBe('Kujawsko-pomorskie');
+      expect(normalizeWojewodztwoLabel('kujawsko-pomorskie')).toBe('Kujawsko-pomorskie');
+      expect(normalizeWojewodztwoLabel('KUJAWSKO-POMORSKIE')).toBe('Kujawsko-pomorskie');
+      expect(normalizeWojewodztwoLabel('Warmińsko-Mazurskie')).toBe('Warmińsko-mazurskie');
+      expect(normalizeWojewodztwoLabel('ŚLĄSKIE')).toBe('Śląskie');
     });
 
     it('test_uniqueWojewodztwaFromMapPoints_when_duplicates_should_dedupe_and_sort_pl', () => {
@@ -383,6 +392,16 @@ describe('phase6', () => {
       ).toEqual(['Mazowieckie', 'Nieznane', 'Śląskie', 'Wielkopolskie']);
     });
 
+    it('test_uniqueWojewodztwaFromMapPoints_when_case_variants_should_dedupe', () => {
+      expect(
+        uniqueWojewodztwaFromMapPoints([
+          { woj: 'Kujawsko-Pomorskie' },
+          { woj: 'Kujawsko-pomorskie' },
+          { woj: 'kujawsko-pomorskie' },
+        ]),
+      ).toEqual(['Kujawsko-pomorskie']);
+    });
+
     it('test_mapPointMatchesWojewodztwoFilter_when_wszystkie_should_match_any', () => {
       expect(mapPointMatchesWojewodztwoFilter('Mazowieckie', 'wszystkie')).toBe(true);
       expect(mapPointMatchesWojewodztwoFilter('', 'wszystkie')).toBe(true);
@@ -395,6 +414,11 @@ describe('phase6', () => {
       expect(mapPointMatchesWojewodztwoFilter('Wielkopolskie', 'Mazowieckie')).toBe(false);
       expect(mapPointMatchesWojewodztwoFilter('', 'Nieznane')).toBe(true);
       expect(mapPointMatchesWojewodztwoFilter(undefined, 'Nieznane')).toBe(true);
+    });
+
+    it('test_mapPointMatchesWojewodztwoFilter_when_case_differs_should_still_match', () => {
+      expect(mapPointMatchesWojewodztwoFilter('Kujawsko-Pomorskie', 'Kujawsko-pomorskie')).toBe(true);
+      expect(mapPointMatchesWojewodztwoFilter('kujawsko-pomorskie', ['Kujawsko-Pomorskie'])).toBe(true);
     });
 
     it('test_mapPointMatchesWojewodztwoFilter_when_multi_selected_should_match_any_of_them', () => {

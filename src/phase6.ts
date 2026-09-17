@@ -553,10 +553,18 @@ export function mapPointMatchesWgHarmonogramuFilter(
   return normalizeWgHarmonogramu(wgHarmonogramu) === mode;
 }
 
-/** Etykieta województwa na mapie (pusty → „Nieznane”). */
+/** Etykieta województwa na mapie (pusty / placeholder → „Nieznane”; ujednolicona wielkość liter). */
 export function normalizeWojewodztwoLabel(raw: string | undefined): string {
   const t = String(raw ?? '').trim();
-  return t.length > 0 ? t : 'Nieznane';
+  if (t.length === 0) {
+    return 'Nieznane';
+  }
+  const lower = t.toLowerCase();
+  if (lower === 'do uzupełnienia' || lower === 'do uzupelnienia') {
+    return 'Nieznane';
+  }
+  // Np. Kujawsko-Pomorskie i Kujawsko-pomorskie → jedna etykieta filtra.
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
 /** Unikalne województwa z punktów mapy (sortowanie pl). */
@@ -579,7 +587,8 @@ export function mapPointMatchesWojewodztwoFilter(
   const raw = Array.isArray(selected) ? selected : [selected];
   const selectedList = raw
     .map((s) => String(s ?? '').trim())
-    .filter((s) => s.length > 0 && s !== 'wszystkie');
+    .filter((s) => s.length > 0 && s !== 'wszystkie')
+    .map((s) => normalizeWojewodztwoLabel(s));
   if (selectedList.length === 0) {
     return true;
   }
@@ -649,7 +658,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     lng: item.lng,
     markerLat: item.lat,
     markerLng: item.lng,
-    woj: item.wojewodztwo || 'Nieznane',
+    woj: normalizeWojewodztwoLabel(item.wojewodztwo),
     confidence,
     searchLabels: uniqueSearchLabelsFromRows(item.rows),
     podmiotyHandlowe: uniquePodmiotyHandloweFromRows(item.rows),
@@ -1028,16 +1037,22 @@ ${
       var el = document.querySelector('input[name="map-harmonogram-filter"]:checked');
       return el ? String(el.value) : 'wszystkie';
     }
+    function normalizeWojewodztwoLabelMap(raw) {
+      var t = String(raw || '').trim();
+      if (!t) return 'Nieznane';
+      var lower = t.toLowerCase();
+      if (lower === 'do uzupełnienia' || lower === 'do uzupelnienia') return 'Nieznane';
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }
     function mapPointMatchesWojewodztwoFilterMap(woj, selected) {
       var list = Array.isArray(selected) ? selected : [selected];
       var selectedList = [];
       for (var i = 0; i < list.length; i++) {
         var mode = String(list[i] || '').trim();
-        if (mode && mode !== 'wszystkie') selectedList.push(mode);
+        if (mode && mode !== 'wszystkie') selectedList.push(normalizeWojewodztwoLabelMap(mode));
       }
       if (selectedList.length === 0) return true;
-      var label = String(woj || '').trim();
-      if (!label) label = 'Nieznane';
+      var label = normalizeWojewodztwoLabelMap(woj);
       return selectedList.indexOf(label) !== -1;
     }
     function getWojewodztwoFilterSelection() {

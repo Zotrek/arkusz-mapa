@@ -53,6 +53,7 @@ describe('wojewodztwoFromLatLng', () => {
     expect(isUnknownWojewodztwo('')).toBe(true);
     expect(isUnknownWojewodztwo('  ')).toBe(true);
     expect(isUnknownWojewodztwo('Nieznane')).toBe(true);
+    expect(isUnknownWojewodztwo('Do uzupełnienia')).toBe(true);
     expect(isUnknownWojewodztwo('Pomorskie')).toBe(false);
   });
 
