@@ -1251,9 +1251,10 @@ ${
       var collectible = sealRowsForCollection(p.sealRows);
       var lastInfo = transportApiEnabled && window.__transportDatesLoaded ? getPointTransportLastInfo(p) : null;
       var cutoffMs = lastInfo ? lastInfo.ms : null;
+      // Sync with resolveCollectibleSealCount (wordMapSupport): empty sealRows → total fallback
       var filtered = cutoffMs != null
         ? filterSealRowsByMinDate(collectible, cutoffMs).length
-        : collectible.length;
+        : (countSealRows(p.sealRows) === 0 ? total : collectible.length);
       var cutoffYmd = null;
       if (cutoffMs != null) {
         var d = new Date(cutoffMs);

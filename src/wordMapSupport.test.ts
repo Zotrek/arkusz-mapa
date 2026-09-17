@@ -14,6 +14,7 @@ import {
   firstSklepFromRows,
   sealRowsFromSheetRows,
   sealRowsFromSheetRowsWithOdebraneFlag,
+  resolveCollectibleSealCount,
   escapeXmlForWordText,
   formatDataZamknieciaWorkaAsMmDd,
   parseDataZamknieciaWorkaToSortMs,
@@ -252,6 +253,30 @@ describe('wordMapSupport', () => {
     ];
     const out = sealRowsFromSheetRowsWithOdebraneFlag(rows, (r) => r.zbiorka === 'Maszyna');
     expect(out.map((s) => s.odebraneZHarmonogramu)).toEqual([true, false]);
+  });
+
+  it('test_resolveCollectibleSealCount_when_empty_sealRows_should_use_fallback', () => {
+    expect(resolveCollectibleSealCount([], 5)).toBe(5);
+    expect(resolveCollectibleSealCount(undefined, 3)).toBe(3);
+  });
+
+  it('test_resolveCollectibleSealCount_when_mixed_flags_should_exclude_odebrane', () => {
+    expect(
+      resolveCollectibleSealCount(
+        [
+          { odebraneZHarmonogramu: true },
+          { odebraneZHarmonogramu: false },
+          {},
+        ],
+        99,
+      ),
+    ).toBe(2);
+  });
+
+  it('test_resolveCollectibleSealCount_when_all_odebrane_should_return_zero', () => {
+    expect(
+      resolveCollectibleSealCount([{ odebraneZHarmonogramu: true }, { odebraneZHarmonogramu: true }], 7),
+    ).toBe(0);
   });
 
   it('test_buildMapPointDocPayloadFromSealRows_should_build_lista', () => {

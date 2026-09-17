@@ -315,6 +315,8 @@ describe('phase6', () => {
       expect(html).toContain('"odebraneZHarmonogramu":false');
       expect(html).toContain('ODEBRANA');
       expect(html).toContain('BIEZACA');
+      // Fallback jak resolveCollectibleSealCount: puste sealRows → total (p.count), nie 0
+      expect(html).toContain('countSealRows(p.sealRows) === 0 ? total : collectible.length');
     });
 
     it('test_buildMapHtml_when_harmonogram_data_present_should_embed_filter_controls', () => {

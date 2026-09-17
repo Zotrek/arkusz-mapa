@@ -361,6 +361,22 @@ export function sealRowsFromSheetRowsWithOdebraneFlag(
   }));
 }
 
+/**
+ * Liczba worków do odebrania (bez cutoffu transportu).
+ * Puste `sealRows` → `fallbackWhenNoSealRows` (np. `p.count` dla legacy punktów).
+ * Logika osadzona w mapie HTML musi pozostać zsynchronizowana z tą funkcją.
+ */
+export function resolveCollectibleSealCount(
+  sealRows: Array<{ odebraneZHarmonogramu?: boolean }> | undefined,
+  fallbackWhenNoSealRows: number,
+): number {
+  const rows = sealRows ?? [];
+  if (rows.length === 0) {
+    return fallbackWhenNoSealRows;
+  }
+  return rows.filter((r) => !r.odebraneZHarmonogramu).length;
+}
+
 export function firstPodmiotHandlowyFromRows(rows: SheetRow[]): string {
   for (const r of rows) {
     const t = r.podmiotHandlowy.trim();
