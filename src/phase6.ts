@@ -2929,7 +2929,7 @@ ${
         var sMatch = mapPointMatchesSearchMap(entry.p, raw);
         if (hasSearchFilter && sMatch) matchCount++;
         setMarkerClickable(entry.marker, true);
-        entry.marker.setOpacity(hasSearchFilter && !sMatch ? 0.5 : 1);
+        entry.marker.setOpacity(hasSearchFilter && !sMatch ? 0.7 : 1);
         entry.marker.setZIndexOffset(hasSearchFilter && sMatch ? 800 : 0);
         entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
       });
