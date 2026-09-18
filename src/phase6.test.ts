@@ -13,6 +13,7 @@ import type { GeocodedAddress } from './phase5';
 import type { SheetRow } from './sheets';
 import {
   formatTimestampForFileName,
+  formatGeneratedAtLabel,
   buildMapFileName,
   defaultDateZaladunkuYmd,
   buildMapHtml,
@@ -564,12 +565,17 @@ describe('phase6', () => {
       const filename = buildMapFileName(date);
       expect(filename).toBe('mapa_2026-02-25_18-05-06.html');
     });
+
+    it('test_formatGeneratedAtLabel_when_winter_utc_should_use_europe_warsaw', () => {
+      expect(formatGeneratedAtLabel(new Date('2026-02-25T17:05:06Z'))).toBe('25.02.2026, 18:05:06');
+    });
   });
 
   describe('buildMapHtml', () => {
     it('test_buildMapHtml_when_geocoded_data_given_should_embed_leaflet_and_geojson_url', () => {
       const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
       expect(html).toContain('rel="icon" href="./favicon.svg"');
+      expect(html).not.toContain('generatedAt.addTo(map)');
       expect(html).toContain('leaflet@1.9.4');
       expect(html).toContain('leaflet.markercluster@1.5.3');
       expect(html).toContain('L.markerClusterGroup');
@@ -988,9 +994,13 @@ describe('phase6', () => {
 
       expect(mkdirFn).toHaveBeenCalledWith('/tmp/maps', { recursive: true });
       expect(writeFileFn).toHaveBeenCalledTimes(1);
-      expect(result.fileName).toMatch(/^mapa_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.html$/);
+      expect(result.fileName).toBe('mapa_2026-02-25_18-05-06.html');
       expect(result.filePath).toContain('/tmp/maps/');
-      expect(result.htmlContent).toContain('<!DOCTYPE html>');
+      expect(result.htmlContent).toContain('Wygenerowano: 25.02.2026, 18:05:06');
+      expect(result.htmlContent).toContain('map-generated-at');
+      expect(result.htmlContent.indexOf('legend.addTo(map)')).toBeLessThan(
+        result.htmlContent.indexOf('generatedAt.addTo(map)'),
+      );
     });
   });
 });

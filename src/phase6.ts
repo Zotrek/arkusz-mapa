@@ -283,6 +283,15 @@ export function buildMapFileName(date: Date): string {
   return `mapa_${formatTimestampForFileName(date)}.html`;
 }
 
+/** Etykieta na mapie i stronie Pages: `25.02.2026, 18:05:06` (Europe/Warsaw). */
+export function formatGeneratedAtLabel(date: Date): string {
+  const stamp = formatTimestampForFileName(date);
+  const [ymd, hms] = stamp.split('_');
+  const [year, month, day] = (ymd ?? '').split('-');
+  const [hour, minute, second] = (hms ?? '').split('-');
+  return `${day}.${month}.${year}, ${hour}:${minute}:${second}`;
+}
+
 /**
  * Domyślna data załadunku w oknie Word (pole type=date, YYYY-MM-DD).
  * Pon–pt 00:00–03:59 → dziś; pon–czw od 04:00 → jutro; pt od 04:00 → poniedziałek (+3);
@@ -660,6 +669,7 @@ export function buildMapHtml(
   geocodedNoPostcode: GeocodedAddress[] = [],
   wordEmbed: WordMapHtmlEmbed | null = null,
   transportWebAppUrl: string = '',
+  generatedAtLabel: string = '',
 ): string {
   const rawPoints: MapPoint[] = [
     ...geocoded.map((item) => toMapPoint(item, 'ok')),
@@ -804,6 +814,7 @@ export function buildMapHtml(
     .dm-cluster-sm .dm-cluster-inner { font-size: 13px; }
     .dm-cluster-md .dm-cluster-inner { font-size: 14px; }
     .dm-cluster-lg .dm-cluster-inner { font-size: 15px; }
+    .map-generated-at { background: #fff; padding: 6px 10px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); font-size: 12px; line-height: 1.4; color: #333; white-space: nowrap; }
     .map-legend { background: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); font-size: 12px; line-height: 1.5; }
     .map-legend h3 { margin: 0 0 6px 0; font-size: 13px; }
     .map-legend ul { margin: 0; padding: 0; list-style: none; }
@@ -2940,7 +2951,18 @@ ${
       return div;
     };
     legend.addTo(map);
-${referenceAdminEnabled ? manualAdminBrowserScript() : ''}
+${
+  generatedAtLabel
+    ? `    var generatedAt = L.control({ position: 'bottomright' });
+    generatedAt.onAdd = function() {
+      var div = L.DomUtil.create('div', 'map-generated-at');
+      div.textContent = ${JSON.stringify(`Wygenerowano: ${generatedAtLabel}`)};
+      return div;
+    };
+    generatedAt.addTo(map);
+`
+    : ''
+}${referenceAdminEnabled ? manualAdminBrowserScript() : ''}
   </script>
 </body>
 </html>`;
@@ -3010,7 +3032,8 @@ export async function executePhase6(input: ExecutePhase6Input): Promise<ExecuteP
       await writeFile(path, content, encoding);
     });
 
-  const fileName = buildMapFileName(now());
+  const generatedAt = now();
+  const fileName = buildMapFileName(generatedAt);
   const filePath = join(input.outputDir, fileName);
   const wordEmbed = await resolveWordMapHtmlEmbed(input);
   const transportWebAppUrl = input.transportWebAppUrl ?? getTransportWebAppUrl();
@@ -3022,6 +3045,7 @@ export async function executePhase6(input: ExecutePhase6Input): Promise<ExecuteP
     input.geocodedNoPostcode ?? [],
     wordEmbed,
     transportWebAppUrl,
+    formatGeneratedAtLabel(generatedAt),
   );
 
   await mkdirFn(input.outputDir, { recursive: true });

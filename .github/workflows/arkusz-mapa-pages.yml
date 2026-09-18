@@ -107,7 +107,7 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           npm run generate
 
-      - name: Strona indeksu (lista map)
+      - name: Strona indeksu i stały adres /map
         run: node scripts/build-pages-index.mjs
 
       - name: Publikacja na gałąź gh-pages
