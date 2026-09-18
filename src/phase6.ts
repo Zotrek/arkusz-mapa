@@ -941,11 +941,11 @@ export function buildMapHtml(
     }
 ${
   transportApiEnabled
-    ? `    .map-transport-loader { position: fixed; z-index: 15000; left: 50%; top: 14px; transform: translateX(-50%); pointer-events: none; }
+    ? `    .map-transport-loader { position: fixed; z-index: 25000; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
     .map-transport-loader[hidden] { display: none !important; }
-    .map-transport-loader-panel { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(255,255,255,0.96); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.18); font-size: 13px; color: #333; border: 1px solid #dee2e6; }
-    .map-transport-loader-spinner { width: 18px; height: 18px; border: 2px solid #dee2e6; border-top-color: #0d6efd; border-radius: 50%; animation: map-transport-spin 0.75s linear infinite; flex-shrink: 0; }
-    @keyframes map-transport-spin { to { transform: rotate(360deg); } }
+    .map-transport-loader-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 22px; background: rgba(255,255,255,0.96); border-radius: 16px; box-shadow: 0 8px 28px rgba(15,23,42,0.18); font-size: 13px; color: #333; border: 1px solid #dee2e6; text-align: center; }
+    .map-transport-loader-logo { width: 64px; height: 64px; flex-shrink: 0; animation: map-logo-pulse 1.2s ease-in-out infinite; }
+    @keyframes map-logo-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: 0.55; } }
 `
     : ''
 }${referenceAdminEnabled ? manualAdminCss() : ''}${docStyles}  </style>
@@ -956,8 +956,8 @@ ${
   transportApiEnabled
     ? `  <div id="map-transport-loader" class="map-transport-loader" role="status" aria-live="polite" aria-busy="true">
     <div class="map-transport-loader-panel">
-      <span class="map-transport-loader-spinner" aria-hidden="true"></span>
-      <span>Pobieranie danych transportu…</span>
+      <img class="map-transport-loader-logo" src="./favicon.svg" alt="" width="64" height="64">
+      <span id="map-transport-loader-label">Pobieranie danych transportu…</span>
     </div>
   </div>
 `
@@ -1476,11 +1476,17 @@ ${
         step();
       });
     }
-    function setTransportDatesLoading(loading) {
+    var mapLoaderDepth = 0;
+    function setTransportDatesLoading(loading, message) {
       var el = document.getElementById('map-transport-loader');
       if (!el) return;
-      el.hidden = !loading;
-      el.setAttribute('aria-busy', loading ? 'true' : 'false');
+      if (loading) mapLoaderDepth += 1;
+      else mapLoaderDepth = Math.max(0, mapLoaderDepth - 1);
+      var on = mapLoaderDepth > 0;
+      el.hidden = !on;
+      el.setAttribute('aria-busy', on ? 'true' : 'false');
+      var label = document.getElementById('map-transport-loader-label');
+      if (label && message) label.textContent = message;
     }
     function loadBulkTransportDates() {
       window.__transportDateByKey = {};
@@ -1827,6 +1833,7 @@ ${
       if (filterInfo) filterInfo.textContent = 'Przygotowywanie danych…';
       if (bulkNumerInfo) bulkNumerInfo.textContent = '';
       if (okBtn) okBtn.disabled = true;
+      setTransportDatesLoading(true, 'Ładowanie danych dokumentów…');
       renderBulkPointsList(indices);
       indices.forEach(function (idx) {
         var p = adresy[idx];
@@ -1864,6 +1871,7 @@ ${
         }
         window.__docModalDataReady = true;
         if (okBtn) okBtn.disabled = false;
+        setTransportDatesLoading(false);
       }
       if (transportApiEnabled) {
         return fetchTransportGet({ action: 'previewNumber' }).then(function (resp) {
@@ -1885,10 +1893,12 @@ ${
       var okBtn = document.getElementById('doc-btn-ok');
       if (filterInfo) filterInfo.textContent = 'Ładowanie danych transportu…';
       if (okBtn) okBtn.disabled = true;
+      setTransportDatesLoading(true, 'Ładowanie danych dokumentu…');
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
       function finishLoading() {
         window.__docModalDataReady = true;
         if (okBtn) okBtn.disabled = false;
+        setTransportDatesLoading(false);
       }
       if (!transportApiEnabled) {
         if (numEl) numEl.value = '';
@@ -2369,6 +2379,7 @@ ${
       var okBtn = document.getElementById('doc-btn-ok');
       var filterInfo = document.getElementById('doc-filter-info');
       if (okBtn) okBtn.disabled = true;
+      setTransportDatesLoading(true, 'Generowanie dokumentów…');
       ensureDocxLibrariesLoaded().then(function () {
         var generated = 0;
         var failed = 0;
@@ -2429,6 +2440,7 @@ ${
         alert('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.');
       }).then(function () {
         if (okBtn) okBtn.disabled = false;
+        setTransportDatesLoading(false);
       });
     }
     function runDocGenerate() {
@@ -2458,6 +2470,7 @@ ${
       var numEl = document.getElementById('doc-inp-numer-zlecenia');
       var okBtn = document.getElementById('doc-btn-ok');
       if (okBtn) okBtn.disabled = true;
+      setTransportDatesLoading(true, 'Generowanie dokumentu…');
       rebuildDocPreparedLists(filteredSeals);
       var preparedLists = window.__docPreparedLists;
       function finishWithNumber(numerZlecenia) {
@@ -2473,11 +2486,13 @@ ${
             alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.');
           } finally {
             if (okBtn) okBtn.disabled = false;
+            setTransportDatesLoading(false);
           }
         }).catch(function (err) {
           console.error(err);
           alert('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.');
           if (okBtn) okBtn.disabled = false;
+          setTransportDatesLoading(false);
         });
       }
       if (transportApiEnabled) {
@@ -2520,6 +2535,7 @@ ${
           if (!resp || !resp.ok) {
             alert('Nie udało się zapisać transportu w arkuszu: ' + (resp && resp.error ? resp.error : 'błąd API'));
             if (okBtn) okBtn.disabled = false;
+            setTransportDatesLoading(false);
             return;
           }
           updateTransportCutoffAfterAppend(p, dz, prOpt.label);
@@ -2533,6 +2549,7 @@ ${
           console.error(err);
           alert('Nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App (TRANSPORT_WEBAPP_URL).');
           if (okBtn) okBtn.disabled = false;
+          setTransportDatesLoading(false);
         });
         return;
       }

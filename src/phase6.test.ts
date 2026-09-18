@@ -886,7 +886,12 @@ describe('phase6', () => {
       expect(html).toContain('loadBulkTransportDates');
       expect(html).toContain('bulkLastTransportDates');
       expect(html).toContain('map-transport-loader');
+      expect(html).toContain('map-transport-loader-logo');
+      expect(html).toContain('src="./favicon.svg"');
+      expect(html).toContain('map-logo-pulse');
       expect(html).toContain('Pobieranie danych transportu');
+      expect(html).toContain('Ładowanie danych dokumentu');
+      expect(html).toContain('Generowanie dokumentu');
       expect(html).toContain('setTransportDatesLoading');
       expect(html).toContain('refreshAllMarkerDisplaysAfterTransport');
       expect(html).toContain('applyMarkerTransportIcon');

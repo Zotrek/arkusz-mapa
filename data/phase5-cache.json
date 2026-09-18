@@ -10755,10 +10755,10 @@
     },
     "39-305 SADKOWA SADKOWA 42": {
       "status": "ok",
-      "lat": 49.7463418,
-      "lng": 21.5659022,
-      "wojewodztwo": "Podkarpackie",
-      "updatedAt": "2026-07-08T10:30:57.440Z"
+      "lat": 50.39196055,
+      "lng": 21.33097546,
+      "wojewodztwo": "Swietokrzyskie",
+      "updatedAt": "2026-09-17T09:51:23.793Z"
     },
     "28-131 Solec-Zdrój Partyzantów 18": {
       "status": "ok",
@@ -12026,6 +12026,41 @@
       "lng": 18.0595901,
       "wojewodztwo": "Wielkopolskie",
       "updatedAt": "2026-09-17T06:18:07.769Z"
+    },
+    "78-100 Budzistowo Dobrawy 3": {
+      "status": "ok",
+      "lat": 54.1620848,
+      "lng": 15.5986059,
+      "wojewodztwo": "Zachodniopomorskie",
+      "updatedAt": "2026-09-18T15:37:46.135Z"
+    },
+    "05-816 Opacz Kolonia Środkowa 35D": {
+      "status": "uncertain",
+      "lat": 52.1772296,
+      "lng": 20.9060317,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-09-18T15:38:28.146Z"
+    },
+    "38-450 Dukla Kościuszki 2": {
+      "status": "ok",
+      "lat": 49.5541757,
+      "lng": 21.6837447,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-09-18T15:38:31.252Z"
+    },
+    "48-303 Nysa Niwnica 101": {
+      "status": "ok",
+      "lat": 50.45509543,
+      "lng": 17.38962611,
+      "wojewodztwo": "Opolskie",
+      "updatedAt": "2026-08-27T13:37:23.215Z"
+    },
+    "39-432 GORZYCE 3-maja 8": {
+      "status": "ok",
+      "lat": 50.6581793,
+      "lng": 21.8450274,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-09-18T15:38:35.265Z"
     }
   }
 }
