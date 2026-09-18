@@ -30,38 +30,44 @@ export function manualAdminCss(): string {
     .map-manual-add-btn:hover { background: #0f766e; border-color: #0f766e; color: #fff; filter: brightness(1.03); }
     .map-popraw-adres-btn {
       width: 100%;
-      margin-top: 6px;
-      padding: 7px 10px;
-      font-size: 12px;
-      border-radius: 6px;
-      border: 1px solid #f59e0b;
-      background: #fffbeb;
-      color: #b45309;
+      margin-top: 8px;
+      padding: 8px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border-radius: 10px;
+      border: 1px solid rgba(13, 148, 136, 0.45);
+      background: var(--map-accent-soft);
+      color: var(--map-accent-deep);
       cursor: pointer;
     }
-    .map-popraw-adres-btn:hover { background: #f59e0b; color: #fff; }
+    .map-popraw-adres-btn:hover { background: var(--map-accent); border-color: var(--map-accent-deep); color: #fff; }
     #manual-admin-modal .doc-modal-panel { padding: 20px 22px 18px; }
     .manual-admin-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
     .manual-admin-tabs button {
       flex: 1; min-width: 0; padding: 9px 8px; font-size: 12px; font-weight: 600;
-      border: 1px solid transparent; background: #f1f5f9; border-radius: 6px; cursor: pointer;
+      border: 1px solid transparent; background: rgba(148, 163, 184, 0.16); color: #475569; border-radius: 8px; cursor: pointer;
     }
-    .manual-admin-tabs button.active { background: #fff; color: #0d6efd; border-color: #dbeafe; }
+    .manual-admin-tabs button.active { background: var(--map-accent); color: #fff; border-color: var(--map-accent-deep); }
     .manual-admin-panel { display: none; }
     .manual-admin-panel.active { display: block; }
     .manual-admin-panel label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 5px; }
     .manual-admin-panel input, .manual-admin-panel textarea, .manual-admin-panel select {
-      width: 100%; padding: 9px 11px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 6px;
-      box-sizing: border-box; background: #fff;
+      width: 100%; padding: 9px 11px; font-size: 13px; border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 10px;
+      box-sizing: border-box; background: rgba(255,255,255,0.92); color: var(--map-ink); outline: none;
+    }
+    .manual-admin-panel input:focus, .manual-admin-panel textarea:focus, .manual-admin-panel select:focus {
+      border-color: var(--map-accent); box-shadow: 0 0 0 3px var(--map-accent-soft);
     }
     .manual-admin-coords-row { display: flex; gap: 10px; }
     .manual-admin-coords-row > div { flex: 1; }
-    .manual-admin-status { font-size: 12px; margin: 12px 0 0; min-height: 1.2em; color: #0d6efd; }
+    .manual-admin-status { font-size: 12px; margin: 12px 0 0; min-height: 1.2em; color: var(--map-accent-deep); }
     .manual-admin-status.is-error { color: #b02a37; }
     .manual-admin-submit {
       width: 100%; margin-top: 14px; padding: 10px 14px; font-size: 13px; font-weight: 600;
-      border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; cursor: pointer;
+      border-radius: 10px; border: 1px solid var(--map-accent-deep); background: var(--map-accent); color: #fff; cursor: pointer;
+      box-shadow: 0 1px 3px rgba(15, 118, 110, 0.28);
     }
+    .manual-admin-submit:hover { background: var(--map-accent-deep); }
     .manual-admin-submit:disabled { opacity: 0.75; cursor: wait; }
     .manual-admin-hint { font-size: 11px; color: #64748b; margin: 8px 0 0; line-height: 1.4; }
   `;
