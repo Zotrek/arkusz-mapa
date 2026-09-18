@@ -998,8 +998,8 @@ describe('phase6', () => {
       expect(result.filePath).toContain('/tmp/maps/');
       expect(result.htmlContent).toContain('Wygenerowano: 25.02.2026, 18:05:06');
       expect(result.htmlContent).toContain('map-generated-at');
-      expect(result.htmlContent.indexOf('legend.addTo(map)')).toBeLessThan(
-        result.htmlContent.indexOf('generatedAt.addTo(map)'),
+      expect(result.htmlContent.indexOf('generatedAt.addTo(map)')).toBeLessThan(
+        result.htmlContent.indexOf('legend.addTo(map)'),
       );
     });
   });

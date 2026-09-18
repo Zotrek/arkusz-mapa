@@ -744,7 +744,8 @@ export function buildMapHtml(
     .btn-gen-doc:disabled:hover { filter: none; background: #94a3b8; }
     .doc-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35); z-index: 20000; align-items: center; justify-content: center; }
     .doc-modal-panel { background: rgba(255,255,255,0.96); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding: 20px 22px; border-radius: 14px; max-width: 420px; width: 90%; border: 1px solid rgba(255,255,255,0.7); box-shadow: var(--map-shadow); color: var(--map-ink); font-family: system-ui, "Segoe UI", sans-serif; }
-    .doc-modal-panel h3 { margin: 0 0 14px 0; font-size: 16px; font-weight: 700; color: var(--map-ink); }
+    .doc-modal-panel h3 { margin: 0 0 6px 0; font-size: 15px; font-weight: 700; color: var(--map-ink); }
+    .doc-modal-hint { margin: 0 0 14px; font-size: 12.5px; line-height: 1.45; font-weight: 500; color: var(--map-muted); }
     .doc-modal-panel label { display: block; font-size: 12.5px; font-weight: 600; margin: 10px 0 4px; color: var(--map-ink); }
     .doc-field-hint { font-weight: normal; color: var(--map-muted); font-size: 12px; }
     .doc-checkbox-row { display: flex !important; align-items: center; gap: 8px; margin: 12px 0 4px !important; cursor: pointer; user-select: none; }
@@ -870,7 +871,13 @@ export function buildMapHtml(
       font-family: system-ui, "Segoe UI", sans-serif;
       color: var(--map-ink);
     }
-    .map-search-label { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; margin-bottom: 7px; color: var(--map-ink); }
+    .map-search-label,
+    .map-zbiorka-filter-title,
+    .map-harmonogram-filter-title,
+    .map-wojewodztwo-filter-title {
+      display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; margin-bottom: 8px; color: var(--map-muted);
+    }
     .map-search-input-row { display: flex; align-items: center; gap: 8px; }
     .map-search-input {
       flex: 1; min-width: 0; padding: 9px 11px; font-size: 13px; color: var(--map-ink);
@@ -897,12 +904,6 @@ export function buildMapHtml(
     .map-harmonogram-filter,
     .map-wojewodztwo-filter,
     .map-cluster-filter { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--map-line); }
-    .map-zbiorka-filter-title,
-    .map-harmonogram-filter-title,
-    .map-wojewodztwo-filter-title {
-      display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
-      text-transform: uppercase; margin-bottom: 8px; color: var(--map-muted);
-    }
     .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 2px; }
     .map-zbiorka-filter-options label {
       display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500;
@@ -2956,7 +2957,18 @@ ${
 
     applyAddressSearch();
 
-    var legend = L.control({ position: 'bottomright' });
+${
+  generatedAtLabel
+    ? `    var generatedAt = L.control({ position: 'bottomright' });
+    generatedAt.onAdd = function() {
+      var div = L.DomUtil.create('div', 'map-generated-at');
+      div.textContent = ${JSON.stringify(`Wygenerowano: ${generatedAtLabel}`)};
+      return div;
+    };
+    generatedAt.addTo(map);
+`
+    : ''
+}    var legend = L.control({ position: 'bottomright' });
     legend.onAdd = function() {
       var div = L.DomUtil.create('div', 'map-legend');
       var pinLight = palettePin[0], pinMed = palettePin[1], pinFull = palettePin[2];
@@ -2979,18 +2991,7 @@ ${
       return div;
     };
     legend.addTo(map);
-${
-  generatedAtLabel
-    ? `    var generatedAt = L.control({ position: 'bottomright' });
-    generatedAt.onAdd = function() {
-      var div = L.DomUtil.create('div', 'map-generated-at');
-      div.textContent = ${JSON.stringify(`Wygenerowano: ${generatedAtLabel}`)};
-      return div;
-    };
-    generatedAt.addTo(map);
-`
-    : ''
-}${referenceAdminEnabled ? manualAdminBrowserScript() : ''}
+${referenceAdminEnabled ? manualAdminBrowserScript() : ''}
   </script>
 </body>
 </html>`;
