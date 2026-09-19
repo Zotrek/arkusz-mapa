@@ -11,12 +11,19 @@
  * GET ?action=routeNameProposal  → { ok, names }  (kolumna 12, zajęte nazwy; propozycję liczy strona)
  * GET ?action=routeRateByName&name=…  → { ok, stawka }  (stawka z nierozliczonego wiersza, pusta gdy nazwy nie było)
  * GET ?action=listContractors  → { ok, data: [ { nazwa, dane } ] }  (odczyt, bez zapisu)
+ * GET ?action=listStoreAddresses → { ok, data: [ adres, … ] }
+ *   Unikalne teksty kolumny 2 (Adres sklepu) rejestru. Nie kolumna Sklep, nie pinezki. Bez zapisu.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
  *   dataOd opcjonalna. To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
- * POST { action: patchBags | patchRouteRate | detachRoute | attachRoute | resolveRateTie }
+ * POST { action: patchBags | patchRouteRate | detachRoute | attachRoute | resolveRateTie | approve }
  *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
  *   Rejestr: sheetRow + transportNumber. Odpada, gdy w tym wierszu kolumna 1 jest inna.
- *   Kolumn 16 i 17 te akcje nie ruszają. resolveRateTie pisze tylko w Bazie stawek.
+ *   Kolumn 16 i 17 nie ruszają patchBags, patchRouteRate, detachRoute, attachRoute.
+ *   resolveRateTie pisze tylko w Bazie stawek.
+ *   approve — jedyny zapis kolumn 14–17. Bez numeru faktury albo bez zaznaczenia odmawia całości.
+ *   Remis, zła para i wiersz już `tak` pomija, resztę zaznaczenia zapisuje. Koszt bierze z body, nie z bazy.
+ *   Sklep z „nie odbył się” dostaje samo `nie` w kolumnie 18. Wiersza spoza zaznaczenia nie rusza.
+ *   Na żywy arkusz approve wchodzi w W1, nie w M6. Nagłówków rejestru nie wpisuje.
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
  *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 12–13). Bez klucza `trasa` te kolumny zostają puste.
@@ -138,6 +145,9 @@ function doGet(e) {
     }
     if (action === 'listContractors') {
       return jsonResponse({ ok: true, data: listContractors_() });
+    }
+    if (action === 'listStoreAddresses') {
+      return jsonResponse({ ok: true, data: listStoreAddresses_() });
     }
     if (action === 'settlementSearch') {
       return jsonResponse(settlementSearch_(e.parameter));
@@ -1456,6 +1466,43 @@ function listContractors_() {
 }
 
 /**
+ * Adresy do okna stawek: kolumna Adres sklepu rejestru, nie Sklep i nie pinezki.
+ * Nic nie zapisuje i zakładki nie zakłada.
+ */
+function listStoreAddresses_() {
+  var sheet = getDataSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return [];
+  }
+  var values = sheet.getRange(2, COL.adres, lastRow - 1, 1).getValues();
+  var cells = [];
+  var i;
+  for (i = 0; i < values.length; i++) {
+    cells.push(values[i][0]);
+  }
+  return uniqueStoreAddresses_(cells);
+}
+
+function uniqueStoreAddresses_(cells) {
+  var seen = {};
+  var out = [];
+  var i;
+  for (i = 0; i < cells.length; i++) {
+    var value = cells[i] == null ? '' : String(cells[i]).trim();
+    if (!value || seen[value]) {
+      continue;
+    }
+    seen[value] = true;
+    out.push(value);
+  }
+  out.sort(function (a, b) {
+    return a.localeCompare(b, 'pl');
+  });
+  return out;
+}
+
+/**
  * Odczyt zestawienia. Nie bierze locka i nic nie zapisuje.
  * Brak zakładki Baza stawek to pusta lista stawek, nie nowa zakładka.
  */
@@ -1789,7 +1836,8 @@ function isSettlementWriteAction_(action) {
     action === 'patchRouteRate' ||
     action === 'detachRoute' ||
     action === 'attachRoute' ||
-    action === 'resolveRateTie'
+    action === 'resolveRateTie' ||
+    action === 'approve'
   );
 }
 
@@ -1959,6 +2007,214 @@ function resolveRateTie_(body) {
   return { ok: true };
 }
 
+function approveSelection_(body) {
+  var rows = body && body.wiersze;
+  if (!rows || typeof rows === 'string' || typeof rows.length !== 'number' || rows.length < 1) {
+    return null;
+  }
+  return rows;
+}
+
+function approveDidNotHappen_(value) {
+  if (value === true) {
+    return true;
+  }
+  return settlementFlag_(value) === 'nie';
+}
+
+/** Grosze, liczba całkowita >= 0. Złote z ekranu tu nie wchodzą — silnik liczy w groszach. */
+function approveCostGrosze_(value) {
+  var n = value;
+  if (typeof n === 'string') {
+    var s = settlementText_(n);
+    if (!/^\d+$/.test(s)) {
+      return null;
+    }
+    n = Number(s);
+  }
+  if (typeof n !== 'number' || !isFinite(n) || Math.floor(n) !== n || n < 0) {
+    return null;
+  }
+  return n;
+}
+
+function approveZlotyFromGrosze_(grosze) {
+  var whole = Math.floor(grosze / 100);
+  var frac = grosze % 100;
+  var text = String(whole) + '.' + (frac < 10 ? '0' : '') + String(frac);
+  return Number(text);
+}
+
+function approveRoundInteger_(numerator, divisor) {
+  var quotient = Math.floor(numerator / divisor);
+  var remainder = numerator % divisor;
+  return remainder * 2 >= divisor ? quotient + 1 : quotient;
+}
+
+function approveRoundReal_(value) {
+  var floored = Math.floor(value + 1e-10);
+  var fraction = value - floored;
+  return fraction >= 0.5 - 1e-10 ? floored + 1 : floored;
+}
+
+/** Koszt / ilość worków. Pusta ilość albo 0 dzieli przez 1. To nie jest drugie liczenie kosztu. */
+function approvePerBagGrosze_(costGrosze, bagCount) {
+  var divisor = bagCount != null && bagCount > 0 ? bagCount : 1;
+  if (Math.floor(divisor) === divisor) {
+    return approveRoundInteger_(costGrosze, divisor);
+  }
+  return approveRoundReal_(costGrosze / divisor);
+}
+
+function approveCompareFrom_(a, b) {
+  if (a === b) {
+    return 0;
+  }
+  if (!a) {
+    return -1;
+  }
+  if (!b) {
+    return 1;
+  }
+  return settlementCompareDate_(a, b);
+}
+
+function approveRateApplies_(validFrom, pickupDate) {
+  if (!validFrom) {
+    return true;
+  }
+  if (validFrom === '\u0000') {
+    return false;
+  }
+  return approveCompareFrom_(validFrom, pickupDate) <= 0;
+}
+
+function approveHasRateTie_(rates, shop, contractor, pickupDate) {
+  var matching = [];
+  var i;
+  for (i = 0; i < rates.length; i++) {
+    var rate = rates[i];
+    if (rate.shop !== shop || rate.contractor !== contractor) {
+      continue;
+    }
+    if (!approveRateApplies_(rate.validFrom, pickupDate)) {
+      continue;
+    }
+    matching.push(rate.validFrom);
+  }
+  if (matching.length < 2) {
+    return false;
+  }
+  var best = matching[0];
+  for (i = 1; i < matching.length; i++) {
+    if (approveCompareFrom_(matching[i], best) > 0) {
+      best = matching[i];
+    }
+  }
+  var count = 0;
+  for (i = 0; i < matching.length; i++) {
+    if (matching[i] === best) {
+      count += 1;
+    }
+  }
+  return count > 1;
+}
+
+function approveIdentity_(item) {
+  var row = item && item.sheetRow != null ? Number(item.sheetRow) : null;
+  return {
+    sheetRow: row,
+    transportNumber:
+      item && item.transportNumber != null ? settlementTransportNumber_(item.transportNumber) : '',
+  };
+}
+
+function approveSkip_(item, reason) {
+  var id = approveIdentity_(item);
+  id.reason = reason;
+  return id;
+}
+
+function approveSaved_(sheet, row) {
+  return {
+    sheetRow: row,
+    transportNumber: settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue()),
+  };
+}
+
+function approveRateRows_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
+  if (!sheet) {
+    return [];
+  }
+  return listRateRows_(sheet);
+}
+
+/**
+ * Jedyny zapis kolumn 14–17. Koszt jest już policzony (`koszt` w groszach).
+ * Opcja samych worków i kwoty podjazdu oraz worka z zestawienia jadą w body,
+ * bo arkusz ich nie pamięta. Ten skrypt ich nie czyta i nie liczy kosztu z bazy drugi raz.
+ * Nagłówków rejestru nie wpisuje. Na żywy arkusz wchodzi w W1, nie w M6.
+ */
+function approve_(body) {
+  var invoice = cellStr_(body && body.numerFaktury);
+  if (!invoice) {
+    return { ok: false, error: 'invoice' };
+  }
+  var rows = approveSelection_(body);
+  if (!rows) {
+    return { ok: false, error: 'selection' };
+  }
+  var sheet = getDataSheet_();
+  var rates = approveRateRows_();
+  var saved = [];
+  var skipped = [];
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    var item = rows[i];
+    var target = registerWriteTarget_(sheet, item);
+    if (target.error) {
+      skipped.push(approveSkip_(item, target.error));
+      continue;
+    }
+    var markedNie = approveDidNotHappen_(item && item.nieOdbył);
+    var alreadyNie =
+      settlementFlag_(sheet.getRange(target.row, COL.transportOdbył).getValue()) === 'nie';
+    if (alreadyNie && !markedNie) {
+      skipped.push(approveSkip_(item, 'nie'));
+      continue;
+    }
+    var pickupDate = settlementDateText_(sheet.getRange(target.row, COL.dataOdbioru).getValue());
+    if (!pickupDate) {
+      skipped.push(approveSkip_(item, 'date'));
+      continue;
+    }
+    var shop = cellStr_(sheet.getRange(target.row, COL.adres).getValue());
+    var contractor = cellStr_(sheet.getRange(target.row, COL.ktoOdbiera).getValue());
+    if (approveHasRateTie_(rates, shop, contractor, pickupDate)) {
+      skipped.push(approveSkip_(item, 'tie'));
+      continue;
+    }
+    if (markedNie) {
+      sheet.getRange(target.row, COL.transportOdbył).setValue('nie');
+      saved.push(approveSaved_(sheet, target.row));
+      continue;
+    }
+    var cost = approveCostGrosze_(item && item.koszt);
+    if (cost == null) {
+      skipped.push(approveSkip_(item, 'cost'));
+      continue;
+    }
+    var bags = settlementBagCount_(sheet.getRange(target.row, COL.iloscWorkow).getValue());
+    var perBag = approvePerBagGrosze_(cost, bags);
+    sheet.getRange(target.row, COL.rozliczony, 1, 4).setValues([
+      ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(perBag)],
+    ]);
+    saved.push(approveSaved_(sheet, target.row));
+  }
+  return { ok: true, zapisane: saved, pominiete: skipped };
+}
+
 function runSettlementWrite_(action, body) {
   if (action === 'patchBags') {
     return patchBags_(body);
@@ -1974,6 +2230,9 @@ function runSettlementWrite_(action, body) {
   }
   if (action === 'resolveRateTie') {
     return resolveRateTie_(body);
+  }
+  if (action === 'approve') {
+    return approve_(body);
   }
   return { ok: false, error: 'unknown action' };
 }
