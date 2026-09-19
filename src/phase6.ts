@@ -29,6 +29,8 @@ import {
   manualAdminCss,
   manualAdminHtml,
 } from './buildMapManualAdmin.js';
+import { routeNameBrowserScript } from './routeName.js';
+import { routeProtocolBrowserScript } from './routeProtocol.js';
 import { shouldCopyToOdebraneZHarmonogramu } from './harmonogramDays.js';
 import {
   classifyMapPointZbiorka,
@@ -721,6 +723,16 @@ export function buildMapHtml(
       <input type="text" id="doc-inp-komentarz-1" maxlength="500" placeholder="Opcjonalnie — trafia do rejestru transportów" autocomplete="off" spellcheck="true" />
       <label for="doc-inp-komentarz-2">Komentarz 2 <span class="doc-field-hint">(tylko arkusz)</span></label>
       <input type="text" id="doc-inp-komentarz-2" maxlength="500" placeholder="Opcjonalnie — trafia do rejestru transportów" autocomplete="off" spellcheck="true" />
+      <label class="doc-checkbox-row" for="doc-chk-odbior-z-trasy">
+        <input type="checkbox" id="doc-chk-odbior-z-trasy" />
+        Odbiór z trasy
+      </label>
+      <div id="doc-route-fields" hidden>
+        <label for="doc-inp-trasa">Nazwa trasy</label>
+        <input type="text" id="doc-inp-trasa" maxlength="120" autocomplete="off" spellcheck="false" />
+        <label for="doc-inp-stawka-trasy">Stawka za trasę</label>
+        <input type="text" id="doc-inp-stawka-trasy" maxlength="32" inputmode="decimal" autocomplete="off" spellcheck="false" />
+      </div>
       <label class="doc-checkbox-row" for="doc-chk-bez-listy-plomb">
         <input type="checkbox" id="doc-chk-bez-listy-plomb" />
         Bez listy plomb <span class="doc-field-hint">(10 wierszy kropek do wpisania)</span>
@@ -743,13 +755,14 @@ export function buildMapHtml(
     .btn-gen-doc:disabled { opacity: 0.45; cursor: not-allowed; filter: none; background: #94a3b8; border-color: #94a3b8; box-shadow: none; }
     .btn-gen-doc:disabled:hover { filter: none; background: #94a3b8; }
     .doc-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35); z-index: 20000; align-items: center; justify-content: center; }
-    .doc-modal-panel { background: rgba(255,255,255,0.96); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding: 20px 22px; border-radius: 14px; max-width: 420px; width: 90%; border: 1px solid rgba(255,255,255,0.7); box-shadow: var(--map-shadow); color: var(--map-ink); font-family: system-ui, "Segoe UI", sans-serif; }
+    .doc-modal-panel { background: rgba(255,255,255,0.96); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding: 20px 22px; border-radius: 14px; max-width: 420px; width: 90%; max-height: calc(100vh - 32px); overflow-y: auto; border: 1px solid rgba(255,255,255,0.7); box-shadow: var(--map-shadow); color: var(--map-ink); font-family: system-ui, "Segoe UI", sans-serif; }
     .doc-modal-panel h3 { margin: 0 0 6px 0; font-size: 15px; font-weight: 700; color: var(--map-ink); }
     .doc-modal-hint { margin: 0 0 14px; font-size: 12.5px; line-height: 1.45; font-weight: 500; color: var(--map-muted); }
     .doc-modal-panel label { display: block; font-size: 12.5px; font-weight: 600; margin: 10px 0 4px; color: var(--map-ink); }
     .doc-field-hint { font-weight: normal; color: var(--map-muted); font-size: 12px; }
     .doc-checkbox-row { display: flex !important; align-items: center; gap: 8px; margin: 12px 0 4px !important; cursor: pointer; user-select: none; }
     .doc-checkbox-row input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
+    #doc-route-fields[hidden] { display: none !important; }
     .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"], .doc-modal-panel .doc-combobox-input, .doc-modal-panel select, .doc-modal-panel textarea { width: 100%; padding: 9px 11px; font-size: 13px; color: var(--map-ink); border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.55); background: rgba(255,255,255,0.92); box-sizing: border-box; outline: none; }
     .doc-modal-panel input:focus, .doc-modal-panel select:focus, .doc-modal-panel textarea:focus, .doc-modal-panel .doc-combobox-input:focus { border-color: var(--map-accent); box-shadow: 0 0 0 3px var(--map-accent-soft); }
     .doc-combobox-wrap { position: relative; }
@@ -1013,6 +1026,7 @@ ${
     const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
+${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n" : ''}
 
     const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1998,6 +2012,7 @@ ${
       hiddenEl.value = String(idx);
       if (storageKey) saveDocComboboxLastLabel(storageKey, opt.label);
       hideDocComboboxList(listEl, inputEl);
+      if (hiddenEl.id === 'doc-val-przewoznik') refreshRouteNameField();
     }
     function renderDocComboboxList(listEl, inputEl, hiddenEl, query, storageKey) {
       if (!listEl || !inputEl || !hiddenEl) return;
@@ -2174,6 +2189,7 @@ ${
       window.__currentDocPointIdx = pointIdx;
       window.__bulkDocPointIdxs = [];
       setDocModalMode('single');
+      resetRouteFormForOpen();
       var m = document.getElementById('doc-modal');
       initDocComboboxes();
       restoreDocComboboxFromSavedLabel('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list', DOC_LS_PRZEWOZNIK);
@@ -2202,6 +2218,7 @@ ${
       window.__currentDocPointIdx = null;
       window.__bulkDocPointIdxs = indices.slice();
       setDocModalMode('bulk');
+      resetRouteFormForOpen();
       var m = document.getElementById('doc-modal');
       initDocComboboxes();
       restoreDocComboboxFromSavedLabel('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list', DOC_LS_PRZEWOZNIK);
@@ -2330,6 +2347,146 @@ ${
       if (!v) return false;
       return v !== String(previewNumer || '');
     }
+    function isRouteChecked() {
+      var el = document.getElementById('doc-chk-odbior-z-trasy');
+      return !!(el && el.checked);
+    }
+    function setRouteFieldsVisible(on) {
+      var wrap = document.getElementById('doc-route-fields');
+      if (!wrap) return;
+      if (on) wrap.removeAttribute('hidden');
+      else wrap.setAttribute('hidden', '');
+    }
+    function readRouteNameInput() {
+      var nameEl = document.getElementById('doc-inp-trasa');
+      return nameEl ? String(nameEl.value) : '';
+    }
+    function readRouteRateInput() {
+      var rateEl = document.getElementById('doc-inp-stawka-trasy');
+      return rateEl ? String(rateEl.value) : '';
+    }
+    function contractorShortNameForRoute() {
+      var prVal = document.getElementById('doc-val-przewoznik');
+      var idx = prVal ? parseInt(prVal.value, 10) : NaN;
+      var opt = PODWYKOLISTA[idx];
+      return opt && opt.label ? String(opt.label) : '';
+    }
+    function pickupDateForRoute() {
+      var dateEl = document.getElementById('doc-inp-data-zaladunku');
+      return dateEl ? String(dateEl.value || '').trim() : '';
+    }
+    function resetRouteFormForOpen() {
+      routeNameTouched = false;
+      routeRateTouched = false;
+      routeRateRequest += 1;
+      if (routeRateTimer) {
+        window.clearTimeout(routeRateTimer);
+        routeRateTimer = 0;
+      }
+      var chk = document.getElementById('doc-chk-odbior-z-trasy');
+      if (chk) chk.checked = false;
+      var nameEl = document.getElementById('doc-inp-trasa');
+      var rateEl = document.getElementById('doc-inp-stawka-trasy');
+      if (nameEl) nameEl.value = '';
+      if (rateEl) rateEl.value = '';
+      setRouteFieldsVisible(false);
+    }
+    function lookupRouteRate(name) {
+      if (typeof routeRateTimer === 'undefined') return;
+      if (routeRateTimer) window.clearTimeout(routeRateTimer);
+      routeRateTimer = window.setTimeout(function () {
+        routeRateTimer = 0;
+        lookupRouteRateNow(name);
+      }, 300);
+    }
+    function lookupRouteRateNow(name) {
+      var rateEl = document.getElementById('doc-inp-stawka-trasy');
+      if (!rateEl || typeof routeRateFromLookup !== 'function') return;
+      var trimmed = String(name || '').trim();
+      var nameEl = document.getElementById('doc-inp-trasa');
+      if (nameEl && String(nameEl.value).trim() !== trimmed) return;
+      if (!trimmed || !transportApiEnabled) {
+        if (!routeRateTouched) rateEl.value = '';
+        return;
+      }
+      if (!routeRateTouched) rateEl.value = '';
+      routeRateRequest += 1;
+      var ticket = routeRateRequest;
+      fetchTransportGet({ action: 'routeRateByName', name: trimmed }).then(function (resp) {
+        if (ticket !== routeRateRequest) return;
+        if (routeRateTouched) return;
+        var current = document.getElementById('doc-inp-trasa');
+        if (!current || String(current.value).trim() !== trimmed) return;
+        rateEl.value = routeRateFromLookup(resp && resp.stawka);
+      }).catch(function () {});
+    }
+    function applyShownRouteName(shown) {
+      var nameEl = document.getElementById('doc-inp-trasa');
+      if (!nameEl || routeNameTouched) return;
+      var changed = nameEl.value !== shown;
+      if (changed) {
+        routeRateTouched = false;
+        nameEl.value = shown;
+      }
+      if (changed || !readRouteRateInput()) lookupRouteRate(shown);
+    }
+    function refreshRouteNameField() {
+      if (!isRouteChecked() || typeof routeNameToShow !== 'function' || typeof lastRouteName === 'undefined') return;
+      if (routeNameTouched) {
+        lookupRouteRate(readRouteNameInput());
+        return;
+      }
+      if (String(lastRouteName || '').trim()) {
+        applyShownRouteName(routeNameToShow({
+          sessionLastName: lastRouteName,
+          proposal: '',
+          currentInput: readRouteNameInput(),
+          inputTouched: false
+        }));
+        return;
+      }
+      var contractor = contractorShortNameForRoute();
+      var date = pickupDateForRoute();
+      function propose(names) {
+        if (!isRouteChecked() || routeNameTouched || String(lastRouteName || '').trim()) return;
+        var proposal = proposeRouteName(names || [], contractor, date);
+        applyShownRouteName(routeNameToShow({
+          sessionLastName: '',
+          proposal: proposal,
+          currentInput: readRouteNameInput(),
+          inputTouched: false
+        }));
+      }
+      if (!transportApiEnabled) {
+        propose([]);
+        return;
+      }
+      fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
+        propose(resp && resp.names ? resp.names : []);
+      }).catch(function () { propose([]); });
+    }
+    function onRouteCheckboxChange() {
+      setRouteFieldsVisible(isRouteChecked());
+      if (!isRouteChecked()) return;
+      refreshRouteNameField();
+    }
+    function onRouteNameInput() {
+      routeNameTouched = true;
+      routeRateTouched = false;
+      lookupRouteRate(readRouteNameInput());
+    }
+    function onRouteRateInput() {
+      routeRateTouched = true;
+    }
+    function rememberRouteAfterSuccessfulSave(routeFields) {
+      if (!routeFields || typeof routeNameRememberedAfterSave !== 'function' || typeof lastRouteName === 'undefined') return;
+      var remembered = routeNameRememberedAfterSave(routeFields.trasa);
+      if (remembered) lastRouteName = remembered;
+    }
+    function routeFieldsForPayload() {
+      if (typeof routeBodyFields !== 'function') return null;
+      return routeBodyFields(isRouteChecked(), readRouteNameInput(), readRouteRateInput());
+    }
     function parseDocFormValues() {
       var prInput = document.getElementById('doc-sel-przewoznik');
       var mdInput = document.getElementById('doc-sel-miejsce');
@@ -2380,7 +2537,8 @@ ${
         dz: dd + '.' + mm + '.' + yyyy,
         dzPlik: dd + '.' + mm + '.' + rr,
         komentarz1: kom1El ? String(kom1El.value).trim() : '',
-        komentarz2: kom2El ? String(kom2El.value).trim() : ''
+        komentarz2: kom2El ? String(kom2El.value).trim() : '',
+        routeFields: routeFieldsForPayload()
       };
     }
     function updateTransportCutoffAfterAppend(p, dz, ktoOdbiera) {
@@ -2445,10 +2603,12 @@ ${
               komentarz1: form.komentarz1,
               komentarz2: form.komentarz2
             };
+            assignRouteBody(transportPayload, form.routeFields);
             return appendTransportRow(transportPayload).then(function (resp) {
               if (!resp || !resp.ok) {
                 throw new Error(resp && resp.error ? resp.error : 'błąd API');
               }
+              rememberRouteAfterSuccessfulSave(form.routeFields);
               var numerZlecenia = String(resp.numer || '');
               var preparedLists = buildDocListsFromSealRows(job.filteredSeals);
               renderDocxAndDownload(p, form.pr, form.md, form.prOpt, form.dz, form.dzPlik, numerZlecenia, job.filteredSeals, preparedLists, { closeModal: false });
@@ -2552,6 +2712,7 @@ ${
           komentarz1: form.komentarz1,
           komentarz2: form.komentarz2
         };
+        assignRouteBody(transportPayload, form.routeFields);
         if (manualNumer) {
           finishWithNumber(numerWpisany);
           appendTransportRow(transportPayload).then(function (resp) {
@@ -2559,6 +2720,7 @@ ${
               alert('Dokument pobrany, ale zapis w arkuszu nie powiódł się: ' + (resp && resp.error ? resp.error : 'błąd API'));
               return;
             }
+            rememberRouteAfterSuccessfulSave(form.routeFields);
             updateTransportCutoffAfterAppend(p, dz, prOpt.label);
             if (typeof markerEntries !== 'undefined') {
               markerEntries.forEach(function (entry) {
@@ -2578,6 +2740,7 @@ ${
             setTransportDatesLoading(false);
             return;
           }
+          rememberRouteAfterSuccessfulSave(form.routeFields);
           updateTransportCutoffAfterAppend(p, dz, prOpt.label);
           if (typeof markerEntries !== 'undefined') {
             markerEntries.forEach(function (entry) {
@@ -2605,6 +2768,14 @@ ${
       if (bezListyChk) {
         bezListyChk.onchange = function () { refreshAllDocPreparedLists(); };
       }
+      var routeChk = document.getElementById('doc-chk-odbior-z-trasy');
+      if (routeChk) routeChk.onchange = onRouteCheckboxChange;
+      var routeNameInput = document.getElementById('doc-inp-trasa');
+      if (routeNameInput) routeNameInput.addEventListener('input', onRouteNameInput);
+      var routeRateInput = document.getElementById('doc-inp-stawka-trasy');
+      if (routeRateInput) routeRateInput.addEventListener('input', onRouteRateInput);
+      var routeDateInput = document.getElementById('doc-inp-data-zaladunku');
+      if (routeDateInput) routeDateInput.addEventListener('change', refreshRouteNameField);
       document.getElementById('doc-modal').onclick = function(ev) {
         if (ev.target.id === 'doc-modal') closeDocModal();
       };

@@ -1,0 +1,78 @@
+/**
+ * Propozycja nazwy trasy: `nazwaPodwykonawcy-dd.mm.rr-nn`.
+ * Jedna funkcja. HTML dostaje jej źródło przez `routeNameBrowserScript`, bez drugiej kopii reguł.
+ * Pamięć sesji nie jest tutaj — żyje w otwartej stronie.
+ */
+
+/**
+ * Zajęte nazwy z kolumny Trasa, krótka nazwa podwykonawcy i data odbioru.
+ * Data protokołu `dd.mm.yyyy` albo `yyyy-mm-dd` wchodzi do nazwy jako `dd.mm.rr`.
+ * Najmniejszy wolny numer od 01 do 99. Brak wolnego, pusta nazwa albo zła data: pusty string.
+ */
+export function proposeRouteName(
+  occupiedNames: readonly string[],
+  contractorShortName: string,
+  pickupDate: string,
+): string {
+  if (!Array.isArray(occupiedNames)) {
+    return '';
+  }
+
+  const contractor = String(contractorShortName ?? '').trim();
+  if (contractor.length === 0) {
+    return '';
+  }
+
+  const rawDate = String(pickupDate ?? '').trim();
+  let day = 0;
+  let month = 0;
+  let year = 0;
+  const dmy = /^(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})$/.exec(rawDate);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDate);
+  if (dmy) {
+    day = Number(dmy[1]);
+    month = Number(dmy[2]);
+    const yearText = dmy[3];
+    year = yearText.length === 2 ? 2000 + Number(yearText) : Number(yearText);
+  } else if (iso) {
+    year = Number(iso[1]);
+    month = Number(iso[2]);
+    day = Number(iso[3]);
+  } else {
+    return '';
+  }
+
+  const checked = new Date(Date.UTC(year, month - 1, day));
+  if (
+    checked.getUTCFullYear() !== year ||
+    checked.getUTCMonth() !== month - 1 ||
+    checked.getUTCDate() !== day
+  ) {
+    return '';
+  }
+
+  const stamp =
+    String(day).padStart(2, '0') +
+    '.' +
+    String(month).padStart(2, '0') +
+    '.' +
+    String(year).slice(-2);
+  const occupied = new Set<string>();
+  for (const raw of occupiedNames) {
+    occupied.add(String(raw ?? '').trim());
+  }
+
+  const prefix = contractor + '-' + stamp + '-';
+  for (let n = 1; n <= 99; n += 1) {
+    const candidate = prefix + String(n).padStart(2, '0');
+    if (!occupied.has(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
+/** Ten sam kod co `proposeRouteName`, wstrzykiwany do HTML. Nie duplikować reguł obok. */
+export function routeNameBrowserScript(): string {
+  return '\n' + proposeRouteName.toString() + '\n';
+}

@@ -8,13 +8,27 @@
  * GET ?action=previewNumber
  * GET ?action=lastTransportDate&podmiot=…&adres=…  (data + kto odbiera)
  * GET ?action=listReferenceData  → { ok, data: { podwykoLista, poprawAdres } }
+ * GET ?action=routeNameProposal  → { ok, names }  (kolumna 12, zajęte nazwy; propozycję liczy strona)
+ * GET ?action=routeRateByName&name=…  → { ok, stawka }  (stawka z nierozliczonego wiersza, pusta gdy nazwy nie było)
+ * GET ?action=listContractors  → { ok, data: [ { nazwa, dane } ] }  (odczyt, bez zapisu)
+ * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
+ *   dataOd opcjonalna. To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
+ * POST { action: patchBags | patchRouteRate | detachRoute | attachRoute | resolveRateTie }
+ *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
+ *   Rejestr: sheetRow + transportNumber. Odpada, gdy w tym wierszu kolumna 1 jest inna.
+ *   Kolumn 16 i 17 te akcje nie ruszają. resolveRateTie pisze tylko w Bazie stawek.
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
- *   mode=addReferencePodwyko | addPoprawAdres
+ *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 12–13). Bez klucza `trasa` te kolumny zostają puste.
+ *   mode=addReferencePodwyko | addPoprawAdres | saveRate
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
+ *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
+ *   Jeden wiersz klucza nadpisuje kwoty. Dwa i więcej: { ok:false, error:'tie' }. Inna data: nowy wiersz.
+ *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 14–17) nie rusza.
+ *   Brak zakładki Baza stawek: ten zapis ją zakłada, z nagłówkami w wierszu 1.
  *
  * Zakładki referencyjne (ten sam arkusz, poza pierwszą z transportami):
- *   Lista podwykonawców, Popraw adres
+ *   Lista podwykonawców, Popraw adres, Baza stawek
  *   (legacy odczyt: Przewoźnicy, Miejsca dostawy — scalane przy listReferenceData)
  */
 
@@ -30,7 +44,28 @@ var COL = {
   iloscWorkow: 9,
   komentarz1: 10,
   komentarz2: 11,
+  trasa: 12,
+  stawkaTrasy: 13,
+  rozliczony: 14,
+  numerFaktury: 15,
+  kosztOdbioru: 16,
+  kosztPerWorek: 17,
+  transportOdbył: 18,
 };
+
+/** Tekst nagłówka, nie pusta komórka. Kolumn 1–11 to nie rusza. Aplikacja rozliczeń tego nie wpisuje. */
+var REGISTER_HEADERS_12_18 = [
+  'Trasa',
+  'Stawka za trasę',
+  'Rozliczony',
+  'Numer faktury',
+  'Koszt odbioru',
+  'Koszt odbioru per worek',
+  'transport się odbył',
+];
+
+/** R to kolumna 18. Reguła arkusza, nie klasa w przeglądarce. */
+var TRANSPORT_HAPPENED_STRIKE_FORMULA = '=$R2="nie"';
 
 var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
 var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
@@ -39,6 +74,7 @@ var REF_PODWYKO_SHEET_NAME = 'Lista podwykonawców';
 var REF_PRZ_SHEET_NAME = 'Przewoźnicy';
 var REF_DOS_SHEET_NAME = 'Miejsca dostawy';
 var REF_POPRAW_SHEET_NAME = 'Popraw adres';
+var RATE_SHEET_NAME = 'Baza stawek';
 
 var REF_PODWYKO_HEADER = ['Nazwa', 'Dane do Worda'];
 var REF_PRZ_HEADER = [
@@ -93,6 +129,19 @@ function doGet(e) {
     if (action === 'listReferenceData') {
       return jsonResponse({ ok: true, data: listReferenceData_() });
     }
+    if (action === 'routeNameProposal') {
+      return jsonResponse({ ok: true, names: listOccupiedRouteNames_() });
+    }
+    if (action === 'routeRateByName') {
+      var routeName = (e.parameter.name || '').toString();
+      return jsonResponse({ ok: true, stawka: routeRateByName_(routeName) });
+    }
+    if (action === 'listContractors') {
+      return jsonResponse({ ok: true, data: listContractors_() });
+    }
+    if (action === 'settlementSearch') {
+      return jsonResponse(settlementSearch_(e.parameter));
+    }
     return jsonResponse({ ok: false, error: 'unknown action' }, 400);
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) }, 500);
@@ -100,11 +149,27 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  var raw = (e && e.postData && e.postData.contents) || '{}';
+  var body;
+  try {
+    body = JSON.parse(raw);
+  } catch (err) {
+    return jsonResponse({ ok: false, error: String(err) }, 500);
+  }
+  if (body && String(body.action || '') === 'settlementSearch') {
+    try {
+      return jsonResponse(settlementSearch_(body));
+    } catch (err) {
+      return jsonResponse({ ok: false, error: String(err) }, 500);
+    }
+  }
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var raw = (e && e.postData && e.postData.contents) || '{}';
-    var body = JSON.parse(raw);
+    var writeAction = body && body.action ? String(body.action) : '';
+    if (isSettlementWriteAction_(writeAction)) {
+      return jsonResponse(runSettlementWrite_(writeAction, body));
+    }
     var mode = body && body.mode ? String(body.mode) : '';
     if (mode === 'addReferencePodwyko') {
       return handleAddReferencePodwykoPost_(body);
@@ -114,6 +179,9 @@ function doPost(e) {
     }
     if (mode === 'addPoprawAdres') {
       return handleAddPoprawAdresPost_(body);
+    }
+    if (mode === 'saveRate') {
+      return handleSaveRatePost_(body);
     }
     var numer = resolveTransportNumber_(body);
     appendTransportRow_(numer, body);
@@ -145,6 +213,58 @@ function jsonResponse(obj, statusCode) {
 
 function getDataSheet_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+}
+
+/** Kolumna 12, bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */
+function listOccupiedRouteNames_() {
+  var sheet = getDataSheet_();
+  var lastRow = sheet.getLastRow();
+  var names = [];
+  var seen = {};
+  if (lastRow < 2) {
+    return names;
+  }
+  var values = sheet.getRange(2, COL.trasa, lastRow - 1, 1).getValues();
+  for (var i = 0; i < values.length; i++) {
+    var name = String(values[i][0] == null ? '' : values[i][0]).trim();
+    if (!name || seen[name]) {
+      continue;
+    }
+    seen[name] = true;
+    names.push(name);
+  }
+  return names;
+}
+
+/**
+ * Stawka z ostatniego nierozliczonego wiersza o tym tekście w kolumnie 12.
+ * Rozliczony `tak` pomija. Brak nazwy albo sama pusta stawka: pusty string. Zero zostaje.
+ */
+function routeRateByName_(name) {
+  var wanted = String(name == null ? '' : name).trim();
+  if (!wanted) {
+    return '';
+  }
+  var sheet = getDataSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return '';
+  }
+  var values = sheet.getRange(2, COL.trasa, lastRow - 1, 3).getValues();
+  var found = null;
+  for (var i = 0; i < values.length; i++) {
+    var rowName = String(values[i][0] == null ? '' : values[i][0]).trim();
+    if (rowName !== wanted) {
+      continue;
+    }
+    var settled = String(values[i][2] == null ? '' : values[i][2]).trim().toLowerCase();
+    if (settled === 'tak') {
+      continue;
+    }
+    var rate = values[i][1];
+    found = rate == null || rate === '' ? '' : String(rate).trim();
+  }
+  return found == null ? '' : found;
 }
 
 function buildModalDataResponse_(podmiot, adres) {
@@ -326,9 +446,141 @@ function computeNextNumber() {
   return getPreviewNumber_();
 }
 
+/** Checkbox trasy dopisuje klucz `trasa`, także gdy nazwa albo stawka jest pusta. */
+function bodyHasRoute_(body) {
+  return !!body && Object.prototype.hasOwnProperty.call(body, 'trasa');
+}
+
+function cellIsEmpty_(value) {
+  return value == null || String(value).trim() === '';
+}
+
+/**
+ * Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy.
+ * Puste komórki 12–18 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
+ * W tym samym kroku, raz: lista `tak` / `nie` na kolumnie 18 i przekreślenie wiersza z `nie`.
+ */
+function ensureTransportRegisterColumns_(sheet) {
+  var width = REGISTER_HEADERS_12_18.length;
+  var range = sheet.getRange(1, COL.trasa, 1, width);
+  var current = range.getValues()[0];
+  var next = [];
+  var changed = false;
+  for (var i = 0; i < width; i++) {
+    var cell = current.length > i ? current[i] : '';
+    if (cellIsEmpty_(cell)) {
+      next.push(REGISTER_HEADERS_12_18[i]);
+      changed = true;
+    } else {
+      next.push(cell);
+    }
+  }
+  if (changed) {
+    range.setValues([next]);
+  }
+  ensureTransportHappenedRules_(sheet);
+}
+
+function dataValidationHasTakNie_(validation) {
+  if (!validation || typeof validation.getCriteriaValues !== 'function') {
+    return false;
+  }
+  var values = validation.getCriteriaValues();
+  var list = values && values.length ? values[0] : [];
+  if (!list || !list.length) {
+    return false;
+  }
+  var hasTak = false;
+  var hasNie = false;
+  for (var i = 0; i < list.length; i++) {
+    var item = String(list[i]).trim();
+    if (item === 'tak') {
+      hasTak = true;
+    }
+    if (item === 'nie') {
+      hasNie = true;
+    }
+  }
+  return hasTak && hasNie;
+}
+
+function sheetHasNieStrikeRule_(sheet) {
+  var rules = sheet.getConditionalFormatRules();
+  var expected = TRANSPORT_HAPPENED_STRIKE_FORMULA.replace(/\s/g, '');
+  for (var i = 0; i < rules.length; i++) {
+    var rule = rules[i];
+    if (!rule || typeof rule.getBooleanCondition !== 'function') {
+      continue;
+    }
+    var condition = rule.getBooleanCondition();
+    if (!condition || typeof condition.getCriteriaValues !== 'function') {
+      continue;
+    }
+    var values = condition.getCriteriaValues();
+    var formula = values && values.length ? String(values[0]) : '';
+    if (formula.replace(/\s/g, '') === expected) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function ensureTransportHappenedRules_(sheet) {
+  var gridRows = sheet.getMaxRows() < 2 ? 1 : sheet.getMaxRows() - 1;
+  if (!dataValidationHasTakNie_(sheet.getRange(2, COL.transportOdbył).getDataValidation())) {
+    var validation = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['tak', 'nie'], true)
+      .setAllowInvalid(true)
+      .build();
+    sheet.getRange(2, COL.transportOdbył, gridRows, 1).setDataValidation(validation);
+  }
+  if (!sheetHasNieStrikeRule_(sheet)) {
+    var rule = SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(TRANSPORT_HAPPENED_STRIKE_FORMULA)
+      .setStrikethrough(true)
+      .setRanges([sheet.getRange(2, 1, gridRows, COL.transportOdbył)])
+      .build();
+    var rules = sheet.getConditionalFormatRules();
+    rules.push(rule);
+    sheet.setConditionalFormatRules(rules);
+  }
+}
+
+/**
+ * Ten sam tekst w kolumnie 12, bez filtra podwykonawcy i dat.
+ * Rozliczony `tak` pomija. Kolumny 16 i 17 nie są w tym zapisie.
+ * Lock trzyma `doPost`, tak jak przy numerze protokołu.
+ */
+function applyRouteRateToUnsettled_(sheet, name, rate) {
+  var wanted = String(name == null ? '' : name).trim();
+  if (!wanted) {
+    return;
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return;
+  }
+  var numRows = lastRow - 1;
+  var names = sheet.getRange(2, COL.trasa, numRows, 1).getValues();
+  var settled = sheet.getRange(2, COL.rozliczony, numRows, 1).getValues();
+  var next = rate == null ? '' : String(rate).trim();
+  for (var i = 0; i < numRows; i++) {
+    var rowName = String(names[i][0] == null ? '' : names[i][0]).trim();
+    if (rowName !== wanted) {
+      continue;
+    }
+    var flag = String(settled[i][0] == null ? '' : settled[i][0]).trim().toLowerCase();
+    if (flag === 'tak') {
+      continue;
+    }
+    sheet.getRange(i + 2, COL.stawkaTrasy).setValue(next);
+  }
+}
+
 function appendTransportRow_(numer, body) {
   var sheet = getDataSheet_();
-  sheet.appendRow([
+  ensureTransportRegisterColumns_(sheet);
+  var row = [
     numer,
     body.adresSklepu || '',
     body.podmiotHandlowy || '',
@@ -340,7 +592,19 @@ function appendTransportRow_(numer, body) {
     body.iloscWorkow != null ? body.iloscWorkow : '',
     body.komentarz1 || '',
     body.komentarz2 || '',
-  ]);
+  ];
+  var routeName = '';
+  var routeRate = '';
+  if (bodyHasRoute_(body)) {
+    routeName = body.trasa == null ? '' : String(body.trasa).trim();
+    routeRate = body.stawkaTrasy == null ? '' : String(body.stawkaTrasy).trim();
+    row.push(routeName);
+    row.push(routeRate);
+  }
+  sheet.appendRow(row);
+  if (bodyHasRoute_(body)) {
+    applyRouteRateToUnsettled_(sheet, routeName, routeRate);
+  }
   var parsed = parseNumberFromCell_(numer);
   var stored = getStoredMaxNumber_();
   if (parsed != null && stored != null && parsed === stored) {
@@ -357,8 +621,24 @@ function rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres) {
 }
 
 /**
+ * Od adresu do kolumny 18. Komórki poza siatką nie ma w wierszu: to samo co pusta.
+ * `nie` nie wchodzi w ostatnią datę. Inna wartość, także pusta, zostaje odbiorem.
+ */
+function readTransportPickupRows_(sheet, lastRow) {
+  var width = COL.transportOdbył - COL.adres + 1;
+  return sheet.getRange(2, COL.adres, lastRow, width).getValues();
+}
+
+function transportDidNotHappen_(row) {
+  var idx = COL.transportOdbył - COL.adres;
+  var value = row && idx < row.length ? row[idx] : '';
+  return String(value == null ? '' : value).trim().toLowerCase() === 'nie';
+}
+
+/**
  * Jednorazowy skan arkusza: klucz sklepu → { ms, ktoOdbiera } z wiersza o max dacie odbioru.
  * Przy tej samej dacie wygrywa późniejszy wiersz (kolejność w arkuszu).
+ * Wiersz z kolumną 18 = `nie` nie ustawia daty odcięcia.
  */
 function buildBulkLastTransportDatesMap_() {
   var sheet = getDataSheet_();
@@ -367,9 +647,11 @@ function buildBulkLastTransportDatesMap_() {
   if (lastRow < 2) {
     return result;
   }
-  var range = sheet.getRange(2, COL.adres, lastRow, COL.ktoOdbiera);
-  var rows = range.getValues();
+  var rows = readTransportPickupRows_(sheet, lastRow);
   for (var i = 0; i < rows.length; i++) {
+    if (transportDidNotHappen_(rows[i])) {
+      continue;
+    }
     var rowAdres = rows[i][0];
     var rowPodmiot = rows[i][1];
     var rowData = rows[i][3];
@@ -411,7 +693,7 @@ function buildBulkLastTransportDatesResponse_() {
   return { ok: true, shops: shops };
 }
 
-/** @returns {{ ms: number, ktoOdbiera: string }|null} */
+/** @returns {{ ms: number, ktoOdbiera: string }|null} Wiersz z kolumną 18 = `nie` nie jest ostatnim odbiorem. */
 function findLastTransportInfo_(podmiot, adres) {
   if (!normalizeTransportKeyPart_(adres)) {
     return null;
@@ -421,11 +703,13 @@ function findLastTransportInfo_(podmiot, adres) {
   if (lastRow < 2) {
     return null;
   }
-  var range = sheet.getRange(2, COL.adres, lastRow, COL.ktoOdbiera);
-  var rows = range.getValues();
+  var rows = readTransportPickupRows_(sheet, lastRow);
   var best = null;
 
   for (var i = 0; i < rows.length; i++) {
+    if (transportDidNotHappen_(rows[i])) {
+      continue;
+    }
     var rowAdres = rows[i][0];
     var rowPodmiot = rows[i][1];
     var rowData = rows[i][3];
@@ -983,4 +1267,713 @@ function handleAddPoprawAdresPost_(body) {
       wojewodztwo: wojewodztwo,
     },
   });
+}
+
+function isAllDigits_(text) {
+  var i;
+  if (!text) {
+    return false;
+  }
+  for (i = 0; i < text.length; i++) {
+    var code = text.charCodeAt(i);
+    if (code < 48 || code > 57) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function normalizeRateDate_(text) {
+  var raw = String(text == null ? '' : text).trim();
+  if (!raw) {
+    return '';
+  }
+  var parts = raw.split('.');
+  if (parts.length !== 3) {
+    return null;
+  }
+  if (!isAllDigits_(parts[0]) || parts[0].length > 2) {
+    return null;
+  }
+  if (!isAllDigits_(parts[1]) || parts[1].length > 2) {
+    return null;
+  }
+  if (!isAllDigits_(parts[2]) || parts[2].length !== 4) {
+    return null;
+  }
+  var day = Number(parts[0]);
+  var month = Number(parts[1]);
+  var year = Number(parts[2]);
+  if (day < 1 || month < 1 || month > 12 || year < 1000) {
+    return null;
+  }
+  var checked = new Date(Date.UTC(year, month - 1, day));
+  if (
+    checked.getUTCFullYear() !== year ||
+    checked.getUTCMonth() !== month - 1 ||
+    checked.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  var dayText = day < 10 ? '0' + String(day) : String(day);
+  var monthText = month < 10 ? '0' + String(month) : String(month);
+  return dayText + '.' + monthText + '.' + String(year);
+}
+
+function parseRateAmount_(text) {
+  if (text == null) {
+    return { empty: true };
+  }
+  var raw = String(text).trim().replace(',', '.');
+  if (!raw) {
+    return { empty: true };
+  }
+  var dot = raw.indexOf('.');
+  if (dot >= 0 && raw.indexOf('.', dot + 1) >= 0) {
+    return null;
+  }
+  var whole = dot < 0 ? raw : raw.slice(0, dot);
+  var frac = dot < 0 ? '' : raw.slice(dot + 1);
+  if (dot >= 0 && frac.length === 0) {
+    return null;
+  }
+  if (!isAllDigits_(whole)) {
+    return null;
+  }
+  if (frac && (!isAllDigits_(frac) || frac.length > 2)) {
+    return null;
+  }
+  var value = Number(raw);
+  if (value !== value || value === Infinity) {
+    return null;
+  }
+  return { empty: false, value: value };
+}
+
+function rateAmountCell_(amount) {
+  if (amount.empty) {
+    return '';
+  }
+  return amount.value;
+}
+
+function decideSaveRate_(rows, shop, contractor, validFrom) {
+  var matches = [];
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (row.shop === shop && row.contractor === contractor && row.validFrom === validFrom) {
+      matches.push(row.row);
+    }
+  }
+  if (matches.length > 1) {
+    return { action: 'refuse' };
+  }
+  if (matches.length === 1) {
+    return { action: 'overwrite', row: matches[0] };
+  }
+  return { action: 'append' };
+}
+
+function rateCellDateKey_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return normalizeRateDate_(value.getDate() + '.' + (value.getMonth() + 1) + '.' + value.getFullYear());
+  }
+  return normalizeRateDate_(value);
+}
+
+function listRateRows_(sheet) {
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last < 2) {
+    return rows;
+  }
+  var values = sheet.getRange(2, 1, last - 1, 5).getValues();
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var dateKey = rateCellDateKey_(values[i][4]);
+    rows.push({
+      row: i + 2,
+      shop: cellStr_(values[i][0]),
+      contractor: cellStr_(values[i][1]),
+      validFrom: dateKey == null ? '\u0000' : dateKey,
+    });
+  }
+  return rows;
+}
+
+function getOrCreateRateSheet_() {
+  var name = 'Baza stawek';
+  var header = ['Sklep', 'Podwykonawca', 'Kwota za podjazd', 'Kwota za worek', 'Od kiedy obowiązuje'];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var existed = ss.getSheetByName(name) != null;
+  var sheet = getOrCreateRefSheet_(name, header);
+  if (!existed) {
+    sheet.getRange(1, 5, sheet.getMaxRows(), 1).setNumberFormat('@');
+  }
+  return sheet;
+}
+
+function handleSaveRatePost_(body) {
+  var shop = cellStr_(body && body.sklep);
+  var contractor = cellStr_(body && body.podwykonawca);
+  if (!shop || !contractor) {
+    return jsonResponse({ ok: false, error: 'shop' });
+  }
+  var validFrom = normalizeRateDate_(body && body.odKiedy);
+  if (validFrom === null) {
+    return jsonResponse({ ok: false, error: 'date' });
+  }
+  var pickup = parseRateAmount_(body && body.kwotaPodjazd);
+  var bag = parseRateAmount_(body && body.kwotaWorek);
+  if (!pickup || !bag) {
+    return jsonResponse({ ok: false, error: 'amount' });
+  }
+  var sheet = getOrCreateRateSheet_();
+  var decision = decideSaveRate_(listRateRows_(sheet), shop, contractor, validFrom);
+  if (decision.action === 'refuse') {
+    return jsonResponse({ ok: false, error: 'tie' });
+  }
+  var pickupCell = rateAmountCell_(pickup);
+  var bagCell = rateAmountCell_(bag);
+  if (decision.action === 'overwrite') {
+    sheet.getRange(decision.row, 3, 1, 2).setValues([[pickupCell, bagCell]]);
+    return jsonResponse({ ok: true, action: 'overwrite' });
+  }
+  var next = Math.max(sheet.getLastRow(), 1) + 1;
+  sheet.getRange(next, 5).setNumberFormat('@');
+  sheet.getRange(next, 1, 1, 5).setValues([[shop, contractor, pickupCell, bagCell, validFrom]]);
+  sheet.getRange(next, 5).setNumberFormat('@').setValue(String(validFrom));
+  return jsonResponse({ ok: true, action: 'append' });
+}
+
+/**
+ * Lista podwykonawców jak na mapie: Nazwa i Dane do Worda.
+ * Ta sama scalona lista co listReferenceData.podwykoLista. Nie zakłada zakładki.
+ */
+function listContractors_() {
+  return mergeReferencePodwykoLista_();
+}
+
+/**
+ * Odczyt zestawienia. Nie bierze locka i nic nie zapisuje.
+ * Brak zakładki Baza stawek to pusta lista stawek, nie nowa zakładka.
+ */
+function settlementSearch_(query) {
+  var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
+  return buildSettlementRead_(
+    query,
+    readSettlementCells_(getDataSheet_(), COL.transportOdbył),
+    readSettlementCells_(rateSheet, 5),
+  );
+}
+
+/** Czyta istniejące kolumny i dopina puste. Nie woła setValue. Brak kolumny 18 = transport się odbył. */
+function readSettlementCells_(sheet, width) {
+  if (!sheet) {
+    return [];
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return [];
+  }
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) {
+    return [];
+  }
+  var numDataRows = lastRow - 1;
+  var readWidth = lastCol < width ? lastCol : width;
+  var values = sheet.getRange(2, 1, numDataRows, readWidth).getValues();
+  var out = [];
+  for (var i = 0; i < values.length; i++) {
+    var cells = [];
+    var row = values[i];
+    for (var c = 0; c < width; c++) {
+      cells.push(c < row.length && row[c] != null ? row[c] : '');
+    }
+    out.push({ sheetRow: i + 2, cells: cells });
+  }
+  return out;
+}
+
+/* settlement-read-pure:start */
+function settlementText_(value) {
+  if (value == null) {
+    return '';
+  }
+  return String(value).trim();
+}
+
+function settlementFlag_(value) {
+  return settlementText_(value).toLowerCase();
+}
+
+function settlementPad2_(n) {
+  var s = String(n);
+  return s.length < 2 ? '0' + s : s;
+}
+
+function settlementCalendarOk_(year, month, day) {
+  var check = new Date(Date.UTC(year, month - 1, day));
+  return (
+    check.getUTCFullYear() === year &&
+    check.getUTCMonth() === month - 1 &&
+    check.getUTCDate() === day
+  );
+}
+
+function settlementFormatDate_(year, month, day) {
+  return settlementPad2_(day) + '.' + settlementPad2_(month) + '.' + String(year);
+}
+
+/** Tekst dd.mm.yyyy albo null. Puste i ISO nie przechodzą. Data z arkusza (obiekt) idzie składnikami lokalnymi. */
+function settlementDateText_(value) {
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) {
+      return null;
+    }
+    var year = value.getFullYear();
+    var month = value.getMonth() + 1;
+    var day = value.getDate();
+    if (!settlementCalendarOk_(year, month, day)) {
+      return null;
+    }
+    return settlementFormatDate_(year, month, day);
+  }
+  if (typeof value === 'number' && isFinite(value)) {
+    if (value < 20000 || value > 80000) {
+      return null;
+    }
+    var ms = (value - 25569) * 86400000;
+    var serial = new Date(ms);
+    if (isNaN(serial.getTime())) {
+      return null;
+    }
+    return settlementFormatDate_(
+      serial.getUTCFullYear(),
+      serial.getUTCMonth() + 1,
+      serial.getUTCDate(),
+    );
+  }
+  var s = settlementText_(value);
+  if (!s) {
+    return null;
+  }
+  var match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
+  if (!match) {
+    return null;
+  }
+  var d = parseInt(match[1], 10);
+  var m = parseInt(match[2], 10);
+  var y = parseInt(match[3], 10);
+  if (!settlementCalendarOk_(y, m, d)) {
+    return null;
+  }
+  return settlementFormatDate_(y, m, d);
+}
+
+function settlementCompareDate_(a, b) {
+  function parts(text) {
+    var match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text);
+    return {
+      y: parseInt(match[3], 10),
+      m: parseInt(match[2], 10),
+      d: parseInt(match[1], 10),
+    };
+  }
+  var left = parts(a);
+  var right = parts(b);
+  if (left.y !== right.y) {
+    return left.y - right.y;
+  }
+  if (left.m !== right.m) {
+    return left.m - right.m;
+  }
+  return left.d - right.d;
+}
+
+function settlementDateInRange_(pickup, dataOd, dataDo) {
+  if (settlementCompareDate_(pickup, dataDo) > 0) {
+    return false;
+  }
+  if (dataOd && settlementCompareDate_(pickup, dataOd) < 0) {
+    return false;
+  }
+  return true;
+}
+
+function settlementAmountToGrosze_(value) {
+  if (value == null || value === '') {
+    return null;
+  }
+  var n;
+  if (typeof value === 'number') {
+    n = value;
+  } else {
+    var s = settlementText_(value).replace(/\s/g, '').replace(/zł/gi, '').replace(',', '.');
+    if (s === '' || s === '-') {
+      return null;
+    }
+    n = Number(s);
+  }
+  if (!isFinite(n)) {
+    return null;
+  }
+  var negative = n < 0;
+  var parts = Math.abs(n).toFixed(2).split('.');
+  var grosze = Number(parts[0]) * 100 + Number(parts[1]);
+  return negative ? -grosze : grosze;
+}
+
+function settlementBagCount_(value) {
+  if (value == null || value === '') {
+    return null;
+  }
+  var n;
+  if (typeof value === 'number') {
+    n = value;
+  } else {
+    var s = settlementText_(value).replace(/\s/g, '').replace(',', '.');
+    if (s === '') {
+      return null;
+    }
+    n = Number(s);
+  }
+  if (!isFinite(n)) {
+    return null;
+  }
+  return n;
+}
+
+function settlementTransportNumber_(value) {
+  if (value == null || value === '') {
+    return '';
+  }
+  if (typeof value === 'number' && isFinite(value)) {
+    return String(value);
+  }
+  return String(value).trim();
+}
+
+function settlementCell_(cells, index) {
+  if (!cells || index >= cells.length || cells[index] == null) {
+    return '';
+  }
+  return cells[index];
+}
+
+function settlementNormalizeQuery_(query) {
+  var src = query || {};
+  return {
+    podwykonawca: settlementText_(src.podwykonawca),
+    dataOd: settlementText_(src.dataOd),
+    dataDo: settlementText_(src.dataDo),
+  };
+}
+
+function settlementQueryError_(query) {
+  var q = settlementNormalizeQuery_(query);
+  if (!q.podwykonawca) {
+    return 'podwykonawca required';
+  }
+  if (!q.dataDo) {
+    return 'dataDo required';
+  }
+  if (!settlementDateText_(q.dataDo)) {
+    return 'dataDo is not dd.mm.yyyy';
+  }
+  if (q.dataOd && !settlementDateText_(q.dataOd)) {
+    return 'dataOd is not dd.mm.yyyy';
+  }
+  if (q.dataOd && settlementCompareDate_(settlementDateText_(q.dataOd), settlementDateText_(q.dataDo)) > 0) {
+    return 'dataOd after dataDo';
+  }
+  return '';
+}
+
+function mapSettlementRegisterRow_(sheetRow, cells) {
+  var pickupDate = settlementDateText_(settlementCell_(cells, 4));
+  if (!pickupDate) {
+    return null;
+  }
+  return {
+    sheetRow: sheetRow,
+    transportNumber: settlementTransportNumber_(settlementCell_(cells, 0)),
+    address: settlementText_(settlementCell_(cells, 1)),
+    shopName: settlementText_(settlementCell_(cells, 3)),
+    pickupDate: pickupDate,
+    contractor: settlementText_(settlementCell_(cells, 5)),
+    bagCount: settlementBagCount_(settlementCell_(cells, 8)),
+    routeName: settlementText_(settlementCell_(cells, 11)),
+    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
+    settled: settlementFlag_(settlementCell_(cells, 13)) === 'tak',
+    didNotHappen: settlementFlag_(settlementCell_(cells, 17)) === 'nie',
+  };
+}
+
+function mapSettlementRateRow_(sheetRow, cells) {
+  var rawFrom = settlementCell_(cells, 4);
+  var validFrom = '';
+  var hasFrom = rawFrom instanceof Date || settlementText_(rawFrom) !== '';
+  if (hasFrom) {
+    validFrom = settlementDateText_(rawFrom);
+    if (!validFrom) {
+      return null;
+    }
+  }
+  return {
+    sheetRow: sheetRow,
+    shop: settlementText_(settlementCell_(cells, 0)),
+    contractor: settlementText_(settlementCell_(cells, 1)),
+    pickupAmount: settlementAmountToGrosze_(settlementCell_(cells, 2)),
+    bagAmount: settlementAmountToGrosze_(settlementCell_(cells, 3)),
+    validFrom: validFrom,
+  };
+}
+
+function settlementPublicRow_(mapped) {
+  return {
+    sheetRow: mapped.sheetRow,
+    transportNumber: mapped.transportNumber,
+    address: mapped.address,
+    shopName: mapped.shopName,
+    pickupDate: mapped.pickupDate,
+    contractor: mapped.contractor,
+    bagCount: mapped.bagCount,
+    routeName: mapped.routeName,
+    routeRate: mapped.routeRate,
+  };
+}
+
+function buildSettlementRead_(query, register, rates) {
+  var error = settlementQueryError_(query);
+  if (error) {
+    return { ok: false, error: error };
+  }
+  var q = settlementNormalizeQuery_(query);
+  var dataOd = q.dataOd ? settlementDateText_(q.dataOd) : '';
+  var dataDo = settlementDateText_(q.dataDo);
+  var rows = [];
+  var sourceRows = register || [];
+  for (var i = 0; i < sourceRows.length; i++) {
+    var item = sourceRows[i];
+    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells);
+    if (!mapped || mapped.contractor !== q.podwykonawca) {
+      continue;
+    }
+    if (mapped.settled || mapped.didNotHappen) {
+      continue;
+    }
+    if (!settlementDateInRange_(mapped.pickupDate, dataOd, dataDo)) {
+      continue;
+    }
+    rows.push(settlementPublicRow_(mapped));
+  }
+  var rateRows = [];
+  var sourceRates = rates || [];
+  for (var j = 0; j < sourceRates.length; j++) {
+    var rateItem = sourceRates[j];
+    var rate = mapSettlementRateRow_(rateItem.sheetRow, rateItem.cells);
+    if (!rate || rate.contractor !== q.podwykonawca) {
+      continue;
+    }
+    rateRows.push(rate);
+  }
+  return { ok: true, rows: rows, rates: rateRows };
+}
+/* settlement-read-pure:end */
+
+function isSettlementWriteAction_(action) {
+  return (
+    action === 'patchBags' ||
+    action === 'patchRouteRate' ||
+    action === 'detachRoute' ||
+    action === 'attachRoute' ||
+    action === 'resolveRateTie'
+  );
+}
+
+/**
+ * Para klucza: numer wiersza i numer z kolumny 1.
+ * Rozliczony `tak` też odpada — wiersz nie jest już w zestawieniu.
+ * Zwraca { row } albo { error }.
+ */
+function registerWriteTarget_(sheet, body) {
+  if (!body || body.sheetRow == null || body.transportNumber == null) {
+    return { error: 'key' };
+  }
+  var row = Number(body.sheetRow);
+  if (!isFinite(row) || Math.floor(row) !== row || row < 2 || row > sheet.getLastRow()) {
+    return { error: 'key' };
+  }
+  var actual = settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue());
+  var expected = settlementTransportNumber_(body.transportNumber);
+  if (actual !== expected) {
+    return { error: 'key' };
+  }
+  if (settlementFlag_(sheet.getRange(row, COL.rozliczony).getValue()) === 'tak') {
+    return { error: 'settled' };
+  }
+  return { row: row };
+}
+
+/** Puste pole czyści komórkę. Ujemne i nieliczba odpadają. Zero zostaje. */
+function parseBagWrite_(value) {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === 'string' && settlementText_(value) === '') {
+    return { empty: true };
+  }
+  var count = settlementBagCount_(value);
+  if (count == null || count < 0) {
+    return null;
+  }
+  return { empty: false, value: count };
+}
+
+/** Pusta stawka to pusty string, nie null. Zero zostaje zerem. */
+function routeRateWriteValue_(parsed) {
+  if (parsed.empty) {
+    return '';
+  }
+  return parsed.value;
+}
+
+function patchBags_(body) {
+  var sheet = getDataSheet_();
+  var target = registerWriteTarget_(sheet, body);
+  if (target.error) {
+    return { ok: false, error: target.error };
+  }
+  var bags = parseBagWrite_(body.iloscWorkow);
+  if (!bags) {
+    return { ok: false, error: 'bags' };
+  }
+  sheet.getRange(target.row, COL.iloscWorkow).setValue(bags.empty ? '' : bags.value);
+  return { ok: true };
+}
+
+/**
+ * Stawka po tekście nazwy, nie po podwykonawcy i nie po dacie.
+ * Pusta stawka czyści. Kolumny 16 i 17 nie wchodzą w ten zapis.
+ */
+function patchRouteRate_(body) {
+  var sheet = getDataSheet_();
+  var target = registerWriteTarget_(sheet, body);
+  if (target.error) {
+    return { ok: false, error: target.error };
+  }
+  var name = cellStr_(body.trasa);
+  if (!name) {
+    return { ok: false, error: 'name' };
+  }
+  var parsed = parseRateAmount_(body.stawkaTrasy);
+  if (!parsed) {
+    return { ok: false, error: 'rate' };
+  }
+  applyRouteRateToUnsettled_(sheet, name, routeRateWriteValue_(parsed));
+  return { ok: true };
+}
+
+/** Czyści Trasa i Stawka za trasę jednego wiersza. Reszty trasy nie rusza. */
+function detachRoute_(body) {
+  var sheet = getDataSheet_();
+  var target = registerWriteTarget_(sheet, body);
+  if (target.error) {
+    return { ok: false, error: target.error };
+  }
+  sheet.getRange(target.row, COL.trasa, 1, 2).setValues([['', '']]);
+  return { ok: true };
+}
+
+/**
+ * Nowa nazwa i stawka na odpiętym wierszu.
+ * Pusta stawka nie zapisuje nic, także nazwy. Kwota 0 zapisuje.
+ * Potem ta sama reguła co patchRouteRate.
+ */
+function attachRoute_(body) {
+  var sheet = getDataSheet_();
+  var target = registerWriteTarget_(sheet, body);
+  if (target.error) {
+    return { ok: false, error: target.error };
+  }
+  var name = cellStr_(body.trasa);
+  if (!name) {
+    return { ok: false, error: 'name' };
+  }
+  var parsed = parseRateAmount_(body.stawkaTrasy);
+  if (!parsed || parsed.empty) {
+    return { ok: false, error: 'rate' };
+  }
+  sheet.getRange(target.row, COL.trasa).setValue(name);
+  applyRouteRateToUnsettled_(sheet, name, routeRateWriteValue_(parsed));
+  return { ok: true };
+}
+
+/**
+ * Nie jest zapisem rejestru. Zostawia wskazany wiersz Bazy stawek
+ * i usuwa pozostałe z tą samą parą i datą. Zakładki nie zakłada.
+ */
+function resolveRateTie_(body) {
+  var row = Number(body && body.sheetRow);
+  if (!isFinite(row) || Math.floor(row) !== row || row < 2) {
+    return { ok: false, error: 'key' };
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
+  if (!sheet || row > sheet.getLastRow()) {
+    return { ok: false, error: 'key' };
+  }
+  var rows = listRateRows_(sheet);
+  var kept = null;
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    if (rows[i].row === row) {
+      kept = rows[i];
+      break;
+    }
+  }
+  if (!kept || kept.validFrom === '\u0000') {
+    return { ok: false, error: 'key' };
+  }
+  var drop = [];
+  for (i = 0; i < rows.length; i++) {
+    var other = rows[i];
+    if (other.row === kept.row) {
+      continue;
+    }
+    if (
+      other.shop === kept.shop &&
+      other.contractor === kept.contractor &&
+      other.validFrom === kept.validFrom
+    ) {
+      drop.push(other.row);
+    }
+  }
+  drop.sort(function (a, b) {
+    return b - a;
+  });
+  for (i = 0; i < drop.length; i++) {
+    sheet.deleteRow(drop[i]);
+  }
+  return { ok: true };
+}
+
+function runSettlementWrite_(action, body) {
+  if (action === 'patchBags') {
+    return patchBags_(body);
+  }
+  if (action === 'patchRouteRate') {
+    return patchRouteRate_(body);
+  }
+  if (action === 'detachRoute') {
+    return detachRoute_(body);
+  }
+  if (action === 'attachRoute') {
+    return attachRoute_(body);
+  }
+  if (action === 'resolveRateTie') {
+    return resolveRateTie_(body);
+  }
+  return { ok: false, error: 'unknown action' };
 }

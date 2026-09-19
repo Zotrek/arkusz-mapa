@@ -81,6 +81,7 @@ export function manualAdminHtml(): string {
       <div class="manual-admin-tabs" role="tablist">
         <button type="button" id="manual-admin-tab-lista" class="active" data-tab="lista">Lista podwykonawców</button>
         <button type="button" id="manual-admin-tab-popraw" data-tab="popraw">Popraw adres</button>
+        <button type="button" id="manual-admin-tab-stawki" data-tab="stawki">Baza stawek</button>
       </div>
       <div id="manual-admin-panel-lista" class="manual-admin-panel active">
         <label for="manual-admin-lista-nazwa">Nazwa (combobox)</label>
@@ -120,6 +121,24 @@ export function manualAdminHtml(): string {
         <label for="manual-admin-popraw-uwagi">Uwagi</label>
         <input type="text" id="manual-admin-popraw-uwagi" autocomplete="off" />
         <button type="button" id="manual-admin-popraw-submit" class="manual-admin-submit">Zapisz poprawkę adresu</button>
+      </div>
+      <div id="manual-admin-panel-stawki" class="manual-admin-panel">
+        <label for="manual-admin-stawki-sklep">Sklep</label>
+        <select id="manual-admin-stawki-sklep" aria-label="Sklep">
+          <option value="">— wybierz adres —</option>
+        </select>
+        <label for="manual-admin-stawki-podwykonawca">Podwykonawca</label>
+        <select id="manual-admin-stawki-podwykonawca" aria-label="Podwykonawca">
+          <option value="">— wybierz podwykonawcę —</option>
+        </select>
+        <label for="manual-admin-stawki-podjazd">Kwota za podjazd</label>
+        <input type="text" id="manual-admin-stawki-podjazd" inputmode="decimal" autocomplete="off" />
+        <label for="manual-admin-stawki-worek">Kwota za worek</label>
+        <input type="text" id="manual-admin-stawki-worek" inputmode="decimal" autocomplete="off" />
+        <label for="manual-admin-stawki-od-kiedy">Od kiedy obowiązuje</label>
+        <input type="text" id="manual-admin-stawki-od-kiedy" autocomplete="off" placeholder="dd.mm.yyyy" />
+        <p class="manual-admin-hint">Adres z pinezek mapy, podwykonawca z nazw krótkich. Zapis od razu, bez przebudowy mapy. Pusta data znaczy od zawsze.</p>
+        <button type="button" id="manual-admin-stawki-submit" class="manual-admin-submit">Zapisz stawkę</button>
       </div>
       <p id="manual-admin-status" class="manual-admin-status" aria-live="polite"></p>
       <div class="doc-modal-actions">
@@ -178,15 +197,16 @@ ${referenceFormatsBrowserScript()}
           if (!resp || !resp.ok || !resp.data) return;
           if (resp.data.podwykoLista) {
             (resp.data.podwykoLista || []).forEach(applyReferencePodwykoEntry);
-            return;
-          }
-          (resp.data.przewoznicy || []).forEach(function(item) {
-            applyReferencePodwykoEntry({
-              nazwa: item.nazwaWyswietlana,
-              dane: item.nazwaDoProtokolu || item.nazwaWyswietlana
+          } else {
+            (resp.data.przewoznicy || []).forEach(function(item) {
+              applyReferencePodwykoEntry({
+                nazwa: item.nazwaWyswietlana,
+                dane: item.nazwaDoProtokolu || item.nazwaWyswietlana
+              });
             });
-          });
-          (resp.data.miejscaDostawy || []).forEach(applyReferencePodwykoEntry);
+            (resp.data.miejscaDostawy || []).forEach(applyReferencePodwykoEntry);
+          }
+          fillRateContractorOptions();
         })
         .catch(function() {});
     }
@@ -226,14 +246,77 @@ ${referenceFormatsBrowserScript()}
       modal.setAttribute('aria-hidden', 'true');
     }
 
+    function uniqueSortedLabels(list) {
+      var seen = {};
+      var out = [];
+      var i;
+      for (i = 0; i < list.length; i++) {
+        var value = String(list[i] || '').trim();
+        if (!value || seen[value]) continue;
+        seen[value] = true;
+        out.push(value);
+      }
+      out.sort(function(a, b) { return a.localeCompare(b, 'pl'); });
+      return out;
+    }
+
+    function fillRateSelect(selectId, values, placeholder) {
+      var sel = document.getElementById(selectId);
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '';
+      var empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = placeholder;
+      sel.appendChild(empty);
+      var i;
+      for (i = 0; i < values.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = values[i];
+        opt.textContent = values[i];
+        sel.appendChild(opt);
+      }
+      if (current) sel.value = current;
+    }
+
+    function fillRateShopOptions() {
+      var addrs = [];
+      var i;
+      if (typeof adresy === 'undefined' || !adresy) {
+        fillRateSelect('manual-admin-stawki-sklep', [], '— wybierz adres —');
+        return;
+      }
+      for (i = 0; i < adresy.length; i++) {
+        addrs.push(adresy[i] && adresy[i].adres);
+      }
+      fillRateSelect('manual-admin-stawki-sklep', uniqueSortedLabels(addrs), '— wybierz adres —');
+    }
+
+    function fillRateContractorOptions() {
+      var names = [];
+      var i;
+      if (typeof PODWYKOLISTA === 'undefined' || !PODWYKOLISTA) {
+        fillRateSelect('manual-admin-stawki-podwykonawca', [], '— wybierz podwykonawcę —');
+        return;
+      }
+      for (i = 0; i < PODWYKOLISTA.length; i++) {
+        names.push(PODWYKOLISTA[i] && PODWYKOLISTA[i].label);
+      }
+      fillRateSelect('manual-admin-stawki-podwykonawca', uniqueSortedLabels(names), '— wybierz podwykonawcę —');
+    }
+
     function setManualAdminTab(tab) {
-      ['lista', 'popraw'].forEach(function(name) {
+      ['lista', 'popraw', 'stawki'].forEach(function(name) {
         var panel = document.getElementById('manual-admin-panel-' + name);
         var btn = document.getElementById('manual-admin-tab-' + name);
         var active = name === tab;
         if (panel) panel.classList.toggle('active', active);
         if (btn) btn.classList.toggle('active', active);
       });
+      if (tab === 'stawki') {
+        fillRateShopOptions();
+        fillRateContractorOptions();
+      }
     }
 
     function openPoprawAdresFromPoint(point) {
@@ -252,7 +335,7 @@ ${referenceFormatsBrowserScript()}
     }
 
     function bindManualAdminUi() {
-      ['manual-admin-tab-lista', 'manual-admin-tab-popraw'].forEach(function(id) {
+      ['manual-admin-tab-lista', 'manual-admin-tab-popraw', 'manual-admin-tab-stawki'].forEach(function(id) {
         var btn = document.getElementById(id);
         if (!btn) return;
         btn.addEventListener('click', function() {
@@ -335,6 +418,47 @@ ${referenceFormatsBrowserScript()}
               return;
             }
             setManualAdminStatus('Zapisano poprawkę — odśwież mapę (npm run generate), aby zobaczyć pinezkę.', 'ok');
+          });
+        });
+      }
+
+      var stawkiSubmit = document.getElementById('manual-admin-stawki-submit');
+      if (stawkiSubmit) {
+        stawkiSubmit.addEventListener('click', function() {
+          var sklep = String((document.getElementById('manual-admin-stawki-sklep') || {}).value || '').trim();
+          var podwykonawca = String((document.getElementById('manual-admin-stawki-podwykonawca') || {}).value || '').trim();
+          if (!sklep || !podwykonawca) {
+            setManualAdminStatus('Wybierz sklep i podwykonawcę.', 'error');
+            return;
+          }
+          stawkiSubmit.disabled = true;
+          postReferencePayload({
+            mode: 'saveRate',
+            sklep: sklep,
+            podwykonawca: podwykonawca,
+            kwotaPodjazd: String((document.getElementById('manual-admin-stawki-podjazd') || {}).value || ''),
+            kwotaWorek: String((document.getElementById('manual-admin-stawki-worek') || {}).value || ''),
+            odKiedy: String((document.getElementById('manual-admin-stawki-od-kiedy') || {}).value || '')
+          }).then(function(resp) {
+            stawkiSubmit.disabled = false;
+            if (!resp || !resp.ok) {
+              var code = resp && resp.error;
+              var msg = 'Zapis nieudany.';
+              if (code === 'tie') msg = 'Więcej niż jeden wiersz tej daty. Zapisu nie ma.';
+              if (code === 'date') msg = 'Data w formacie dd.mm.yyyy albo puste.';
+              if (code === 'amount') msg = 'Nieprawidłowa kwota.';
+              if (code === 'shop') msg = 'Wybierz sklep i podwykonawcę.';
+              if (code === 'no_webapp') msg = 'Brak adresu Web App.';
+              setManualAdminStatus(msg, 'error');
+              return;
+            }
+            setManualAdminStatus('Zapisano stawkę.', 'ok');
+            document.getElementById('manual-admin-stawki-podjazd').value = '';
+            document.getElementById('manual-admin-stawki-worek').value = '';
+            document.getElementById('manual-admin-stawki-od-kiedy').value = '';
+          }).catch(function() {
+            stawkiSubmit.disabled = false;
+            setManualAdminStatus('Zapis nieudany.', 'error');
           });
         });
       }

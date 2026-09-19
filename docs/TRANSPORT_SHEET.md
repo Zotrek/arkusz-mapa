@@ -32,6 +32,20 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   11. Komentarz 2
 
+  12. Trasa
+
+  13. Stawka za trasę
+
+  14. Rozliczony
+
+  15. Numer faktury
+
+  16. Koszt odbioru
+
+  17. Koszt odbioru per worek
+
+  18. transport się odbył
+
 
 
 ## Wdrożenie Apps Script (jednorazowo)
@@ -66,13 +80,13 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 |--------|-----------|------|
 
-| GET | `action=modalData&podmiot=…&adres=…` | **Zalecane** — numer + ostatnia data + kto odbiera w jednym requestcie |
+| GET | `action=modalData&podmiot=…&adres=…` | **Zalecane** — numer + ostatnia data + kto odbiera w jednym requestcie. Wiersz z kolumną 18 = `nie` nie wchodzi w datę |
 
 | GET | `action=previewNumber` | Podgląd następnego numeru (cache Script Properties) |
 
-| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres** |
+| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres**. Wiersz z kolumną 18 = `nie` nie wchodzi |
 
-| GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup) |
+| GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 18 = `nie` nie wchodzi |
 
 | POST | JSON w body (`Content-Type: text/plain`) | Atomowy zapis wiersza (`LockService`) + zwraca `numer`. Opcjonalne `numer` w body — jeśli użytkownik wpisał ręcznie, ten numer trafia do arkusza zamiast automatycznego |
 
@@ -106,11 +120,21 @@ Przykład POST (body):
 
   "komentarz1": "Uwaga do arkusza",
 
-  "komentarz2": ""
+  "komentarz2": "",
+
+  "trasa": "gpw-18.09.26-01",
+
+  "stawkaTrasy": "150"
 
 }
 
 ```
+
+Klucze `trasa` i `stawkaTrasy` są opcjonalne. Są w body tylko przy odbiorze z trasy. Bez klucza `trasa` nowy wiersz nie wypełnia kolumn 12 i 13. Pusta `stawkaTrasy` zostaje pusta. Kwota `0` zostaje zerem.
+
+Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy, makro wpisuje nagłówki 12–18, jeśli te komórki są puste. To tekst nagłówka, nie pusta komórka. Kolumn 1–11 nie rusza i nie przesuwa. W tym samym kroku, raz, zakłada na kolumnie 18 listę `tak` / `nie` (inne wartości też da się wpisać, także z Excela) i przekreślenie całego wiersza, gdy komórka ma `nie`. Przekreślenie jest regułą formatowania arkusza, nie klasą na stronie. Aplikacja rozliczeń tych nagłówków nie wpisuje. Dopóki po wdrożeniu nie zapisze się żadnego nowego protokołu, kolumny 18 nie ma. Brak kolumny znaczy to samo co pusta: transport się odbył.
+
+Nowa stawka idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 12. Zapis nie patrzy na **Kto odbiera** ani na datę. Wiersz z **Rozliczony** `tak` jest pomijany. Kolumn 16 i 17 ten zapis nie rusza. Lock jest ten sam co przy numerze protokołu.
 
 
 
@@ -146,9 +170,9 @@ Bez `TRANSPORT_WEBAPP_URL` mapa generuje protokoły **bez** zapisu do arkusza (n
 
 1. **Otwarcie modala** — pobranie ostatniej daty transportu (podmiot + adres) i podglądu numeru.
 
-2. **Popup pinezki** — po `bulkLastTransportDates` pokazuje **Ostatni transport** (data) oraz **Ostatni odbiór** (skrócona nazwa z kolumny F „Kto odbiera” z wiersza o najnowszej dacie).
+2. **Popup pinezki** — po `bulkLastTransportDates` pokazuje **Ostatni transport** (data) oraz **Ostatni odbiór** (skrócona nazwa z kolumny F „Kto odbiera” z wiersza o najnowszej dacie). Wiersz z kolumną 18 = `nie` nie jest tym odbiorem. Pusta komórka, inna wartość i brak kolumny 18 nadal są.
 
-3. **Filtrowanie plomb** — z protokołu usuwane są worki ze datą zamknięcia **wcześniejszą** niż ostatni transport (kolumna E). Przy dacie transportu 20.06.2026 zostają plomby z 20.06, 25.06 itd., a znikają np. 10.06, 15.06. **Rodzaj zbiórki** (Word `{{rodzaj_zbiorki}}` i kolumna H arkusza) liczy się tylko z tych pozostawionych worków, nie z całej historii pinezki.
+3. **Filtrowanie plomb** — z protokołu usuwane są worki ze datą zamknięcia **wcześniejszą** niż ostatni transport (kolumna E), z pominięciem wierszy, w których kolumna 18 ma `nie`. Taki wiersz nie ustawia daty odcięcia. Przy dacie transportu 20.06.2026 zostają plomby z 20.06, 25.06 itd., a znikają np. 10.06, 15.06. **Rodzaj zbiórki** (Word `{{rodzaj_zbiorki}}` i kolumna H arkusza) liczy się tylko z tych pozostawionych worków, nie z całej historii pinezki.
 
 4. **Bez listy plomb** — checkbox w modalu Word. Zamiast numerów plomb w dokumencie trafia **10 wierszy kropek**; liczba kropek w wierszu = (maks. długość numeru plomby wśród worków w protokole) × 2. Rejestr transportu i `{{rodzaj_zbiorki}}` nadal bazują na rzeczywistych workach.
 

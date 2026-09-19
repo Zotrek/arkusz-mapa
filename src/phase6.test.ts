@@ -8,6 +8,10 @@
  *   REQ-6.4: zapis pliku do OUTPUT_DIR
  */
 
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi } from 'vitest';
 import type { GeocodedAddress } from './phase5';
 import type { SheetRow } from './sheets';
@@ -42,6 +46,8 @@ import {
   MAP_SEARCH_FIT_PADDING,
 } from './phase6';
 import { filterSealRowsByMinClosureDate } from './wordMapSupport';
+import { routeNameBrowserScript } from './routeName';
+import { routeProtocolBrowserScript } from './routeProtocol';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
   return {
@@ -834,6 +840,79 @@ describe('phase6', () => {
       expect(html).toContain('doc-filter-info');
       expect(html).toContain('transportApiEnabled');
       expect(html).toContain('var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;');
+    });
+
+    it('test_buildMapHtml_when_word_embed_given_should_inject_proposeRouteName', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [],
+      });
+      expect(html).toContain(routeNameBrowserScript().trim());
+      expect(html).toContain('function proposeRouteName');
+    });
+
+    it('test_buildMapHtml_when_word_embed_missing_should_omit_proposeRouteName', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).not.toContain('function proposeRouteName');
+      expect(html).not.toContain('function routeBodyFields');
+      expect(html).not.toContain('id="doc-chk-odbior-z-trasy"');
+      expect(html).not.toContain("var lastRouteName = ''");
+    });
+
+    it('test_buildMapHtml_when_word_embed_given_should_add_route_fields_without_touching_word', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'gpw', dane: 'GPW dane do Worda' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      expect(html).toContain(routeProtocolBrowserScript().trim());
+      expect(html).toContain('id="doc-chk-odbior-z-trasy"');
+      expect(html).toContain('Odbiór z trasy');
+      expect(html).toContain('id="doc-route-fields" hidden');
+      expect(html).toContain('id="doc-inp-trasa"');
+      expect(html).toContain('id="doc-inp-stawka-trasy"');
+      expect(html).toContain("var lastRouteName = ''");
+      expect(html).not.toContain("localStorage.setItem('lastRouteName'");
+      expect(html).not.toContain('localStorage.getItem(\'lastRouteName\'');
+
+      const checkbox = html.slice(
+        html.indexOf('function onRouteCheckboxChange('),
+        html.indexOf('function onRouteNameInput('),
+      );
+      expect(checkbox).not.toContain('appendTransportRow');
+      expect(checkbox).not.toContain('localStorage');
+
+      const contractor = html.slice(
+        html.indexOf('function contractorShortNameForRoute('),
+        html.indexOf('function pickupDateForRoute('),
+      );
+      expect(contractor).toContain('opt.label');
+      expect(contractor).not.toContain('.dane');
+
+      const refresh = html.slice(
+        html.indexOf('function refreshRouteNameField('),
+        html.indexOf('function onRouteCheckboxChange('),
+      );
+      expect(refresh.indexOf('lastRouteName')).toBeGreaterThan(-1);
+      expect(refresh.indexOf('lastRouteName')).toBeLessThan(refresh.indexOf('proposeRouteName'));
+      expect(refresh).toContain("action: 'routeNameProposal'");
+      expect(html).toContain("action: 'routeRateByName'");
+
+      const payloadHits = html.split('assignRouteBody(transportPayload, form.routeFields)').length - 1;
+      expect(payloadHits).toBe(2);
+      expect(html).toContain('rememberRouteAfterSuccessfulSave(form.routeFields)');
+      const bulk = html.slice(html.indexOf('function runBulkDocGenerate('), html.indexOf('function runDocGenerate('));
+      expect(bulk).toContain("numer: ''");
+      expect(bulk).toContain('assignRouteBody(transportPayload, form.routeFields)');
+      expect(bulk).toContain('appendTransportRow(transportPayload)');
+
+      const renderStart = html.indexOf('doc.render({');
+      const renderBlock = html.slice(renderStart, html.indexOf('});', renderStart));
+      expect(renderBlock).not.toContain('trasa');
+      expect(renderBlock).not.toContain('stawka');
+
+      const docxPath = join(dirname(fileURLToPath(import.meta.url)), '../docs/pusty.docx');
+      const hash = createHash('sha256').update(readFileSync(docxPath)).digest('hex');
+      expect(hash).toBe('e0189d70ce3c1c90f52f74c487549872b094a23bab7a6ce02f491dde5be8e16d');
     });
 
     it('test_buildTransportShopKey_when_podmiot_and_adres_given_should_normalize_like_transport_sheet', () => {
