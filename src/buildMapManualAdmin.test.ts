@@ -64,4 +64,11 @@ describe('buildMapManualAdmin', () => {
     expect(saved).toBeTruthy();
     expect(saved).not.toContain('generate');
   });
+
+  it('test_manualAdminBrowserScript_when_built_should_wire_bulk_rates_contractor_combobox', () => {
+    const script = manualAdminBrowserScript();
+    expect(script).toContain("setupRateCombobox('bulk-rates-podwykonawca'");
+    expect(script).toContain('bulk-rates-podwykonawca-value');
+    expect(script).toContain('bulk-rates-podwykonawca-list');
+  });
 });

@@ -832,6 +832,9 @@ describe('phase6', () => {
       expect(html).toContain('Automatyczne zbiorcze zaznaczanie');
       expect(html).toContain('handleMarkerPrimaryClick');
       expect(html).toContain('setAutoBulkMode');
+      expect(html).toContain('openBulkRatesModal');
+      expect(html).toContain('runBulkRatesSave');
+      expect(html).toContain("mode: 'saveRate'");
       expect(html).toContain('appendTransportRow');
       expect(html).toContain('filterSealRowsByMinDate');
       expect(html).toContain('buildDocListsFromSealRows');
@@ -876,6 +879,13 @@ describe('phase6', () => {
       expect(html).toContain('id="doc-btn-nowa-trasa"');
       expect(html).toContain('id="doc-route-continue-hint"');
       expect(html).toContain('id="doc-inp-stawka-trasy"');
+      expect(html).toContain('map-bulk-rates');
+      expect(html).toContain('Ustaw stawki');
+      expect(html).toContain('id="bulk-rates-modal"');
+      expect(html).toContain('id="bulk-rates-podwykonawca"');
+      expect(html).toContain('id="bulk-rates-podjazd"');
+      expect(html).toContain('id="bulk-rates-worek"');
+      expect(html).toContain('id="bulk-rates-od-kiedy"');
       expect(html).toContain("var lastRouteName = ''");
       expect(html).toContain("var routeNameMode = 'continue'");
       expect(html).toContain("var routeRateBaseline = ''");

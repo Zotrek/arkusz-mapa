@@ -442,6 +442,9 @@ ${referenceFormatsBrowserScript()}
       setupRateCombobox('manual-admin-stawki-podwykonawca', 'manual-admin-stawki-podwykonawca-value', 'manual-admin-stawki-podwykonawca-list', function() {
         return rateContractorOptions;
       });
+      setupRateCombobox('bulk-rates-podwykonawca', 'bulk-rates-podwykonawca-value', 'bulk-rates-podwykonawca-list', function() {
+        return rateContractorOptions;
+      });
     }
 
     function rateShopOptionLabel(sklep, adres, miasto) {

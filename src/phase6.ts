@@ -763,9 +763,40 @@ export function buildMapHtml(
 `
     : '';
 
+  const bulkRatesModal = transportApiEnabled
+    ? `  <div id="bulk-rates-modal" class="doc-modal-overlay" style="display:none" aria-hidden="true">
+    <div class="doc-modal-panel" role="dialog" aria-labelledby="bulk-rates-modal-title">
+      <h3 id="bulk-rates-modal-title">Ustaw stawki w bazie</h3>
+      <p class="doc-modal-hint">Te same wartości trafią do Bazy stawek dla każdego zaznaczonego sklepu (zapis po adresie).</p>
+      <div class="doc-bulk-points-wrap">
+        <p class="doc-bulk-points-title">Zaznaczone sklepy</p>
+        <ul id="bulk-rates-points-list" class="doc-bulk-points-list"></ul>
+      </div>
+      <label for="bulk-rates-podwykonawca">Podwykonawca</label>
+      <div class="doc-combobox-wrap">
+        <input type="text" id="bulk-rates-podwykonawca" class="doc-combobox-input" autocomplete="off" spellcheck="false" placeholder="Wpisz fragment nazwy…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bulk-rates-podwykonawca-list" />
+        <input type="hidden" id="bulk-rates-podwykonawca-value" />
+        <ul id="bulk-rates-podwykonawca-list" class="doc-combobox-list" role="listbox" hidden></ul>
+      </div>
+      <label for="bulk-rates-podjazd">Kwota za podjazd</label>
+      <input type="text" id="bulk-rates-podjazd" inputmode="decimal" autocomplete="off" />
+      <label for="bulk-rates-worek">Kwota za worek</label>
+      <input type="text" id="bulk-rates-worek" inputmode="decimal" autocomplete="off" />
+      <label for="bulk-rates-od-kiedy">Od kiedy obowiązuje</label>
+      <input type="date" id="bulk-rates-od-kiedy" />
+      <p class="doc-modal-hint" style="margin-top:10px;margin-bottom:0">Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone.</p>
+      <p id="bulk-rates-status" class="doc-filter-info" aria-live="polite"></p>
+      <div class="doc-modal-actions">
+        <button type="button" id="bulk-rates-btn-cancel">Anuluj</button>
+        <button type="button" id="bulk-rates-btn-ok">Zapisz stawki</button>
+      </div>
+    </div>
+  </div>
+`
+    : '';
+
   const docStyles = wordEnabled
-    ? `
-    .btn-gen-doc { margin-top: 8px; padding: 8px 12px; cursor: pointer; border-radius: 10px; border: 1px solid var(--map-accent-deep); background: var(--map-accent); color: #fff; font-size: 12.5px; font-weight: 600; width: 100%; box-shadow: 0 1px 3px rgba(15, 118, 110, 0.28); }
+    ? `    .btn-gen-doc { margin-top: 8px; padding: 8px 12px; cursor: pointer; border-radius: 10px; border: 1px solid var(--map-accent-deep); background: var(--map-accent); color: #fff; font-size: 12.5px; font-weight: 600; width: 100%; box-shadow: 0 1px 3px rgba(15, 118, 110, 0.28); }
     .btn-gen-doc:hover { background: var(--map-accent-deep); filter: none; }
     .btn-gen-doc:disabled { opacity: 0.45; cursor: not-allowed; filter: none; background: #94a3b8; border-color: #94a3b8; box-shadow: none; }
     .btn-gen-doc:disabled:hover { filter: none; background: #94a3b8; }
@@ -810,6 +841,8 @@ export function buildMapHtml(
     .map-bulk-generate:hover { background: var(--map-accent-deep); filter: none; }
     .map-bulk-clear { padding: 8px 12px; font-size: 12.5px; font-weight: 600; border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.55); background: rgba(255,255,255,0.92); color: #334155; cursor: pointer; }
     .map-bulk-clear:hover { background: var(--map-accent-soft); color: var(--map-accent-deep); }
+    .map-bulk-rates { padding: 8px 12px; font-size: 12.5px; font-weight: 600; border-radius: 10px; border: 1px solid rgba(111, 66, 193, 0.55); background: rgba(255,255,255,0.92); color: #5b2d9e; cursor: pointer; }
+    .map-bulk-rates:hover { background: rgba(111, 66, 193, 0.08); border-color: #6f42c1; }
     .map-auto-bulk-btn {
       width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px;
       font-size: 12.5px; font-weight: 600; border-radius: 10px;
@@ -824,6 +857,9 @@ export function buildMapHtml(
     .map-auto-bulk-btn.is-active:hover { background: #5a32a3; border-color: #5a32a3; color: #fff; }
     #doc-btn-ok { background: var(--map-accent); border-color: var(--map-accent-deep); color: #fff; box-shadow: 0 1px 3px rgba(15, 118, 110, 0.28); }
     #doc-btn-ok:hover { background: var(--map-accent-deep); color: #fff; }
+    #bulk-rates-btn-ok { background: #6f42c1; border-color: #5a32a3; color: #fff; box-shadow: 0 1px 3px rgba(111, 66, 193, 0.28); }
+    #bulk-rates-btn-ok:hover { background: #5a32a3; color: #fff; }
+    #bulk-rates-btn-ok:disabled { opacity: 0.75; cursor: wait; }
 `
     : '';
 
@@ -1047,7 +1083,7 @@ ${
   </div>
 `
     : ''
-}${wordModal}${referenceAdminEnabled ? manualAdminHtml() : ''}  <script>
+}${wordModal}${bulkRatesModal}${referenceAdminEnabled ? manualAdminHtml() : ''}  <script>
     const adresy = ${JSON.stringify(points)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
     const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
@@ -2384,6 +2420,153 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       m.style.display = 'none';
       m.setAttribute('aria-hidden', 'true');
     }
+    function uniqueBulkShopEntries(indices) {
+      var seen = {};
+      var out = [];
+      var i;
+      for (i = 0; i < indices.length; i++) {
+        var p = adresy[indices[i]];
+        if (!p) continue;
+        var adres = String(p.adres || '').trim();
+        if (!adres || seen[adres]) continue;
+        seen[adres] = true;
+        var sklep = String(p.sklep || '').trim();
+        var shown = typeof addressWithCommaAfterLocalityMap === 'function'
+          ? addressWithCommaAfterLocalityMap(adres, p.miasto)
+          : adres;
+        var label = sklep && sklep !== adres && sklep !== shown ? sklep + ' — ' + shown : shown;
+        out.push({ adres: adres, label: label });
+      }
+      return out;
+    }
+    function setBulkRatesStatus(msg, kind) {
+      var el = document.getElementById('bulk-rates-status');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.style.color = kind === 'error' ? '#b02a37' : '';
+    }
+    function renderBulkRatesPointsList(shops) {
+      var listEl = document.getElementById('bulk-rates-points-list');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+      var i;
+      for (i = 0; i < shops.length; i++) {
+        var li = document.createElement('li');
+        li.textContent = shops[i].label;
+        listEl.appendChild(li);
+      }
+    }
+    function openBulkRatesModal(indices) {
+      if (!transportApiEnabled || !indices || indices.length === 0) return;
+      if (typeof postReferencePayload !== 'function') {
+        alert('Brak połączenia z bazą stawek (TRANSPORT_WEBAPP_URL).');
+        return;
+      }
+      var shops = uniqueBulkShopEntries(indices);
+      if (shops.length === 0) {
+        alert('Brak adresów sklepów w zaznaczeniu.');
+        return;
+      }
+      window.__bulkRatesShops = shops;
+      renderBulkRatesPointsList(shops);
+      var titleEl = document.getElementById('bulk-rates-modal-title');
+      if (titleEl) {
+        titleEl.textContent = 'Ustaw stawki w bazie (' + shops.length + ' sklepów)';
+      }
+      var podInput = document.getElementById('bulk-rates-podwykonawca');
+      var podValue = document.getElementById('bulk-rates-podwykonawca-value');
+      if (podInput) podInput.value = '';
+      if (podValue) podValue.value = '';
+      var podjazd = document.getElementById('bulk-rates-podjazd');
+      var worek = document.getElementById('bulk-rates-worek');
+      var odKiedy = document.getElementById('bulk-rates-od-kiedy');
+      if (podjazd) podjazd.value = '';
+      if (worek) worek.value = '';
+      if (odKiedy) odKiedy.value = '';
+      setBulkRatesStatus('');
+      if (typeof fillRateContractorOptions === 'function') fillRateContractorOptions();
+      var m = document.getElementById('bulk-rates-modal');
+      if (!m) return;
+      m.style.display = 'flex';
+      m.setAttribute('aria-hidden', 'false');
+    }
+    function closeBulkRatesModal() {
+      var m = document.getElementById('bulk-rates-modal');
+      if (!m) return;
+      m.style.display = 'none';
+      m.setAttribute('aria-hidden', 'true');
+      window.__bulkRatesShops = [];
+    }
+    function saveRateErrorMessage(code) {
+      if (code === 'tie') return 'Więcej niż jeden wiersz tej daty. Zapisu nie ma.';
+      if (code === 'date') return 'Data w formacie dd.mm.yyyy albo puste.';
+      if (code === 'amount') return 'Nieprawidłowa kwota.';
+      if (code === 'shop') return 'Wybierz podwykonawcę.';
+      if (code === 'no_webapp') return 'Brak adresu Web App.';
+      return 'Zapis nieudany.';
+    }
+    function runBulkRatesSave() {
+      var shops = window.__bulkRatesShops || [];
+      if (shops.length === 0) {
+        setBulkRatesStatus('Brak zaznaczonych sklepów.', 'error');
+        return;
+      }
+      if (typeof postReferencePayload !== 'function' || typeof rateValidFromFromPicker !== 'function') {
+        setBulkRatesStatus('Brak połączenia z bazą stawek.', 'error');
+        return;
+      }
+      var podwykonawca = String((document.getElementById('bulk-rates-podwykonawca-value') || {}).value || '').trim();
+      if (!podwykonawca) {
+        var podInput = document.getElementById('bulk-rates-podwykonawca');
+        if (podInput && typeof tryResolveRateCombobox === 'function' && typeof rateContractorOptions !== 'undefined') {
+          tryResolveRateCombobox(podInput, document.getElementById('bulk-rates-podwykonawca-value'), rateContractorOptions);
+          podwykonawca = String((document.getElementById('bulk-rates-podwykonawca-value') || {}).value || '').trim();
+        }
+      }
+      if (!podwykonawca) {
+        setBulkRatesStatus('Wybierz podwykonawcę z listy.', 'error');
+        return;
+      }
+      var kwotaPodjazd = String((document.getElementById('bulk-rates-podjazd') || {}).value || '');
+      var kwotaWorek = String((document.getElementById('bulk-rates-worek') || {}).value || '');
+      var odKiedy = rateValidFromFromPicker((document.getElementById('bulk-rates-od-kiedy') || {}).value);
+      var okBtn = document.getElementById('bulk-rates-btn-ok');
+      if (okBtn) okBtn.disabled = true;
+      setBulkRatesStatus('Zapisuję 0/' + shops.length + '…');
+      var done = 0;
+      function saveNext() {
+        if (done >= shops.length) {
+          if (okBtn) okBtn.disabled = false;
+          setBulkRatesStatus('Zapisano stawki dla ' + shops.length + ' sklepów.');
+          return;
+        }
+        var shop = shops[done];
+        setBulkRatesStatus('Zapisuję ' + (done + 1) + '/' + shops.length + '…');
+        postReferencePayload({
+          mode: 'saveRate',
+          sklep: shop.adres,
+          podwykonawca: podwykonawca,
+          kwotaPodjazd: kwotaPodjazd,
+          kwotaWorek: kwotaWorek,
+          odKiedy: odKiedy
+        }).then(function (resp) {
+          if (!resp || !resp.ok) {
+            if (okBtn) okBtn.disabled = false;
+            setBulkRatesStatus(
+              'Błąd przy sklepie ' + (done + 1) + '/' + shops.length + ': ' + saveRateErrorMessage(resp && resp.error),
+              'error'
+            );
+            return;
+          }
+          done += 1;
+          saveNext();
+        }).catch(function () {
+          if (okBtn) okBtn.disabled = false;
+          setBulkRatesStatus('Błąd sieci przy sklepie ' + (done + 1) + '/' + shops.length + '.', 'error');
+        });
+      }
+      saveNext();
+    }
     function b64ToUint8(b64) {
       var bin = atob(b64);
       var n = bin.length;
@@ -3047,6 +3230,19 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       };
     }
 
+    if (transportApiEnabled) {
+      var bulkRatesCancel = document.getElementById('bulk-rates-btn-cancel');
+      var bulkRatesOk = document.getElementById('bulk-rates-btn-ok');
+      var bulkRatesModalEl = document.getElementById('bulk-rates-modal');
+      if (bulkRatesCancel) bulkRatesCancel.onclick = closeBulkRatesModal;
+      if (bulkRatesOk) bulkRatesOk.onclick = runBulkRatesSave;
+      if (bulkRatesModalEl) {
+        bulkRatesModalEl.onclick = function (ev) {
+          if (ev.target.id === 'bulk-rates-modal') closeBulkRatesModal();
+        };
+      }
+    }
+
     var wojBoundsByKey = {};
     fetch(${JSON.stringify(geoJsonUrl)})
       .then(function(res) { return res.json(); })
@@ -3182,6 +3378,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         '<span id="map-bulk-bags" class="map-bulk-bags">Worki do odebrania: 0</span>' +
         '</div>' +
         '<button type="button" id="map-bulk-generate" class="map-bulk-generate">Generuj protokoły</button>' +
+        (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL
+          ? '<button type="button" id="map-bulk-rates" class="map-bulk-rates">Ustaw stawki</button>'
+          : '') +
         '<button type="button" id="map-bulk-clear" class="map-bulk-clear">Wyczyść</button>' +
         '</div>'
       : '';
@@ -3291,6 +3490,17 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
               return;
             }
             openBulkDocModal(indices);
+          };
+        }
+        var bulkRatesBtn = wrap.querySelector('#map-bulk-rates');
+        if (bulkRatesBtn) {
+          bulkRatesBtn.onclick = function () {
+            var indices = getBulkSelectedIndices();
+            if (indices.length === 0) {
+              alert('Zaznacz co najmniej jeden punkt na mapie.');
+              return;
+            }
+            openBulkRatesModal(indices);
           };
         }
         if (bulkClearBtn) {
