@@ -7,6 +7,8 @@ import {
   routeNameToShow,
   routeProtocolBrowserScript,
   routeRateFromLookup,
+  routeRateFromSession,
+  routeRateToKeep,
   type RouteBodyFields,
   type RouteNameShowInput,
 } from './routeProtocol.js';
@@ -16,6 +18,13 @@ type RouteVm = {
   routeNameToShow: (input: RouteNameShowInput) => string;
   routeNameRememberedAfterSave: (savedName: string) => string;
   routeRateFromLookup: (rate: unknown) => string;
+  routeRateToKeep: (currentRate: string, lookedUpRate: unknown, userEdited: boolean) => string;
+  routeRateFromSession: (
+    shownName: string,
+    currentRate: string,
+    sessionName: string,
+    sessionRate: string,
+  ) => string;
   assignRouteBody: (
     payload: Record<string, unknown> | null,
     fields: RouteBodyFields | null,
@@ -30,6 +39,8 @@ function browserFns(): RouteVm {
     typeof context.routeNameToShow !== 'function' ||
     typeof context.routeNameRememberedAfterSave !== 'function' ||
     typeof context.routeRateFromLookup !== 'function' ||
+    typeof context.routeRateToKeep !== 'function' ||
+    typeof context.routeRateFromSession !== 'function' ||
     typeof context.assignRouteBody !== 'function'
   ) {
     throw new Error('Skrypt przeglądarki nie ma funkcji okna protokołu');
@@ -106,6 +117,31 @@ describe('routeProtocol', () => {
     expect(vm.routeRateFromLookup(null)).toBe('');
     expect(routeRateFromLookup(undefined)).toBe('');
     expect(vm.routeRateFromLookup(undefined)).toBe('');
+  });
+
+  it('test_routeRateToKeep_when_lookup_empty_or_user_edited_should_keep_current', () => {
+    expect(routeRateToKeep('150', '', false)).toBe('150');
+    expect(vm.routeRateToKeep('150', '', false)).toBe('150');
+    expect(routeRateToKeep('150', null, false)).toBe('150');
+    expect(vm.routeRateToKeep('150', null, false)).toBe('150');
+    expect(routeRateToKeep('200', '80', true)).toBe('200');
+    expect(vm.routeRateToKeep('200', '80', true)).toBe('200');
+    expect(routeRateToKeep('', '80', false)).toBe('80');
+    expect(vm.routeRateToKeep('', '80', false)).toBe('80');
+    expect(routeRateToKeep('150', 0, false)).toBe('0');
+    expect(vm.routeRateToKeep('150', 0, false)).toBe('0');
+  });
+
+  it('test_routeRateFromSession_when_same_name_and_empty_field_should_fill_remembered_rate', () => {
+    const name = 'GPW Iława-22.09.26-01';
+    expect(routeRateFromSession(name, '', name, '150')).toBe('150');
+    expect(vm.routeRateFromSession(name, '', name, '150')).toBe('150');
+    expect(routeRateFromSession(name, '200', name, '150')).toBe('200');
+    expect(vm.routeRateFromSession(name, '200', name, '150')).toBe('200');
+    expect(routeRateFromSession('inna', '', name, '150')).toBe('');
+    expect(vm.routeRateFromSession('inna', '', name, '150')).toBe('');
+    expect(routeRateFromSession(name, '', name, '   ')).toBe('');
+    expect(vm.routeRateFromSession(name, '', name, '   ')).toBe('');
   });
 
   it('test_assignRouteBody_when_no_route_should_leave_payload_without_route_keys', () => {

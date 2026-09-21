@@ -871,6 +871,7 @@ describe('phase6', () => {
       expect(html).toContain('id="doc-inp-trasa"');
       expect(html).toContain('id="doc-inp-stawka-trasy"');
       expect(html).toContain("var lastRouteName = ''");
+      expect(html).toContain("var lastRouteRate = ''");
       expect(html).not.toContain("localStorage.setItem('lastRouteName'");
       expect(html).not.toContain('localStorage.getItem(\'lastRouteName\'');
 
@@ -896,6 +897,12 @@ describe('phase6', () => {
       expect(refresh.indexOf('lastRouteName')).toBeLessThan(refresh.indexOf('proposeRouteName'));
       expect(refresh).toContain("action: 'routeNameProposal'");
       expect(html).toContain("action: 'routeRateByName'");
+      const lookupNow = html.slice(
+        html.indexOf('function lookupRouteRateNow('),
+        html.indexOf('function applyShownRouteName('),
+      );
+      expect(lookupNow).toContain('routeRateToKeep');
+      expect(lookupNow).not.toContain("rateEl.value = ''");
 
       const payloadHits = html.split('assignRouteBody(transportPayload, form.routeFields)').length - 1;
       expect(payloadHits).toBe(2);

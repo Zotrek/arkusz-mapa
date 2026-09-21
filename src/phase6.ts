@@ -1039,7 +1039,7 @@ ${
     const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
-${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n" : ''}
+${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n" : ''}
 
     const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -2463,23 +2463,18 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
     function lookupRouteRateNow(name) {
       var rateEl = document.getElementById('doc-inp-stawka-trasy');
-      if (!rateEl || typeof routeRateFromLookup !== 'function') return;
+      if (!rateEl || typeof routeRateToKeep !== 'function') return;
       var trimmed = String(name || '').trim();
       var nameEl = document.getElementById('doc-inp-trasa');
       if (nameEl && String(nameEl.value).trim() !== trimmed) return;
-      if (!trimmed || !transportApiEnabled) {
-        if (!routeRateTouched) rateEl.value = '';
-        return;
-      }
-      if (!routeRateTouched) rateEl.value = '';
+      if (!trimmed || !transportApiEnabled) return;
       routeRateRequest += 1;
       var ticket = routeRateRequest;
       fetchTransportGet({ action: 'routeRateByName', name: trimmed }).then(function (resp) {
         if (ticket !== routeRateRequest) return;
-        if (routeRateTouched) return;
         var current = document.getElementById('doc-inp-trasa');
         if (!current || String(current.value).trim() !== trimmed) return;
-        rateEl.value = routeRateFromLookup(resp && resp.stawka);
+        rateEl.value = routeRateToKeep(rateEl.value, resp && resp.stawka, routeRateTouched);
       }).catch(function () {});
     }
     function applyShownRouteName(shown) {
@@ -2489,6 +2484,10 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (changed) {
         routeRateTouched = false;
         nameEl.value = shown;
+      }
+      if (!routeRateTouched && typeof routeRateFromSession === 'function') {
+        var rateEl = document.getElementById('doc-inp-stawka-trasy');
+        if (rateEl) rateEl.value = routeRateFromSession(shown, rateEl.value, lastRouteName, lastRouteRate);
       }
       if (changed || !readRouteRateInput()) lookupRouteRate(shown);
     }
@@ -2543,7 +2542,10 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function rememberRouteAfterSuccessfulSave(routeFields) {
       if (!routeFields || typeof routeNameRememberedAfterSave !== 'function' || typeof lastRouteName === 'undefined') return;
       var remembered = routeNameRememberedAfterSave(routeFields.trasa);
-      if (remembered) lastRouteName = remembered;
+      if (!remembered) return;
+      lastRouteName = remembered;
+      var rememberedRate = String(routeFields.stawkaTrasy || '').trim();
+      if (rememberedRate) lastRouteRate = rememberedRate;
     }
     function routeFieldsForPayload() {
       if (typeof routeBodyFields !== 'function') return null;

@@ -27,6 +27,8 @@
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
  *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 12–13). Bez klucza `trasa` te kolumny zostają puste.
+ *   Pusta `stawkaTrasy` zostaje pusta tylko na nowym wierszu i nie czyści stawki innych wierszy tej nazwy.
+ *   Kwota, także 0, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 12.
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
  *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
@@ -612,7 +614,7 @@ function appendTransportRow_(numer, body) {
     row.push(routeRate);
   }
   sheet.appendRow(row);
-  if (bodyHasRoute_(body)) {
+  if (bodyHasRoute_(body) && routeRate !== '') {
     applyRouteRateToUnsettled_(sheet, routeName, routeRate);
   }
   var parsed = parseNumberFromCell_(numer);

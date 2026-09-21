@@ -64,6 +64,45 @@ export function routeRateFromLookup(rate: unknown): string {
   return String(rate).trim();
 }
 
+/**
+ * Podpowiedź do pola. Edycja użytkownika zostaje.
+ * Pusta odpowiedź arkusza nie kasuje tego, co już jest w polu. Zero z arkusza wchodzi.
+ */
+export function routeRateToKeep(currentRate: string, lookedUpRate: unknown, userEdited: boolean): string {
+  const current = String(currentRate ?? '');
+  if (userEdited) {
+    return current;
+  }
+  const fromSheet = routeRateFromLookup(lookedUpRate);
+  if (fromSheet === '') {
+    return current;
+  }
+  return fromSheet;
+}
+
+/**
+ * Stawka z ostatniego zapisu tej samej nazwy w sesji.
+ * Inna nazwa, pusta pamięć albo kwota już wpisana: zostaje bieżące pole.
+ */
+export function routeRateFromSession(
+  shownName: string,
+  currentRate: string,
+  sessionName: string,
+  sessionRate: string,
+): string {
+  const current = String(currentRate ?? '');
+  if (current.trim()) {
+    return current;
+  }
+  const name = String(shownName ?? '').trim();
+  const rememberedName = String(sessionName ?? '').trim();
+  const rememberedRate = String(sessionRate ?? '').trim();
+  if (!name || !rememberedRate || name !== rememberedName) {
+    return '';
+  }
+  return rememberedRate;
+}
+
 /** Dokleja kolumny 12–13 albo nie rusza body, gdy trasy nie ma. */
 export function assignRouteBody(
   payload: Record<string, unknown> | null,
@@ -88,6 +127,10 @@ export function routeProtocolBrowserScript(): string {
     routeNameRememberedAfterSave.toString() +
     '\n' +
     routeRateFromLookup.toString() +
+    '\n' +
+    routeRateToKeep.toString() +
+    '\n' +
+    routeRateFromSession.toString() +
     '\n' +
     assignRouteBody.toString() +
     '\n'

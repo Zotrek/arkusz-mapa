@@ -130,11 +130,11 @@ Przykład POST (body):
 
 ```
 
-Klucze `trasa` i `stawkaTrasy` są opcjonalne. Są w body tylko przy odbiorze z trasy. Bez klucza `trasa` nowy wiersz nie wypełnia kolumn 12 i 13. Pusta `stawkaTrasy` zostaje pusta. Kwota `0` zostaje zerem.
+Klucze `trasa` i `stawkaTrasy` są opcjonalne. Są w body tylko przy odbiorze z trasy. Bez klucza `trasa` nowy wiersz nie wypełnia kolumn 12 i 13. Pusta `stawkaTrasy` zostaje pusta na nowym wierszu i nie czyści stawki na pozostałych wierszach tej nazwy. Kwota, także `0`, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 12.
 
 Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy, makro wpisuje nagłówki 12–18, jeśli te komórki są puste. To tekst nagłówka, nie pusta komórka. Kolumn 1–11 nie rusza i nie przesuwa. W tym samym kroku, raz, zakłada na kolumnie 18 listę `tak` / `nie` (inne wartości też da się wpisać, także z Excela) i przekreślenie całego wiersza, gdy komórka ma `nie`. Przekreślenie jest regułą formatowania arkusza, nie klasą na stronie. Aplikacja rozliczeń tych nagłówków nie wpisuje. Dopóki po wdrożeniu nie zapisze się żadnego nowego protokołu, kolumny 18 nie ma. Brak kolumny znaczy to samo co pusta: transport się odbył.
 
-Nowa stawka idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 12. Zapis nie patrzy na **Kto odbiera** ani na datę. Wiersz z **Rozliczony** `tak` jest pomijany. Kolumn 16 i 17 ten zapis nie rusza. Lock jest ten sam co przy numerze protokołu.
+Nowa kwota, także zero, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 12. Pusta stawka z protokołu tego nie robi. Zapis nie patrzy na **Kto odbiera** ani na datę. Wiersz z **Rozliczony** `tak` jest pomijany. Kolumn 16 i 17 ten zapis nie rusza. Lock jest ten sam co przy numerze protokołu.
 
 
 

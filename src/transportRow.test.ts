@@ -397,6 +397,25 @@ describe('appendTransportRow_', () => {
     expect(sheet.cell(2, 13)).toBe('');
   });
 
+  it('test_appendTransportRow_when_rate_empty_should_not_clear_same_route', () => {
+    const sheet = new FakeSheet();
+    for (let col = 1; col <= 18; col += 1) {
+      sheet.put(1, col, 'h');
+    }
+    sheet.put(2, 12, 'GPW Iława-22.09.26-01');
+    sheet.put(2, 13, '150');
+    sheet.put(2, 14, '');
+
+    loadGas(sheet).appendTransportRow_(
+      '16b',
+      protocolBody({ trasa: 'GPW Iława-22.09.26-01', stawkaTrasy: '' }),
+    );
+
+    expect(sheet.cell(2, 13)).toBe('150');
+    expect(sheet.cell(3, 12)).toBe('GPW Iława-22.09.26-01');
+    expect(sheet.cell(3, 13)).toBe('');
+  });
+
   it('test_appendTransportRow_when_first_protocol_should_add_tak_nie_list_and_row_strike_once', () => {
     const sheet = new FakeSheet();
     const gas = loadGas(sheet);
