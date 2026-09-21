@@ -8,7 +8,7 @@
  * GET ?action=previewNumber
  * GET ?action=lastTransportDate&podmiot=…&adres=…  (data + kto odbiera)
  * GET ?action=listReferenceData  → { ok, data: { podwykoLista, poprawAdres } }
- * GET ?action=routeNameProposal  → { ok, names }  (kolumna 12, zajęte nazwy; propozycję liczy strona)
+ * GET ?action=routeNameProposal  → { ok, names }  (kolumna 10, zajęte nazwy; propozycję liczy strona)
  * GET ?action=routeRateByName&name=…  → { ok, stawka }  (stawka z nierozliczonego wiersza, pusta gdy nazwy nie było)
  * GET ?action=listContractors  → { ok, data: [ { nazwa, dane } ] }  (odczyt, bez zapisu)
  * GET ?action=listStoreAddresses → { ok, data: [ { adres, sklep }, … ] }
@@ -21,20 +21,25 @@
  *   Kolumn 16 i 17 nie ruszają patchBags, patchRouteRate, detachRoute, attachRoute.
  *   resolveRateTie pisze tylko w Bazie stawek.
  *   approve — jedyny zapis kolumn 14–17. Bez numeru faktury albo bez zaznaczenia odmawia całości.
- *   Remis, zła para i wiersz już `tak` pomija, resztę zaznaczenia zapisuje. Koszt bierze z body, nie z bazy.
+ *   Zła para i wiersz już `tak` pomija, resztę zaznaczenia zapisuje. Koszt bierze z body, nie z bazy.
+ *   Remisu z Bazy stawek nie blokuje (koszt ze snapshotu kolumn 12–13).
  *   Sklep z „nie odbył się” dostaje samo `nie` w kolumnie 18. Wiersza spoza zaznaczenia nie rusza.
  *   Na żywy arkusz approve wchodzi w W1, nie w M6. Nagłówków rejestru nie wpisuje.
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
- *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 12–13). Bez klucza `trasa` te kolumny zostają puste.
+ *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 10–11). Bez klucza `trasa` te kolumny zostają puste.
  *   Pusta `stawkaTrasy` zostaje pusta tylko na nowym wierszu i nie czyści stawki innych wierszy tej nazwy.
- *   Kwota, także 0, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 12.
+ *   Kwota, także 0, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 10.
+ *   Kolumny 12–13 (Stawka za podjazd / Stawka za worek) zawsze ze snapshotu Bazy stawek
+ *   (adres + kto odbiera + data odbioru). Remis albo brak pary → puste.
+ *   Komentarze 1–2 na kolumnach 19–20.
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
  *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
  *   Jeden wiersz klucza nadpisuje kwoty. Dwa i więcej: { ok:false, error:'tie' }. Inna data: nowy wiersz.
  *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 14–17) nie rusza.
  *   Brak zakładki Baza stawek: ten zapis ją zakłada, z nagłówkami w wierszu 1.
+ * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
  *
  * Zakładki referencyjne (ten sam arkusz, poza pierwszą z transportami):
  *   Lista podwykonawców, Popraw adres, Baza stawek
@@ -51,27 +56,36 @@ var COL = {
   miejsceZrzutu: 7,
   rodzajZbiorki: 8,
   iloscWorkow: 9,
-  komentarz1: 10,
-  komentarz2: 11,
-  trasa: 12,
-  stawkaTrasy: 13,
+  trasa: 10,
+  stawkaTrasy: 11,
+  stawkaPodjazdu: 12,
+  stawkaWorka: 13,
   rozliczony: 14,
   numerFaktury: 15,
   kosztOdbioru: 16,
   kosztPerWorek: 17,
   transportOdbył: 18,
+  komentarz1: 19,
+  komentarz2: 20,
 };
 
-/** Tekst nagłówka, nie pusta komórka. Kolumn 1–11 to nie rusza. Aplikacja rozliczeń tego nie wpisuje. */
-var REGISTER_HEADERS_12_18 = [
+/** Tekst nagłówka, nie pusta komórka. Kolumn 1–9 to nie rusza. Aplikacja rozliczeń tego nie wpisuje. */
+var REGISTER_HEADERS_10_20 = [
   'Trasa',
   'Stawka za trasę',
+  'Stawka za podjazd',
+  'Stawka za worek',
   'Rozliczony',
   'Numer faktury',
   'Koszt odbioru',
   'Koszt odbioru per worek',
   'transport się odbył',
+  'Komentarz 1',
+  'Komentarz 2',
 ];
+
+/** Marker migracji V2 — nagłówek kolumny 12 po przełożeniu komentarzy. */
+var REGISTER_LAYOUT_V2_MARKER = 'Stawka za podjazd';
 
 /** R to kolumna 18. Reguła arkusza, nie klasa w przeglądarce. */
 var TRANSPORT_HAPPENED_STRIKE_FORMULA = '=$R2="nie"';
@@ -227,7 +241,7 @@ function getDataSheet_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
 }
 
-/** Kolumna 12, bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */
+/** Kolumna 10, bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */
 function listOccupiedRouteNames_() {
   var sheet = getDataSheet_();
   var lastRow = sheet.getLastRow();
@@ -249,7 +263,7 @@ function listOccupiedRouteNames_() {
 }
 
 /**
- * Stawka z ostatniego nierozliczonego wiersza o tym tekście w kolumnie 12.
+ * Stawka z ostatniego nierozliczonego wiersza o tym tekście w kolumnie 10.
  * Rozliczony `tak` pomija. Brak nazwy albo sama pusta stawka: pusty string. Zero zostaje.
  */
 function routeRateByName_(name) {
@@ -262,18 +276,21 @@ function routeRateByName_(name) {
   if (lastRow < 2) {
     return '';
   }
-  var values = sheet.getRange(2, COL.trasa, lastRow - 1, 3).getValues();
+  var numRows = lastRow - 1;
+  var names = sheet.getRange(2, COL.trasa, numRows, 1).getValues();
+  var rates = sheet.getRange(2, COL.stawkaTrasy, numRows, 1).getValues();
+  var settled = sheet.getRange(2, COL.rozliczony, numRows, 1).getValues();
   var found = null;
-  for (var i = 0; i < values.length; i++) {
-    var rowName = String(values[i][0] == null ? '' : values[i][0]).trim();
+  for (var i = 0; i < numRows; i++) {
+    var rowName = String(names[i][0] == null ? '' : names[i][0]).trim();
     if (rowName !== wanted) {
       continue;
     }
-    var settled = String(values[i][2] == null ? '' : values[i][2]).trim().toLowerCase();
-    if (settled === 'tak') {
+    var flag = String(settled[i][0] == null ? '' : settled[i][0]).trim().toLowerCase();
+    if (flag === 'tak') {
       continue;
     }
-    var rate = values[i][1];
+    var rate = rates[i][0];
     found = rate == null || rate === '' ? '' : String(rate).trim();
   }
   return found == null ? '' : found;
@@ -469,11 +486,11 @@ function cellIsEmpty_(value) {
 
 /**
  * Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy.
- * Puste komórki 12–18 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
+ * Puste komórki 10–20 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
  * W tym samym kroku, raz: lista `tak` / `nie` na kolumnie 18 i przekreślenie wiersza z `nie`.
  */
 function ensureTransportRegisterColumns_(sheet) {
-  var width = REGISTER_HEADERS_12_18.length;
+  var width = REGISTER_HEADERS_10_20.length;
   var range = sheet.getRange(1, COL.trasa, 1, width);
   var current = range.getValues()[0];
   var next = [];
@@ -481,7 +498,7 @@ function ensureTransportRegisterColumns_(sheet) {
   for (var i = 0; i < width; i++) {
     var cell = current.length > i ? current[i] : '';
     if (cellIsEmpty_(cell)) {
-      next.push(REGISTER_HEADERS_12_18[i]);
+      next.push(REGISTER_HEADERS_10_20[i]);
       changed = true;
     } else {
       next.push(cell);
@@ -559,7 +576,7 @@ function ensureTransportHappenedRules_(sheet) {
 }
 
 /**
- * Ten sam tekst w kolumnie 12, bez filtra podwykonawcy i dat.
+ * Ten sam tekst w kolumnie 10, bez filtra podwykonawcy i dat.
  * Rozliczony `tak` pomija. Kolumny 16 i 17 nie są w tym zapisie.
  * Lock trzyma `doPost`, tak jak przy numerze protokołu.
  */
@@ -589,30 +606,92 @@ function applyRouteRateToUnsettled_(sheet, name, rate) {
   }
 }
 
+/**
+ * Snapshot stawek podjazdu i worka z Bazy stawek na dzień odbioru.
+ * Remis albo brak pary → puste komórki (koszt 0 w rozliczeniach).
+ */
+function resolveRegisterRateSnapshot_(shop, contractor, pickupDate) {
+  var empty = { pickup: '', bag: '' };
+  if (!shop || !contractor || !pickupDate) {
+    return empty;
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
+  if (!sheet) {
+    return empty;
+  }
+  var rates = listRateAmountRows_(sheet);
+  var matching = [];
+  var i;
+  for (i = 0; i < rates.length; i++) {
+    var rate = rates[i];
+    if (rate.shop !== shop || rate.contractor !== contractor) {
+      continue;
+    }
+    if (!approveRateApplies_(rate.validFrom, pickupDate)) {
+      continue;
+    }
+    matching.push(rate);
+  }
+  if (matching.length === 0) {
+    return empty;
+  }
+  var best = matching[0].validFrom;
+  for (i = 1; i < matching.length; i++) {
+    if (approveCompareFrom_(matching[i].validFrom, best) > 0) {
+      best = matching[i].validFrom;
+    }
+  }
+  var winners = [];
+  for (i = 0; i < matching.length; i++) {
+    if (matching[i].validFrom === best) {
+      winners.push(matching[i]);
+    }
+  }
+  if (winners.length !== 1) {
+    return empty;
+  }
+  return {
+    pickup: winners[0].pickup == null || winners[0].pickup === '' ? '' : winners[0].pickup,
+    bag: winners[0].bag == null || winners[0].bag === '' ? '' : winners[0].bag,
+  };
+}
+
 function appendTransportRow_(numer, body) {
   var sheet = getDataSheet_();
   ensureTransportRegisterColumns_(sheet);
-  var row = [
-    numer,
-    body.adresSklepu || '',
-    body.podmiotHandlowy || '',
-    body.sklep || '',
-    body.dataOdbioru || '',
-    body.ktoOdbiera || '',
-    body.miejsceZrzutu || '',
-    body.rodzajZbiorki || '',
-    body.iloscWorkow != null ? body.iloscWorkow : '',
-    body.komentarz1 || '',
-    body.komentarz2 || '',
-  ];
+  var adres = body.adresSklepu || '';
+  var kto = body.ktoOdbiera || '';
+  var dataOdbioru = body.dataOdbioru || '';
+  var pickupDate = settlementDateText_(dataOdbioru) || '';
+  var snapshot = resolveRegisterRateSnapshot_(cellStr_(adres), cellStr_(kto), pickupDate);
   var routeName = '';
   var routeRate = '';
   if (bodyHasRoute_(body)) {
     routeName = body.trasa == null ? '' : String(body.trasa).trim();
     routeRate = body.stawkaTrasy == null ? '' : String(body.stawkaTrasy).trim();
-    row.push(routeName);
-    row.push(routeRate);
   }
+  var row = [
+    numer,
+    adres,
+    body.podmiotHandlowy || '',
+    body.sklep || '',
+    dataOdbioru,
+    kto,
+    body.miejsceZrzutu || '',
+    body.rodzajZbiorki || '',
+    body.iloscWorkow != null ? body.iloscWorkow : '',
+    routeName,
+    routeRate,
+    snapshot.pickup,
+    snapshot.bag,
+    '',
+    '',
+    '',
+    '',
+    '',
+    body.komentarz1 || '',
+    body.komentarz2 || '',
+  ];
   sheet.appendRow(row);
   if (bodyHasRoute_(body) && routeRate !== '') {
     applyRouteRateToUnsettled_(sheet, routeName, routeRate);
@@ -1414,6 +1493,29 @@ function listRateRows_(sheet) {
   return rows;
 }
 
+/** Jak listRateRows_, plus surowe wartości kwot z kolumn 3–4 (do snapshotu rejestru). */
+function listRateAmountRows_(sheet) {
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last < 2) {
+    return rows;
+  }
+  var values = sheet.getRange(2, 1, last - 1, 5).getValues();
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var dateKey = rateCellDateKey_(values[i][4]);
+    rows.push({
+      row: i + 2,
+      shop: cellStr_(values[i][0]),
+      contractor: cellStr_(values[i][1]),
+      pickup: values[i][2],
+      bag: values[i][3],
+      validFrom: dateKey == null ? '\u0000' : dateKey,
+    });
+  }
+  return rows;
+}
+
 function getOrCreateRateSheet_() {
   var name = 'Baza stawek';
   var header = ['Sklep', 'Podwykonawca', 'Kwota za podjazd', 'Kwota za worek', 'Od kiedy obowiązuje'];
@@ -1762,8 +1864,10 @@ function mapSettlementRegisterRow_(sheetRow, cells) {
     pickupDate: pickupDate,
     contractor: settlementText_(settlementCell_(cells, 5)),
     bagCount: settlementBagCount_(settlementCell_(cells, 8)),
-    routeName: settlementText_(settlementCell_(cells, 11)),
-    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
+    routeName: settlementText_(settlementCell_(cells, 9)),
+    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 10)),
+    pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 11)),
+    bagRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
     settled: settlementFlag_(settlementCell_(cells, 13)) === 'tak',
     didNotHappen: settlementFlag_(settlementCell_(cells, 17)) === 'nie',
   };
@@ -1800,6 +1904,8 @@ function settlementPublicRow_(mapped) {
     bagCount: mapped.bagCount,
     routeName: mapped.routeName,
     routeRate: mapped.routeRate,
+    pickupRate: mapped.pickupRate,
+    bagRate: mapped.bagRate,
   };
 }
 
@@ -2100,37 +2206,6 @@ function approveRateApplies_(validFrom, pickupDate) {
   return approveCompareFrom_(validFrom, pickupDate) <= 0;
 }
 
-function approveHasRateTie_(rates, shop, contractor, pickupDate) {
-  var matching = [];
-  var i;
-  for (i = 0; i < rates.length; i++) {
-    var rate = rates[i];
-    if (rate.shop !== shop || rate.contractor !== contractor) {
-      continue;
-    }
-    if (!approveRateApplies_(rate.validFrom, pickupDate)) {
-      continue;
-    }
-    matching.push(rate.validFrom);
-  }
-  if (matching.length < 2) {
-    return false;
-  }
-  var best = matching[0];
-  for (i = 1; i < matching.length; i++) {
-    if (approveCompareFrom_(matching[i], best) > 0) {
-      best = matching[i];
-    }
-  }
-  var count = 0;
-  for (i = 0; i < matching.length; i++) {
-    if (matching[i] === best) {
-      count += 1;
-    }
-  }
-  return count > 1;
-}
-
 function approveIdentity_(item) {
   var row = item && item.sheetRow != null ? Number(item.sheetRow) : null;
   return {
@@ -2153,18 +2228,12 @@ function approveSaved_(sheet, row) {
   };
 }
 
-function approveRateRows_() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
-  if (!sheet) {
-    return [];
-  }
-  return listRateRows_(sheet);
-}
-
 /**
  * Jedyny zapis kolumn 14–17. Koszt jest już policzony (`koszt` w groszach).
  * Opcja samych worków i kwoty podjazdu oraz worka z zestawienia jadą w body,
- * bo arkusz ich nie pamięta. Ten skrypt ich nie czyta i nie liczy kosztu z bazy drugi raz.
+ * bo arkusz ich nie pamięta na kolumnach rozliczenia. Ten skrypt ich nie czyta
+ * i nie liczy kosztu z bazy drugi raz. Remisu z Bazy stawek nie sprawdza —
+ * koszt jest ze snapshotu kolumn 12–13 (ew. nadpisany na ekranie).
  * Nagłówków rejestru nie wpisuje. Na żywy arkusz wchodzi w W1, nie w M6.
  */
 function approve_(body) {
@@ -2177,7 +2246,6 @@ function approve_(body) {
     return { ok: false, error: 'selection' };
   }
   var sheet = getDataSheet_();
-  var rates = approveRateRows_();
   var saved = [];
   var skipped = [];
   var i;
@@ -2198,12 +2266,6 @@ function approve_(body) {
     var pickupDate = settlementDateText_(sheet.getRange(target.row, COL.dataOdbioru).getValue());
     if (!pickupDate) {
       skipped.push(approveSkip_(item, 'date'));
-      continue;
-    }
-    var shop = cellStr_(sheet.getRange(target.row, COL.adres).getValue());
-    var contractor = cellStr_(sheet.getRange(target.row, COL.ktoOdbiera).getValue());
-    if (approveHasRateTie_(rates, shop, contractor, pickupDate)) {
-      skipped.push(approveSkip_(item, 'tie'));
       continue;
     }
     if (markedNie) {
@@ -2246,4 +2308,74 @@ function runSettlementWrite_(action, body) {
     return approve_(body);
   }
   return { ok: false, error: 'unknown action' };
+}
+
+/**
+ * Jednorazowa migracja układu rejestru V2.
+ * Stare: komentarze 10–11, trasa 12–13, rozliczenie 14–18.
+ * Nowe: trasa 10–11, podjazd/worek 12–13, rozliczenie 14–18, komentarze 19–20.
+ * Backfill 12–13 z Bazy stawek. Idempotentna: gdy kolumna 12 ma już marker, nic nie robi.
+ * Wywołanie ręczne z edytora Apps Script (po wdrożeniu tego pliku).
+ */
+function migrateRegisterLayoutRates_() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = getDataSheet_();
+    var header12 = sheet.getRange(1, COL.stawkaPodjazdu).getValue();
+    if (settlementText_(header12) === REGISTER_LAYOUT_V2_MARKER) {
+      return { ok: true, skipped: true, reason: 'already-v2' };
+    }
+    var lastRow = sheet.getLastRow();
+    var lastCol = Math.max(sheet.getLastColumn(), 18);
+    var width = Math.max(lastCol, 18);
+    var oldHeader = lastRow >= 1 ? sheet.getRange(1, 1, 1, width).getValues()[0] : [];
+    var oldData = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
+    var newHeader = [];
+    var c;
+    for (c = 0; c < 9; c++) {
+      newHeader.push(oldHeader.length > c ? oldHeader[c] : '');
+    }
+    for (c = 0; c < REGISTER_HEADERS_10_20.length; c++) {
+      newHeader.push(REGISTER_HEADERS_10_20[c]);
+    }
+    var newRows = [];
+    var i;
+    for (i = 0; i < oldData.length; i++) {
+      var src = oldData[i];
+      var cell = function (idx) {
+        return src.length > idx && src[idx] != null ? src[idx] : '';
+      };
+      var adres = cellStr_(cell(1));
+      var kto = cellStr_(cell(5));
+      var pickupDate = settlementDateText_(cell(4)) || '';
+      var snapshot = resolveRegisterRateSnapshot_(adres, kto, pickupDate);
+      var next = [];
+      for (c = 0; c < 9; c++) {
+        next.push(cell(c));
+      }
+      next.push(cell(11));
+      next.push(cell(12));
+      next.push(snapshot.pickup);
+      next.push(snapshot.bag);
+      for (c = 13; c <= 17; c++) {
+        next.push(cell(c));
+      }
+      next.push(cell(9));
+      next.push(cell(10));
+      newRows.push(next);
+    }
+    var clearWidth = Math.max(width, COL.komentarz2);
+    if (lastRow >= 1) {
+      sheet.getRange(1, 1, Math.max(lastRow, 1), clearWidth).clearContent();
+    }
+    sheet.getRange(1, 1, 1, newHeader.length).setValues([newHeader]);
+    if (newRows.length > 0) {
+      sheet.getRange(2, 1, newRows.length, COL.komentarz2).setValues(newRows);
+    }
+    ensureTransportHappenedRules_(sheet);
+    return { ok: true, rows: newRows.length };
+  } finally {
+    lock.releaseLock();
+  }
 }
