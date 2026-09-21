@@ -909,6 +909,8 @@ describe('phase6', () => {
       expect(refresh).toContain("routeNameMode !== 'new'");
       expect(refresh).toContain('namesBlockingNewRoute');
       expect(refresh).toContain("action: 'routeNameProposal'");
+      expect(refresh).toContain("setTransportDatesLoading(true, 'Ładowanie nazwy trasy…')");
+      expect(refresh).toContain('setTransportDatesLoading(false)');
       expect(html).toContain("action: 'routeRateByName'");
       const lookupNow = html.slice(
         html.indexOf('function lookupRouteRateNow('),
@@ -996,6 +998,7 @@ describe('phase6', () => {
       expect(html).toContain('map-logo-pulse');
       expect(html).toContain('Pobieranie danych transportu');
       expect(html).toContain('Ładowanie danych dokumentu');
+      expect(html).toContain('Ładowanie nazwy trasy');
       expect(html).toContain('Generowanie dokumentu');
       expect(html).toContain('setTransportDatesLoading');
       expect(html).toContain('refreshAllMarkerDisplaysAfterTransport');

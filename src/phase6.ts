@@ -2643,9 +2643,12 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         propose([]);
         return;
       }
+      setTransportDatesLoading(true, 'Ładowanie nazwy trasy…');
       fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
         propose(resp && Array.isArray(resp.names) ? resp.names : []);
-      }).catch(function () { propose([]); });
+      }).catch(function () { propose([]); }).then(function () {
+        setTransportDatesLoading(false);
+      });
     }
     function onNowaTrasaClick() {
       if (!String(lastRouteName || '').trim()) return;
