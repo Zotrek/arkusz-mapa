@@ -10,6 +10,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import https from 'node:https';
 import {
+  addressWithCommaAfterLocality,
   applyAddressAliases,
   buildAddress,
   stripTrailingHouseNumberFromStreet,
@@ -138,6 +139,33 @@ describe('sheets phase 2', () => {
       });
 
       expect(address).toBe('26-660 Wierzchowiny 29');
+    });
+  });
+
+  describe('addressWithCommaAfterLocality', () => {
+    it('test_addressWithCommaAfterLocality_when_city_known_should_put_comma_before_street', () => {
+      expect(addressWithCommaAfterLocality('98-300 Wieluń Sieradzka 62A', 'Wieluń')).toBe(
+        '98-300 Wieluń, Sieradzka 62A',
+      );
+      expect(addressWithCommaAfterLocality('22-672 Susiec Turystyczna 27', 'Susiec')).toBe(
+        '22-672 Susiec, Turystyczna 27',
+      );
+      expect(
+        addressWithCommaAfterLocality('63-000 Środa Wielkopolska Sienkiewicza 19', 'Środa Wielkopolska'),
+      ).toBe('63-000 Środa Wielkopolska, Sienkiewicza 19');
+      expect(addressWithCommaAfterLocality('26-660 Wierzchowiny 29', 'Wierzchowiny')).toBe(
+        '26-660 Wierzchowiny, 29',
+      );
+    });
+
+    it('test_addressWithCommaAfterLocality_when_city_unknown_should_keep_multiword_locality', () => {
+      expect(addressWithCommaAfterLocality('65-001 Zielona Góra Kupiecka 4')).toBe(
+        '65-001 Zielona Góra, Kupiecka 4',
+      );
+      expect(addressWithCommaAfterLocality('30-001 Kraków os. Teatralne 2')).toBe(
+        '30-001 Kraków, os. Teatralne 2',
+      );
+      expect(addressWithCommaAfterLocality('ul. Głogowska 12')).toBe('ul. Głogowska 12');
     });
   });
 

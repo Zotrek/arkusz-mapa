@@ -202,6 +202,122 @@ export function buildAddress(parts: AddressParts): string {
     .trim();
 }
 
+/** Drugi człon miejscowości (Zielona Góra, Środa Wielkopolska). Nie nazwy ulic. */
+const LOCALITY_SECOND_WORD = new Set([
+  'gora',
+  'sol',
+  'targ',
+  'dunajec',
+  'gdanski',
+  'podlaski',
+  'podlaska',
+  'mazowiecka',
+  'mazowiecki',
+  'wielkopolska',
+  'wielkopolski',
+  'wilekopolski',
+  'wlkp',
+  'deba',
+  'sacz',
+  'zabkowicki',
+  'zabkowicka',
+  'lodzki',
+  'lodzka',
+  'swietokrzyski',
+  'swietokrzyska',
+  'trybunalski',
+  'slaski',
+  'slaska',
+]);
+
+function foldLocality(text: string): string {
+  return text
+    .toLocaleLowerCase('pl')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/ł/g, 'l')
+    .replace(/\./g, '');
+}
+
+function splitLeadingPostcode(address: string): { prefix: string; rest: string } {
+  const match = /^(\d{2}-\d{3})(?:\s+|$)/.exec(address);
+  if (!match) {
+    return { prefix: '', rest: address };
+  }
+  return { prefix: match[1], rest: address.slice(match[0].length).trim() };
+}
+
+function insertCommaAfterPlace(address: string, locality: string): string | null {
+  const place = locality.replace(/\s+/g, ' ').trim();
+  if (!place) {
+    return null;
+  }
+  const { prefix, rest } = splitLeadingPostcode(address);
+  if (rest.length < place.length) {
+    return null;
+  }
+  if (foldLocality(rest.slice(0, place.length)) !== foldLocality(place)) {
+    return null;
+  }
+  const boundary = rest[place.length] ?? '';
+  if (boundary && boundary !== ' ' && boundary !== ',') {
+    return null;
+  }
+  if (boundary === ',') {
+    return address;
+  }
+  const tail = rest.slice(place.length).trim();
+  if (!tail) {
+    return address;
+  }
+  const head = prefix ? `${prefix} ${rest.slice(0, place.length)}` : rest.slice(0, place.length);
+  return `${head}, ${tail}`;
+}
+
+function insertCommaAfterLocalityHeuristic(address: string): string {
+  if (address.includes(',')) {
+    return address;
+  }
+  const { prefix, rest } = splitLeadingPostcode(address);
+  if (!prefix) {
+    return address;
+  }
+  const words = rest.split(' ').filter((word) => word.length > 0);
+  if (words.length < 2) {
+    return address;
+  }
+  let take = 1;
+  const second = foldLocality(words[1] ?? '');
+  if (second === 'nad' && words.length >= 4) {
+    take = 3;
+  } else if (LOCALITY_SECOND_WORD.has(second)) {
+    take = 2;
+  }
+  if (take >= words.length) {
+    return address;
+  }
+  const locality = words.slice(0, take).join(' ');
+  const tail = words.slice(take).join(' ');
+  const head = `${prefix} ${locality}`;
+  return `${head}, ${tail}`;
+}
+
+/**
+ * Widoczny adres: przecinek po miejscowości. Klucz zapisu zostaje bez przecinka.
+ * Znana miejscowość ma pierwszeństwo. Inaczej drugi człon tylko dla typowych nazw (Góra, Wielkopolska).
+ */
+export function addressWithCommaAfterLocality(address: string, locality = ''): string {
+  const addr = address.replace(/\s+/g, ' ').trim();
+  if (!addr) {
+    return '';
+  }
+  const placed = insertCommaAfterPlace(addr, locality);
+  if (placed !== null) {
+    return placed;
+  }
+  return insertCommaAfterLocalityHeuristic(addr);
+}
+
 export function mapRawRowToSheetRow(
   raw: string[],
   sourceRowIndex: number,

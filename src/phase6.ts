@@ -343,6 +343,8 @@ type MapPoint = {
   podmiotHandlowy: string;
   /** Pierwszy sklep z grupy — zapis w rejestrze transportów. */
   sklep: string;
+  /** Miejscowość z arkusza — tylko do przecinka w widocznym adresie. */
+  miasto: string;
   /** Wiersze plomb do filtrowania w protokole (data zamknięcia worka). */
   sealRows: SealRowLite[];
   /** Zbiórka: Ręczna / Maszyna (z kolumny L) */
@@ -630,6 +632,16 @@ function uniqueSearchLabelsFromRows(rows: SheetRow[]): string[] {
   return out;
 }
 
+function firstMiastoFromRows(rows: SheetRow[]): string {
+  for (const row of rows) {
+    const city = row.miasto.trim();
+    if (city) {
+      return city;
+    }
+  }
+  return '';
+}
+
 function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): MapPoint {
   return {
     adres: item.address,
@@ -644,6 +656,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     podmiotyHandlowe: uniquePodmiotyHandloweFromRows(item.rows),
     podmiotHandlowy: firstPodmiotHandlowyFromRows(item.rows),
     sklep: firstSklepFromRows(item.rows),
+    miasto: firstMiastoFromRows(item.rows),
     sealRows: sealRowsFromSheetRowsWithOdebraneFlag(item.rows, (r) =>
       shouldCopyToOdebraneZHarmonogramu({
         zbiorka: r.zbiorka,
@@ -1106,6 +1119,55 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         .replace(/\\s+/g, ' ')
         .trim();
     }
+    var LOCALITY_SECOND_WORD = {
+      gora: 1, sol: 1, targ: 1, dunajec: 1, gdanski: 1, podlaski: 1, podlaska: 1,
+      mazowiecka: 1, mazowiecki: 1, wielkopolska: 1, wielkopolski: 1, wilekopolski: 1,
+      wlkp: 1, deba: 1, sacz: 1, zabkowicki: 1, zabkowicka: 1, lodzki: 1, lodzka: 1,
+      swietokrzyski: 1, swietokrzyska: 1, trybunalski: 1, slaski: 1, slaska: 1
+    };
+    function foldLocalityMap(text) {
+      return normalizeForAddressSearchMap(text).replace(/\\./g, '');
+    }
+    function splitLeadingPostcodeMap(address) {
+      var match = /^(\\d{2}-\\d{3})(?:\\s+|$)/.exec(address);
+      if (!match) return { prefix: '', rest: address };
+      return { prefix: match[1], rest: address.slice(match[0].length).trim() };
+    }
+    function insertCommaAfterPlaceMap(address, locality) {
+      var place = String(locality || '').replace(/\\s+/g, ' ').trim();
+      if (!place) return null;
+      var parts = splitLeadingPostcodeMap(address);
+      var rest = parts.rest;
+      if (rest.length < place.length) return null;
+      if (foldLocalityMap(rest.slice(0, place.length)) !== foldLocalityMap(place)) return null;
+      var boundary = rest.charAt(place.length);
+      if (boundary && boundary !== ' ' && boundary !== ',') return null;
+      if (boundary === ',') return address;
+      var tail = rest.slice(place.length).trim();
+      if (!tail) return address;
+      var head = parts.prefix ? parts.prefix + ' ' + rest.slice(0, place.length) : rest.slice(0, place.length);
+      return head + ', ' + tail;
+    }
+    function insertCommaHeuristicMap(address) {
+      if (address.indexOf(',') !== -1) return address;
+      var parts = splitLeadingPostcodeMap(address);
+      if (!parts.prefix) return address;
+      var words = parts.rest.split(' ').filter(function(word) { return word.length > 0; });
+      if (words.length < 2) return address;
+      var take = 1;
+      var second = foldLocalityMap(words[1] || '');
+      if (second === 'nad' && words.length >= 4) take = 3;
+      else if (LOCALITY_SECOND_WORD[second]) take = 2;
+      if (take >= words.length) return address;
+      return parts.prefix + ' ' + words.slice(0, take).join(' ') + ', ' + words.slice(take).join(' ');
+    }
+    function addressWithCommaAfterLocalityMap(address, locality) {
+      var addr = String(address || '').replace(/\\s+/g, ' ').trim();
+      if (!addr) return '';
+      var placed = insertCommaAfterPlaceMap(addr, locality);
+      if (placed !== null) return placed;
+      return insertCommaHeuristicMap(addr);
+    }
     function mapPointMatchesSearchMap(p, query) {
       var q = normalizeForAddressSearchMap(query);
       if (!q) return true;
@@ -1377,7 +1439,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var poprawBtn = (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL)
         ? '<button type="button" class="map-popraw-adres-btn btn-popraw-adres" data-point-idx="' + pointIdx + '">Popraw adres</button>'
         : '';
-      return '<div class="popup-address">' + p.adres + '</div>' +
+      return '<div class="popup-address">' + addressWithCommaAfterLocalityMap(p.adres, p.miasto) + '</div>' +
         (podmiotLine || '') +
         buildPopupCountHtml(p) +
         (zbiorkaLine || '') +
@@ -1874,7 +1936,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         var suffix = prep.filteredSeals.length === prep.total
           ? prep.filteredSeals.length + ' worków'
           : prep.filteredSeals.length + ' z ' + prep.total + ' worków';
-        li.textContent = p.adres + ' — ' + suffix;
+        li.textContent = addressWithCommaAfterLocalityMap(p.adres, p.miasto) + ' — ' + suffix;
         listEl.appendChild(li);
       });
     }

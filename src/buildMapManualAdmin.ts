@@ -70,6 +70,17 @@ export function manualAdminCss(): string {
     .manual-admin-submit:hover { background: var(--map-accent-deep); }
     .manual-admin-submit:disabled { opacity: 0.75; cursor: wait; }
     .manual-admin-hint { font-size: 11px; color: #64748b; margin: 8px 0 0; line-height: 1.4; }
+    #manual-admin-modal .doc-combobox-wrap { position: relative; }
+    #manual-admin-modal .doc-combobox-list {
+      position: absolute; left: 0; right: 0; top: calc(100% + 2px); max-height: 220px; overflow-y: auto; z-index: 20;
+      margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid rgba(148, 163, 184, 0.45);
+      border-radius: 10px; box-shadow: var(--map-shadow);
+    }
+    #manual-admin-modal .doc-combobox-list li { padding: 8px 10px; cursor: pointer; font-size: 13px; }
+    #manual-admin-modal .doc-combobox-list li:hover,
+    #manual-admin-modal .doc-combobox-list li.doc-combobox-active { background: var(--map-accent-soft); color: var(--map-accent-deep); }
+    #manual-admin-modal .doc-combobox-list li.doc-combobox-empty { color: var(--map-muted); cursor: default; }
+    #manual-admin-modal .doc-combobox-list li.doc-combobox-empty:hover { background: transparent; color: var(--map-muted); }
   `;
 }
 
@@ -124,13 +135,17 @@ export function manualAdminHtml(): string {
       </div>
       <div id="manual-admin-panel-stawki" class="manual-admin-panel">
         <label for="manual-admin-stawki-sklep">Sklep</label>
-        <select id="manual-admin-stawki-sklep" aria-label="Sklep">
-          <option value="">— wybierz adres —</option>
-        </select>
+        <div class="doc-combobox-wrap">
+          <input type="text" id="manual-admin-stawki-sklep" class="doc-combobox-input" autocomplete="off" spellcheck="false" placeholder="Wpisz fragment nazwy lub adresu…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="manual-admin-stawki-sklep-list" />
+          <input type="hidden" id="manual-admin-stawki-sklep-value" />
+          <ul id="manual-admin-stawki-sklep-list" class="doc-combobox-list" role="listbox" hidden></ul>
+        </div>
         <label for="manual-admin-stawki-podwykonawca">Podwykonawca</label>
-        <select id="manual-admin-stawki-podwykonawca" aria-label="Podwykonawca">
-          <option value="">— wybierz podwykonawcę —</option>
-        </select>
+        <div class="doc-combobox-wrap">
+          <input type="text" id="manual-admin-stawki-podwykonawca" class="doc-combobox-input" autocomplete="off" spellcheck="false" placeholder="Wpisz fragment nazwy…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="manual-admin-stawki-podwykonawca-list" />
+          <input type="hidden" id="manual-admin-stawki-podwykonawca-value" />
+          <ul id="manual-admin-stawki-podwykonawca-list" class="doc-combobox-list" role="listbox" hidden></ul>
+        </div>
         <label for="manual-admin-stawki-podjazd">Kwota za podjazd</label>
         <input type="text" id="manual-admin-stawki-podjazd" inputmode="decimal" autocomplete="off" />
         <label for="manual-admin-stawki-worek">Kwota za worek</label>
@@ -268,64 +283,202 @@ ${referenceFormatsBrowserScript()}
       return out;
     }
 
-    function fillRateSelect(selectId, values, placeholder) {
-      var sel = document.getElementById(selectId);
-      if (!sel) return;
-      var current = sel.value;
-      sel.innerHTML = '';
-      var empty = document.createElement('option');
-      empty.value = '';
-      empty.textContent = placeholder;
-      sel.appendChild(empty);
-      var i;
-      for (i = 0; i < values.length; i++) {
-        var item = values[i];
-        var value = item && typeof item === 'object' ? item.value : item;
-        var text = item && typeof item === 'object' ? item.text : item;
-        var opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = text;
-        sel.appendChild(opt);
-      }
-      if (current) sel.value = current;
+    var rateShopOptions = [];
+    var rateContractorOptions = [];
+    var rateComboboxInited = false;
+
+    function rateTextMatchesQuery(text, query) {
+      var q = normalizeForAddressSearchMap(String(query || '').replace(/,/g, ''));
+      if (!q) return true;
+      return normalizeForAddressSearchMap(String(text || '').replace(/,/g, '')).indexOf(q) !== -1;
     }
 
-    function rateShopOptionLabel(sklep, adres) {
-      if (sklep && sklep !== adres) return sklep + ' — ' + adres;
-      return adres;
+    function hideRateComboboxList(listEl, inputEl) {
+      if (!listEl) return;
+      listEl.hidden = true;
+      listEl.innerHTML = '';
+      if (inputEl) inputEl.setAttribute('aria-expanded', 'false');
+    }
+
+    function showRateComboboxList(listEl, inputEl) {
+      if (!listEl) return;
+      listEl.hidden = false;
+      if (inputEl) inputEl.setAttribute('aria-expanded', 'true');
+    }
+
+    function selectRateComboboxOption(inputEl, hiddenEl, listEl, option) {
+      if (!option || !inputEl || !hiddenEl) return;
+      inputEl.value = option.text;
+      hiddenEl.value = option.value;
+      hideRateComboboxList(listEl, inputEl);
+    }
+
+    function renderRateComboboxList(listEl, inputEl, hiddenEl, options, query) {
+      if (!listEl || !inputEl || !hiddenEl) return;
+      listEl.innerHTML = '';
+      var shown = 0;
+      var maxShow = 80;
+      var i;
+      for (i = 0; i < options.length; i++) {
+        var opt = options[i];
+        if (!rateTextMatchesQuery(opt.text, query)) continue;
+        if (shown >= maxShow) break;
+        shown += 1;
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.setAttribute('data-value', opt.value);
+        li.textContent = opt.text;
+        li.addEventListener('mousedown', function(ev) {
+          ev.preventDefault();
+          selectRateComboboxOption(inputEl, hiddenEl, listEl, {
+            value: this.getAttribute('data-value') || '',
+            text: this.textContent || ''
+          });
+        });
+        listEl.appendChild(li);
+      }
+      if (shown === 0) {
+        var noLi = document.createElement('li');
+        noLi.className = 'doc-combobox-empty';
+        noLi.textContent = options.length === 0 ? 'Brak pozycji' : 'Brak dopasowań';
+        listEl.appendChild(noLi);
+      }
+      showRateComboboxList(listEl, inputEl);
+    }
+
+    function tryResolveRateCombobox(inputEl, hiddenEl, options) {
+      if (!inputEl || !hiddenEl) return;
+      var text = String(inputEl.value || '').trim();
+      if (!text) {
+        hiddenEl.value = '';
+        return;
+      }
+      var q = normalizeForAddressSearchMap(text);
+      var i;
+      for (i = 0; i < options.length; i++) {
+        if (normalizeForAddressSearchMap(options[i].text) === q) {
+          selectRateComboboxOption(inputEl, hiddenEl, null, options[i]);
+          return;
+        }
+      }
+      var matches = [];
+      for (i = 0; i < options.length; i++) {
+        if (rateTextMatchesQuery(options[i].text, text)) matches.push(options[i]);
+      }
+      if (matches.length === 1) {
+        selectRateComboboxOption(inputEl, hiddenEl, null, matches[0]);
+        return;
+      }
+      hiddenEl.value = '';
+    }
+
+    function setupRateCombobox(inputId, hiddenId, listId, getOptions) {
+      var inputEl = document.getElementById(inputId);
+      var hiddenEl = document.getElementById(hiddenId);
+      var listEl = document.getElementById(listId);
+      if (!inputEl || !hiddenEl || !listEl) return;
+      inputEl.addEventListener('focus', function() {
+        renderRateComboboxList(listEl, inputEl, hiddenEl, getOptions(), inputEl.value);
+      });
+      inputEl.addEventListener('input', function() {
+        hiddenEl.value = '';
+        renderRateComboboxList(listEl, inputEl, hiddenEl, getOptions(), inputEl.value);
+      });
+      inputEl.addEventListener('blur', function() {
+        window.setTimeout(function() {
+          tryResolveRateCombobox(inputEl, hiddenEl, getOptions());
+          hideRateComboboxList(listEl, inputEl);
+        }, 150);
+      });
+      inputEl.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Escape') {
+          hideRateComboboxList(listEl, inputEl);
+          return;
+        }
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          var items = listEl.querySelectorAll('li[data-value]');
+          if (!items.length) return;
+          ev.preventDefault();
+          var active = listEl.querySelector('li.doc-combobox-active');
+          var nextIdx = 0;
+          if (active) {
+            for (var j = 0; j < items.length; j++) {
+              if (items[j] === active) {
+                nextIdx = ev.key === 'ArrowDown' ? Math.min(j + 1, items.length - 1) : Math.max(j - 1, 0);
+                break;
+              }
+            }
+          } else if (ev.key === 'ArrowUp') {
+            nextIdx = items.length - 1;
+          }
+          for (var k = 0; k < items.length; k++) {
+            items[k].classList.toggle('doc-combobox-active', k === nextIdx);
+          }
+          items[nextIdx].scrollIntoView({ block: 'nearest' });
+          return;
+        }
+        if (ev.key === 'Enter') {
+          var pick = listEl.querySelector('li.doc-combobox-active') || listEl.querySelector('li[data-value]');
+          if (pick) {
+            ev.preventDefault();
+            selectRateComboboxOption(inputEl, hiddenEl, listEl, {
+              value: pick.getAttribute('data-value') || '',
+              text: pick.textContent || ''
+            });
+          } else {
+            tryResolveRateCombobox(inputEl, hiddenEl, getOptions());
+            hideRateComboboxList(listEl, inputEl);
+          }
+        }
+      });
+    }
+
+    function setupRateComboboxes() {
+      if (rateComboboxInited) return;
+      rateComboboxInited = true;
+      setupRateCombobox('manual-admin-stawki-sklep', 'manual-admin-stawki-sklep-value', 'manual-admin-stawki-sklep-list', function() {
+        return rateShopOptions;
+      });
+      setupRateCombobox('manual-admin-stawki-podwykonawca', 'manual-admin-stawki-podwykonawca-value', 'manual-admin-stawki-podwykonawca-list', function() {
+        return rateContractorOptions;
+      });
+    }
+
+    function rateShopOptionLabel(sklep, adres, miasto) {
+      var shown = addressWithCommaAfterLocalityMap(adres, miasto);
+      if (sklep && sklep !== adres && sklep !== shown) return sklep + ' — ' + shown;
+      return shown;
     }
 
     function fillRateShopOptions() {
       var options = [];
       var seen = {};
       var i;
-      if (typeof adresy === 'undefined' || !adresy) {
-        fillRateSelect('manual-admin-stawki-sklep', [], '— wybierz adres —');
-        return;
-      }
-      for (i = 0; i < adresy.length; i++) {
-        var point = adresy[i];
-        var adres = String(point && point.adres || '').trim();
-        if (!adres || seen[adres]) continue;
-        seen[adres] = true;
-        var sklep = String(point && point.sklep || '').trim();
-        options.push({ value: adres, text: rateShopOptionLabel(sklep, adres) });
+      if (typeof adresy !== 'undefined' && adresy) {
+        for (i = 0; i < adresy.length; i++) {
+          var point = adresy[i];
+          var adres = String(point && point.adres || '').trim();
+          if (!adres || seen[adres]) continue;
+          seen[adres] = true;
+          var sklep = String(point && point.sklep || '').trim();
+          options.push({ value: adres, text: rateShopOptionLabel(sklep, adres, point && point.miasto) });
+        }
       }
       options.sort(function(a, b) { return a.text.localeCompare(b.text, 'pl'); });
-      fillRateSelect('manual-admin-stawki-sklep', options, '— wybierz adres —');
+      rateShopOptions = options;
     }
 
     function fillRateContractorOptions() {
       var names = [];
       var i;
-      if (typeof PODWYKOLISTA === 'undefined' || !PODWYKOLISTA) {
-        fillRateSelect('manual-admin-stawki-podwykonawca', [], '— wybierz podwykonawcę —');
-        return;
+      if (typeof PODWYKOLISTA !== 'undefined' && PODWYKOLISTA) {
+        for (i = 0; i < PODWYKOLISTA.length; i++) {
+          names.push(PODWYKOLISTA[i] && PODWYKOLISTA[i].label);
+        }
       }
-      for (i = 0; i < PODWYKOLISTA.length; i++) {
-        names.push(PODWYKOLISTA[i] && PODWYKOLISTA[i].label);
-      }
-      fillRateSelect('manual-admin-stawki-podwykonawca', uniqueSortedLabels(names), '— wybierz podwykonawcę —');
+      rateContractorOptions = uniqueSortedLabels(names).map(function(name) {
+        return { value: name, text: name };
+      });
     }
 
     function setManualAdminTab(tab) {
@@ -369,6 +522,7 @@ ${referenceFormatsBrowserScript()}
       if (closeBtn) closeBtn.addEventListener('click', closeManualAdminModal);
       var openBtn = document.getElementById('map-manual-admin-open');
       if (openBtn) openBtn.addEventListener('click', function() { openManualAdminModal('lista'); });
+      setupRateComboboxes();
 
       var listaSubmit = document.getElementById('manual-admin-lista-submit');
       if (listaSubmit) {
@@ -448,8 +602,8 @@ ${referenceFormatsBrowserScript()}
       var stawkiSubmit = document.getElementById('manual-admin-stawki-submit');
       if (stawkiSubmit) {
         stawkiSubmit.addEventListener('click', function() {
-          var sklep = String((document.getElementById('manual-admin-stawki-sklep') || {}).value || '').trim();
-          var podwykonawca = String((document.getElementById('manual-admin-stawki-podwykonawca') || {}).value || '').trim();
+          var sklep = String((document.getElementById('manual-admin-stawki-sklep-value') || {}).value || '').trim();
+          var podwykonawca = String((document.getElementById('manual-admin-stawki-podwykonawca-value') || {}).value || '').trim();
           if (!sklep || !podwykonawca) {
             setManualAdminStatus('Wybierz sklep i podwykonawcę.', 'error');
             return;
