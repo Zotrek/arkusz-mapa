@@ -3189,7 +3189,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       ? '<button type="button" id="map-manual-admin-open" class="map-manual-add-btn">Dodaj do listy / popraw adres</button>'
       : '';
     var autoBulkBtnHtml = wordDocEnabled
-      ? '<button type="button" id="map-auto-bulk-toggle" class="map-auto-bulk-btn" aria-pressed="false">Automatyczny zbiorczy protokół</button>'
+      ? '<button type="button" id="map-auto-bulk-toggle" class="map-auto-bulk-btn" aria-pressed="false">Automatyczne zbiorcze zaznaczanie</button>'
       : '';
 
     var searchControl = L.control({ position: 'topleft' });
