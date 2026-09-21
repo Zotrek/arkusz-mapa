@@ -810,6 +810,18 @@ export function buildMapHtml(
     .map-bulk-generate:hover { background: var(--map-accent-deep); filter: none; }
     .map-bulk-clear { padding: 8px 12px; font-size: 12.5px; font-weight: 600; border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.55); background: rgba(255,255,255,0.92); color: #334155; cursor: pointer; }
     .map-bulk-clear:hover { background: var(--map-accent-soft); color: var(--map-accent-deep); }
+    .map-auto-bulk-btn {
+      width: 100%; box-sizing: border-box; margin-top: 10px; padding: 10px 12px;
+      font-size: 12.5px; font-weight: 600; border-radius: 10px;
+      border: 1px solid rgba(111, 66, 193, 0.55); background: rgba(255,255,255,0.92);
+      color: #5b2d9e; cursor: pointer; box-shadow: 0 1px 3px rgba(111, 66, 193, 0.12);
+    }
+    .map-auto-bulk-btn:hover { background: rgba(111, 66, 193, 0.08); border-color: #6f42c1; }
+    .map-auto-bulk-btn.is-active {
+      background: #6f42c1; border-color: #5a32a3; color: #fff;
+      box-shadow: 0 1px 3px rgba(111, 66, 193, 0.35);
+    }
+    .map-auto-bulk-btn.is-active:hover { background: #5a32a3; border-color: #5a32a3; color: #fff; }
     #doc-btn-ok { background: var(--map-accent); border-color: var(--map-accent-deep); color: #fff; box-shadow: 0 1px 3px rgba(15, 118, 110, 0.28); }
     #doc-btn-ok:hover { background: var(--map-accent-deep); color: #fff; }
 `
@@ -1458,6 +1470,8 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         genDocBtn;
     }
     window.__bulkSelectedPointIdxs = window.__bulkSelectedPointIdxs || {};
+    window.__autoBulkMode = false;
+    window.__autoBulkClickStep = window.__autoBulkClickStep || {};
     function getBulkSelectedIndices() {
       var out = [];
       var sel = window.__bulkSelectedPointIdxs || {};
@@ -1473,18 +1487,74 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function isBulkPointSelected(pointIdx) {
       return !!(window.__bulkSelectedPointIdxs && window.__bulkSelectedPointIdxs[pointIdx]);
     }
+    function getAutoBulkClickStep(pointIdx) {
+      var step = window.__autoBulkClickStep && window.__autoBulkClickStep[pointIdx];
+      return step === 1 || step === 2 ? step : 0;
+    }
+    function setAutoBulkClickStep(pointIdx, step) {
+      if (!window.__autoBulkClickStep) window.__autoBulkClickStep = {};
+      if (step === 1 || step === 2) {
+        window.__autoBulkClickStep[pointIdx] = step;
+      } else {
+        delete window.__autoBulkClickStep[pointIdx];
+      }
+    }
+    function clearAutoBulkClickSteps() {
+      window.__autoBulkClickStep = {};
+    }
+    function isAutoBulkModeActive() {
+      return !!(wordDocEnabled && window.__autoBulkMode);
+    }
     function setBulkPointSelected(pointIdx, selected) {
       if (!window.__bulkSelectedPointIdxs) window.__bulkSelectedPointIdxs = {};
       if (selected) {
         window.__bulkSelectedPointIdxs[pointIdx] = true;
       } else {
         delete window.__bulkSelectedPointIdxs[pointIdx];
+        setAutoBulkClickStep(pointIdx, 0);
       }
       updateBulkSelectionUi();
     }
     function clearBulkSelection() {
       window.__bulkSelectedPointIdxs = {};
+      clearAutoBulkClickSteps();
       updateBulkSelectionUi();
+    }
+    function handleMarkerPrimaryClick(marker, pointIdx) {
+      if (!isAutoBulkModeActive()) {
+        marker.openPopup();
+        return;
+      }
+      var step = getAutoBulkClickStep(pointIdx);
+      if (step === 0) {
+        setBulkPointSelected(pointIdx, true);
+        setAutoBulkClickStep(pointIdx, 1);
+        marker.closePopup();
+        return;
+      }
+      if (step === 1) {
+        setAutoBulkClickStep(pointIdx, 2);
+        marker.openPopup();
+        return;
+      }
+      setBulkPointSelected(pointIdx, false);
+      setAutoBulkClickStep(pointIdx, 0);
+      marker.closePopup();
+    }
+    function setAutoBulkMode(active) {
+      window.__autoBulkMode = !!active;
+      if (window.__autoBulkMode) {
+        getBulkSelectedIndices().forEach(function (idx) {
+          if (getAutoBulkClickStep(idx) === 0) setAutoBulkClickStep(idx, 1);
+        });
+      } else {
+        clearAutoBulkClickSteps();
+      }
+      var btn = document.getElementById('map-auto-bulk-toggle');
+      if (btn) {
+        btn.classList.toggle('is-active', window.__autoBulkMode);
+        btn.setAttribute('aria-pressed', window.__autoBulkMode ? 'true' : 'false');
+      }
     }
     function sumBulkBagsToCollect(indices) {
       var sum = 0;
@@ -1530,6 +1600,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         if (cb) {
           cb.onchange = function () {
             setBulkPointSelected(pointIdx, cb.checked);
+            if (cb.checked) {
+              setAutoBulkClickStep(pointIdx, 2);
+            }
             marker.setPopupContent(buildPopupContent(adresy[pointIdx], pointIdx));
             wirePopupControls(marker, pointIdx);
           };
@@ -3039,6 +3112,10 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var kolor = kolorPinezki(displayCount);
       var marker = L.marker([p.markerLat, p.markerLng], { icon: pinIcon(kolor, false), pinKolor: kolor })
         .bindPopup('');
+      marker.off('click');
+      marker.on('click', function () {
+        handleMarkerPrimaryClick(marker, pointIdx);
+      });
       marker.addTo(map);
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
       marker.on('popupopen', function() {
@@ -3108,6 +3185,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     var manualAdminBtnHtml = (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL)
       ? '<button type="button" id="map-manual-admin-open" class="map-manual-add-btn">Dodaj do listy / popraw adres</button>'
       : '';
+    var autoBulkBtnHtml = wordDocEnabled
+      ? '<button type="button" id="map-auto-bulk-toggle" class="map-auto-bulk-btn" aria-pressed="false">Automatyczny zbiorczy protokół</button>'
+      : '';
 
     var searchControl = L.control({ position: 'topleft' });
     searchControl.onAdd = function() {
@@ -3128,6 +3208,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         '<button type="button" id="map-clear-all-filters" class="map-clear-all-filters">Wyczyść wszystkie filtry</button>' +
         '<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt.</div>' +
         manualAdminBtnHtml +
+        autoBulkBtnHtml +
         bulkPanelHtml;
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
@@ -3191,6 +3272,12 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var clusterToggle = wrap.querySelector('#map-cluster-toggle');
       if (clusterToggle) clusterToggle.addEventListener('change', applyClusteringMode);
       if (wordDocEnabled) {
+        var autoBulkBtn = wrap.querySelector('#map-auto-bulk-toggle');
+        if (autoBulkBtn) {
+          autoBulkBtn.onclick = function () {
+            setAutoBulkMode(!window.__autoBulkMode);
+          };
+        }
         var bulkGenBtn = wrap.querySelector('#map-bulk-generate');
         var bulkClearBtn = wrap.querySelector('#map-bulk-clear');
         if (bulkGenBtn) {

@@ -828,6 +828,10 @@ describe('phase6', () => {
       expect(html).toContain('markerDisplayIcon');
       expect(html).toContain('Zaznaczenie zbiorcze');
       expect(html).toContain('Zaznacz do zbiorczego protokołu');
+      expect(html).toContain('map-auto-bulk-toggle');
+      expect(html).toContain('Automatyczny zbiorczy protokół');
+      expect(html).toContain('handleMarkerPrimaryClick');
+      expect(html).toContain('setAutoBulkMode');
       expect(html).toContain('appendTransportRow');
       expect(html).toContain('filterSealRowsByMinDate');
       expect(html).toContain('buildDocListsFromSealRows');
