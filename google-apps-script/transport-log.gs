@@ -487,9 +487,13 @@ function cellIsEmpty_(value) {
 /**
  * Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy.
  * Puste komórki 10–20 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
+ * Na starym układzie (komentarze w 10–11) nie dopisuje nagłówków V2 — to psuje arkusz.
  * W tym samym kroku, raz: lista `tak` / `nie` na kolumnie 18 i przekreślenie wiersza z `nie`.
  */
 function ensureTransportRegisterColumns_(sheet) {
+  if (isRegisterLayoutV1_(sheet)) {
+    return;
+  }
   var width = REGISTER_HEADERS_10_20.length;
   var range = sheet.getRange(1, COL.trasa, 1, width);
   var current = range.getValues()[0];
@@ -508,6 +512,33 @@ function ensureTransportRegisterColumns_(sheet) {
     range.setValues([next]);
   }
   ensureTransportHappenedRules_(sheet);
+}
+
+/** V2: kolumna 10 = Trasa, kolumna 12 = Stawka za podjazd. */
+function isRegisterLayoutV2_(sheet) {
+  return (
+    settlementText_(sheet.getRange(1, COL.trasa).getValue()) === 'Trasa' &&
+    settlementText_(sheet.getRange(1, COL.stawkaPodjazdu).getValue()) === REGISTER_LAYOUT_V2_MARKER
+  );
+}
+
+/**
+ * V1 / stan pośredni: komentarze nadal w 10–11 albo Trasa nadal w 12.
+ * Dopisane puste nagłówki komentarzy w 19–20 nie oznaczają V2.
+ */
+function isRegisterLayoutV1_(sheet) {
+  if (isRegisterLayoutV2_(sheet)) {
+    return false;
+  }
+  var h10 = settlementText_(sheet.getRange(1, 10).getValue());
+  var h12 = settlementText_(sheet.getRange(1, 12).getValue());
+  if (h10.indexOf('Komentarz') === 0) {
+    return true;
+  }
+  if (h12 === 'Trasa') {
+    return true;
+  }
+  return false;
 }
 
 function dataValidationHasTakNie_(validation) {
@@ -611,15 +642,18 @@ function applyRouteRateToUnsettled_(sheet, name, rate) {
  * Remis albo brak pary → puste komórki (koszt 0 w rozliczeniach).
  */
 function resolveRegisterRateSnapshot_(shop, contractor, pickupDate) {
-  var empty = { pickup: '', bag: '' };
-  if (!shop || !contractor || !pickupDate) {
-    return empty;
-  }
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
   if (!sheet) {
+    return { pickup: '', bag: '' };
+  }
+  return resolveSnapshotFromRateList_(listRateAmountRows_(sheet), shop, contractor, pickupDate);
+}
+
+function resolveSnapshotFromRateList_(rates, shop, contractor, pickupDate) {
+  var empty = { pickup: '', bag: '' };
+  if (!shop || !contractor || !pickupDate || !rates || !rates.length) {
     return empty;
   }
-  var rates = listRateAmountRows_(sheet);
   var matching = [];
   var i;
   for (i = 0; i < rates.length; i++) {
@@ -658,6 +692,11 @@ function resolveRegisterRateSnapshot_(shop, contractor, pickupDate) {
 
 function appendTransportRow_(numer, body) {
   var sheet = getDataSheet_();
+  if (isRegisterLayoutV1_(sheet)) {
+    throw new Error(
+      'Rejestr ma stary układ kolumn (komentarze w J/K). Uruchom migrateRegisterLayoutRates_ w Apps Script, potem wdróż Web App.',
+    );
+  }
   ensureTransportRegisterColumns_(sheet);
   var adres = body.adresSklepu || '';
   var kto = body.ktoOdbiera || '';
@@ -2311,26 +2350,50 @@ function runSettlementWrite_(action, body) {
 }
 
 /**
+ * Publiczny entry point do ręcznego uruchomienia z listy Uruchom w edytorze.
+ * (Funkcje z `_` na końcu Apps Script ukrywa na liście.)
+ */
+function migrateRegisterLayoutRates() {
+  return migrateRegisterLayoutRates_();
+}
+
+/**
  * Jednorazowa migracja układu rejestru V2.
- * Stare: komentarze 10–11, trasa 12–13, rozliczenie 14–18.
+ * Stare / stan pośredni: komentarze 10–11, trasa 12–13, rozliczenie 14–18
+ *   (ew. puste nagłówki komentarzy już w 19–20 — to NIE jest V2).
  * Nowe: trasa 10–11, podjazd/worek 12–13, rozliczenie 14–18, komentarze 19–20.
- * Backfill 12–13 z Bazy stawek. Idempotentna: gdy kolumna 12 ma już marker, nic nie robi.
- * Wywołanie ręczne z edytora Apps Script (po wdrożeniu tego pliku).
+ * Backfill 12–13 z Bazy stawek (jedno wczytanie listy stawek).
+ * Idempotentna: gdy układ jest już V2, nic nie robi.
+ * Wywołanie: z listy Uruchom wybierz migrateRegisterLayoutRates (bez _).
+ * Po sukcesie: Wdróż → Nowa wersja Web App.
  */
 function migrateRegisterLayoutRates_() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sheet = getDataSheet_();
-    var header12 = sheet.getRange(1, COL.stawkaPodjazdu).getValue();
-    if (settlementText_(header12) === REGISTER_LAYOUT_V2_MARKER) {
+    if (isRegisterLayoutV2_(sheet)) {
+      Logger.log(JSON.stringify({ ok: true, skipped: true, reason: 'already-v2' }));
       return { ok: true, skipped: true, reason: 'already-v2' };
+    }
+    if (!isRegisterLayoutV1_(sheet)) {
+      var msg = {
+        ok: false,
+        error: 'unknown-layout',
+        h10: settlementText_(sheet.getRange(1, 10).getValue()),
+        h12: settlementText_(sheet.getRange(1, 12).getValue()),
+      };
+      Logger.log(JSON.stringify(msg));
+      return msg;
     }
     var lastRow = sheet.getLastRow();
     var lastCol = Math.max(sheet.getLastColumn(), 18);
     var width = Math.max(lastCol, 18);
-    var oldHeader = lastRow >= 1 ? sheet.getRange(1, 1, 1, width).getValues()[0] : [];
-    var oldData = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
+    var oldHeader = sheet.getRange(1, 1, 1, width).getValues()[0];
+    var oldData =
+      lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
+    var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
+    var rateList = rateSheet ? listRateAmountRows_(rateSheet) : [];
     var newHeader = [];
     var c;
     for (c = 0; c < 9; c++) {
@@ -2343,38 +2406,47 @@ function migrateRegisterLayoutRates_() {
     var i;
     for (i = 0; i < oldData.length; i++) {
       var src = oldData[i];
-      var cell = function (idx) {
+      var cellAt = function (idx) {
         return src.length > idx && src[idx] != null ? src[idx] : '';
       };
-      var adres = cellStr_(cell(1));
-      var kto = cellStr_(cell(5));
-      var pickupDate = settlementDateText_(cell(4)) || '';
-      var snapshot = resolveRegisterRateSnapshot_(adres, kto, pickupDate);
+      var adres = cellStr_(cellAt(1));
+      var kto = cellStr_(cellAt(5));
+      var pickupDate = settlementDateText_(cellAt(4)) || '';
+      var snapshot = resolveSnapshotFromRateList_(rateList, adres, kto, pickupDate);
       var next = [];
       for (c = 0; c < 9; c++) {
-        next.push(cell(c));
+        next.push(cellAt(c));
       }
-      next.push(cell(11));
-      next.push(cell(12));
+      // V1: 10–11 komentarze, 12–13 trasa/stawka, 14–18 rozliczenie
+      next.push(cellAt(11));
+      next.push(cellAt(12));
       next.push(snapshot.pickup);
       next.push(snapshot.bag);
       for (c = 13; c <= 17; c++) {
-        next.push(cell(c));
+        next.push(cellAt(c));
       }
-      next.push(cell(9));
-      next.push(cell(10));
+      next.push(cellAt(9));
+      next.push(cellAt(10));
       newRows.push(next);
     }
     var clearWidth = Math.max(width, COL.komentarz2);
-    if (lastRow >= 1) {
-      sheet.getRange(1, 1, Math.max(lastRow, 1), clearWidth).clearContent();
-    }
+    var clearRows = Math.max(lastRow, 1);
+    sheet.getRange(1, 1, clearRows, clearWidth).clearContent();
     sheet.getRange(1, 1, 1, newHeader.length).setValues([newHeader]);
     if (newRows.length > 0) {
       sheet.getRange(2, 1, newRows.length, COL.komentarz2).setValues(newRows);
     }
     ensureTransportHappenedRules_(sheet);
-    return { ok: true, rows: newRows.length };
+    var result = {
+      ok: true,
+      rows: newRows.length,
+      ratesLoaded: rateList.length,
+      h10: settlementText_(sheet.getRange(1, 10).getValue()),
+      h12: settlementText_(sheet.getRange(1, 12).getValue()),
+      h19: settlementText_(sheet.getRange(1, 19).getValue()),
+    };
+    Logger.log(JSON.stringify(result));
+    return result;
   } finally {
     lock.releaseLock();
   }

@@ -144,7 +144,13 @@ Nowa kwota trasy, także zero, idzie od razu na pozostałe nierozliczone wiersze
 
 ### Migracja układu V2
 
-Jednorazowa funkcja `migrateRegisterLayoutRates_` w Apps Script (wywołanie ręczne po wdrożeniu skryptu): przenosi komentarze z 10–11 na 19–20, trasę na 10–11, dopisuje snapshot podjazdu/worka w 12–13, zostawia rozliczenie na 14–18. Idempotentna (marker: nagłówek kolumny 12 = `Stawka za podjazd`). Runbook: [MIGRATE_REGISTER_RATES.md](./MIGRATE_REGISTER_RATES.md).
+Jednorazowa funkcja `migrateRegisterLayoutRates_` w Apps Script (wywołanie ręczne po wdrożeniu skryptu): przenosi komentarze z 10–11 na 19–20, trasę na 10–11, dopisuje snapshot podjazdu/worka w 12–13, zostawia rozliczenie na 14–18. Idempotentna (V2 = nagłówek J = `Trasa` i L = `Stawka za podjazd`).
+
+**Stan pośredni (bug):** gdy J/K nadal mają komentarze, a R/S też mają nagłówki „Komentarz” — to nadal V1. Migracja to naprawia. Do czasu migracji nowe protokoły są blokowane (błąd w logu).
+
+Po sukcesie w dzienniku powinno być m.in. `"h10":"Trasa","h12":"Stawka za podjazd","h19":"Komentarz 1"`. Potem: **Wdróż → Nowa wersja** Web App.
+
+Runbook: [MIGRATE_REGISTER_RATES.md](./MIGRATE_REGISTER_RATES.md).
 
 
 

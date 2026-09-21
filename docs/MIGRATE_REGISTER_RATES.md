@@ -5,31 +5,35 @@ Jednorazowa zmiana układu pierwszej zakładki arkusza
 
 ## Docelowy układ
 
-| Kolumny | Zawartość |
-|---------|-----------|
-| 1–9 | bez zmian |
-| 10–11 | Trasa, Stawka za trasę (było 12–13) |
-| 12–13 | Stawka za podjazd, Stawka za worek (snapshot z Bazy) |
-| 14–18 | Rozliczony … transport się odbył (numery bez zmian) |
-| 19–20 | Komentarz 1 / 2 (było 10–11) |
+| Kolumna | Nagłówek |
+|---------|---------|
+| A–I (1–9) | bez zmian |
+| J (10) | Trasa |
+| K (11) | Stawka za trasę |
+| L (12) | Stawka za podjazd |
+| M (13) | Stawka za worek |
+| N–R (14–18) | Rozliczony … transport się odbył |
+| S–T (19–20) | Komentarz 1 / 2 |
 
-## Kolejność (obowiązkowa)
+## Objaw złego stanu (przed naprawą)
 
-1. **Zatrzymaj zapisy** — nie generuj protokołów na mapie i nie zatwierdzaj rozliczeń.
-2. **Wdróż** nowy `arkusz-mapa/google-apps-script/transport-log.gs` (Apps Script → wklej → Nowe wdrożenie Web App albo aktualizacja istniejącego).
-3. W edytorze Apps Script uruchom **raz** funkcję `migrateRegisterLayoutRates_`.
-   - Sukces: `{ ok: true, rows: N }`.
-   - Ponowne uruchomienie: `{ ok: true, skipped: true, reason: 'already-v2' }`.
-4. **Wdróż frontendy** `arkusz-mapa` i `rozliczenia` (GitHub Pages), zbudowane z kodu po tej zmianie.
-5. **Smoke**
-   - Protokół ze stawką w Bazie stawek → kolumny 12–13 wypełnione.
-   - Protokół bez pary w Bazie → 12–13 puste.
-   - Wyszukanie w rozliczeniach → koszt ze snapshotu.
-   - Zatwierdź jednego wiersza.
-   - `saveRate` w oknie Bazy stawek nadal działa.
+- J = Komentarz 1, L = Trasa, a w R/S też „Komentarz” → migracja **nie** przeszła; tylko dopisano puste nagłówki.
+- Nowa stawka za worek ląduje w kolumnie „Stawka za trasę” → Web App pisze już wg V2, a arkusz jest nadal V1.
+
+## Kolejność
+
+1. **Nie generuj protokołów** (stary układ + nowy kod psuje wiersze).
+2. Wklej aktualny `transport-log.gs` do Apps Script i **Zapisz**.
+3. Uruchom **`migrateRegisterLayoutRates`** (bez `_` na końcu — taką widać na liście Uruchom).
+   Funkcja z `_` jest ukryta przez Apps Script.
+4. **Widok → Dzienniki wykonania** — szukaj JSON:
+   - sukces: `"ok":true,"h10":"Trasa","h12":"Stawka za podjazd","h19":"Komentarz 1"`
+   - już zrobione: `"skipped":true,"reason":"already-v2"`
+5. Sprawdź w arkuszu wiersz 1 (J/L/S jak w tabeli wyżej) i kilka starych wierszy (trasa w J, komentarz w S).
+6. **Wdróż → Zarządzaj wdrożeniami → Edytuj → Nowa wersja** (Web App `/exec`).
+7. Smoke: nowy protokół ze stawką w Bazie → L/M wypełnione snapshotem, nie stawką trasy.
 
 ## Uwagi
 
-- Odwrócona kolejność (frontend przed migracją / stary GAS po migracji) psuje komentarze, trasy i koszty.
-- Remis w Bazie przy migracji/append → puste 12–13 (koszt 0).
-- Zmiana Bazy po protokole nie aktualizuje historycznych wierszy rejestru.
+- Wiersze dopisane *przed* udaną migracją przy nowym kodzie mogą mieć pomieszane L/M — sprawdź ostatnie ręcznie.
+- Remis w Bazie przy backfill → puste L/M (koszt 0).

@@ -63,6 +63,10 @@ class FakeRange {
     return out;
   }
 
+  getValue(): Cell {
+    return this.sheet.cell(this.row, this.col);
+  }
+
   setValues(values: Cell[][]): void {
     this.sheet.writes.push({
       row: this.row,
