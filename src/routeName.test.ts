@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import { proposeRouteName, routeNameBrowserScript } from './routeName.js';
+import { namesBlockingNewRoute, proposeRouteName, routeNameBrowserScript } from './routeName.js';
 
 function proposeRouteNameInBrowser(
   occupiedNames: readonly string[] | null,
@@ -101,8 +101,23 @@ describe('proposeRouteName', () => {
     expect(proposeRouteNameInBrowser(null, 'gpw', '18.09.2026')).toBe('');
   });
 
+  it('test_namesBlockingNewRoute_when_session_name_missing_from_sheet_should_still_block_it', () => {
+    expect(namesBlockingNewRoute([], 'Papirus-21.09.26-01')).toEqual(['Papirus-21.09.26-01']);
+    expect(namesBlockingNewRoute(['Papirus-21.09.26-01'], ' Papirus-21.09.26-01 ')).toEqual([
+      'Papirus-21.09.26-01',
+    ]);
+    expect(namesBlockingNewRoute(null, '   ')).toEqual([]);
+  });
+
+  it('test_proposeRouteName_when_session_holds_01_should_return_02_even_if_sheet_list_is_empty', () => {
+    expect(
+      proposeRouteName(namesBlockingNewRoute([], 'Papirus-21.09.26-01'), 'Papirus', '21.09.2026'),
+    ).toBe('Papirus-21.09.26-02');
+  });
+
   it('test_routeNameBrowserScript_when_built_should_be_proposeRouteName_source', () => {
     const script = routeNameBrowserScript();
+    expect(script).toContain(namesBlockingNewRoute.toString());
     expect(script).toContain(proposeRouteName.toString());
     expect(script).not.toContain('function proposeRouteNameJs');
   });

@@ -103,6 +103,25 @@ export function routeRateFromSession(
   return rememberedRate;
 }
 
+/**
+ * Inna niepusta stawka przy nazwie, która już ma kwotę.
+ * Ta sama kwota, pusta nowa albo brak dotychczasowej: zapis bez pytania.
+ * Zero jest kwotą.
+ */
+export function routeRateConflictsWithExisting(
+  routeName: string,
+  nextRate: string,
+  existingRate: string,
+): boolean {
+  const name = String(routeName ?? '').trim();
+  const next = String(nextRate ?? '').trim();
+  const existing = String(existingRate ?? '').trim();
+  if (name.length === 0 || next.length === 0 || existing.length === 0) {
+    return false;
+  }
+  return next !== existing;
+}
+
 /** Dokleja kolumny 12–13 albo nie rusza body, gdy trasy nie ma. */
 export function assignRouteBody(
   payload: Record<string, unknown> | null,
@@ -131,6 +150,8 @@ export function routeProtocolBrowserScript(): string {
     routeRateToKeep.toString() +
     '\n' +
     routeRateFromSession.toString() +
+    '\n' +
+    routeRateConflictsWithExisting.toString() +
     '\n' +
     assignRouteBody.toString() +
     '\n'

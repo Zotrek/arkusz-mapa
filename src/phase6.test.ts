@@ -869,8 +869,15 @@ describe('phase6', () => {
       expect(html).toContain('Odbiór z trasy');
       expect(html).toContain('id="doc-route-fields" hidden');
       expect(html).toContain('id="doc-inp-trasa"');
+      expect(html).toContain('id="doc-btn-nowa-trasa"');
+      expect(html).toContain('id="doc-route-continue-hint"');
       expect(html).toContain('id="doc-inp-stawka-trasy"');
       expect(html).toContain("var lastRouteName = ''");
+      expect(html).toContain("var routeNameMode = 'continue'");
+      expect(html).toContain("var routeRateBaseline = ''");
+      expect(html).toContain('function routeRateConflictsWithExisting');
+      const rateGuardHits = html.split('resolveRouteFieldsBeforeSave(form.routeFields)').length - 1;
+      expect(rateGuardHits).toBe(2);
       expect(html).toContain("var lastRouteRate = ''");
       expect(html).not.toContain("localStorage.setItem('lastRouteName'");
       expect(html).not.toContain('localStorage.getItem(\'lastRouteName\'');
@@ -895,6 +902,8 @@ describe('phase6', () => {
       );
       expect(refresh.indexOf('lastRouteName')).toBeGreaterThan(-1);
       expect(refresh.indexOf('lastRouteName')).toBeLessThan(refresh.indexOf('proposeRouteName'));
+      expect(refresh).toContain("routeNameMode !== 'new'");
+      expect(refresh).toContain('namesBlockingNewRoute');
       expect(refresh).toContain("action: 'routeNameProposal'");
       expect(html).toContain("action: 'routeRateByName'");
       const lookupNow = html.slice(

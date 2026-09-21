@@ -743,6 +743,8 @@ export function buildMapHtml(
       <div id="doc-route-fields" hidden>
         <label for="doc-inp-trasa">Nazwa trasy</label>
         <input type="text" id="doc-inp-trasa" maxlength="120" autocomplete="off" spellcheck="false" />
+        <p id="doc-route-continue-hint" class="doc-route-continue-hint" hidden></p>
+        <button type="button" id="doc-btn-nowa-trasa" hidden>Nowa trasa</button>
         <label for="doc-inp-stawka-trasy">Stawka za trasę</label>
         <input type="text" id="doc-inp-stawka-trasy" maxlength="32" inputmode="decimal" autocomplete="off" spellcheck="false" />
       </div>
@@ -776,6 +778,11 @@ export function buildMapHtml(
     .doc-checkbox-row { display: flex !important; align-items: center; gap: 8px; margin: 12px 0 4px !important; cursor: pointer; user-select: none; }
     .doc-checkbox-row input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
     #doc-route-fields[hidden] { display: none !important; }
+    .doc-route-continue-hint { margin: 6px 0 0; line-height: 1.4; }
+    .doc-route-continue-hint[hidden] { display: none !important; }
+    #doc-btn-nowa-trasa { margin-top: 8px; width: 100%; padding: 8px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; border: 1px solid var(--map-accent-deep); background: rgba(255,255,255,0.92); color: var(--map-accent-deep); }
+    #doc-btn-nowa-trasa:hover { background: var(--map-accent-soft); }
+    #doc-btn-nowa-trasa[hidden] { display: none !important; }
     .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"], .doc-modal-panel .doc-combobox-input, .doc-modal-panel select, .doc-modal-panel textarea { width: 100%; padding: 9px 11px; font-size: 13px; color: var(--map-ink); border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.55); background: rgba(255,255,255,0.92); box-sizing: border-box; outline: none; }
     .doc-modal-panel input:focus, .doc-modal-panel select:focus, .doc-modal-panel textarea:focus, .doc-modal-panel .doc-combobox-input:focus { border-color: var(--map-accent); box-shadow: 0 0 0 3px var(--map-accent-soft); }
     .doc-combobox-wrap { position: relative; }
@@ -1039,7 +1046,7 @@ ${
     const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
-${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n" : ''}
+${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameMode = 'continue';\n    var routeRateBaseline = '';\n    var routeRateBaselineName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n" : ''}
 
     const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -2438,6 +2445,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       return dateEl ? String(dateEl.value || '').trim() : '';
     }
     function resetRouteFormForOpen() {
+      routeNameMode = 'continue';
+      routeRateBaseline = '';
+      routeRateBaselineName = '';
       routeNameTouched = false;
       routeRateTouched = false;
       routeRateRequest += 1;
@@ -2474,6 +2484,11 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         if (ticket !== routeRateRequest) return;
         var current = document.getElementById('doc-inp-trasa');
         if (!current || String(current.value).trim() !== trimmed) return;
+        var looked = typeof routeRateFromLookup === 'function' ? routeRateFromLookup(resp && resp.stawka) : '';
+        if (looked !== '') {
+          routeRateBaselineName = trimmed;
+          routeRateBaseline = looked;
+        }
         rateEl.value = routeRateToKeep(rateEl.value, resp && resp.stawka, routeRateTouched);
       }).catch(function () {});
     }
@@ -2484,20 +2499,50 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (changed) {
         routeRateTouched = false;
         nameEl.value = shown;
+        if (routeNameMode === 'new') {
+          var clearRate = document.getElementById('doc-inp-stawka-trasy');
+          if (clearRate) clearRate.value = '';
+          routeRateBaseline = '';
+          routeRateBaselineName = '';
+        }
       }
       if (!routeRateTouched && typeof routeRateFromSession === 'function') {
         var rateEl = document.getElementById('doc-inp-stawka-trasy');
-        if (rateEl) rateEl.value = routeRateFromSession(shown, rateEl.value, lastRouteName, lastRouteRate);
+        if (rateEl) {
+          var filled = routeRateFromSession(shown, rateEl.value, lastRouteName, lastRouteRate);
+          rateEl.value = filled;
+          if (String(filled || '').trim()) {
+            routeRateBaselineName = String(shown || '').trim();
+            routeRateBaseline = String(filled).trim();
+          }
+        }
       }
       if (changed || !readRouteRateInput()) lookupRouteRate(shown);
     }
+    function updateRouteSessionUi() {
+      var btn = document.getElementById('doc-btn-nowa-trasa');
+      var hint = document.getElementById('doc-route-continue-hint');
+      var remembered = String(lastRouteName || '').trim();
+      var continuing = routeNameMode !== 'new' && !!remembered;
+      if (btn) {
+        btn.hidden = !remembered;
+        btn.textContent = continuing ? 'Nowa trasa' : ('Dołącz do ' + remembered);
+      }
+      if (hint) {
+        hint.hidden = !continuing;
+        hint.textContent = continuing
+          ? ('Kontynuacja ' + remembered + '. Inna stawka nie nadpisze poprzednich sklepów — zapis zapyta, czy to nowa trasa.')
+          : '';
+      }
+    }
     function refreshRouteNameField() {
       if (!isRouteChecked() || typeof routeNameToShow !== 'function' || typeof lastRouteName === 'undefined') return;
+      updateRouteSessionUi();
       if (routeNameTouched) {
         lookupRouteRate(readRouteNameInput());
         return;
       }
-      if (String(lastRouteName || '').trim()) {
+      if (routeNameMode !== 'new' && String(lastRouteName || '').trim()) {
         applyShownRouteName(routeNameToShow({
           sessionLastName: lastRouteName,
           proposal: '',
@@ -2509,8 +2554,11 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var contractor = contractorShortNameForRoute();
       var date = pickupDateForRoute();
       function propose(names) {
-        if (!isRouteChecked() || routeNameTouched || String(lastRouteName || '').trim()) return;
-        var proposal = proposeRouteName(names || [], contractor, date);
+        if (!isRouteChecked() || routeNameTouched || (routeNameMode !== 'new' && String(lastRouteName || '').trim())) return;
+        var occupied = typeof namesBlockingNewRoute === 'function'
+          ? namesBlockingNewRoute(names || [], routeNameMode === 'new' ? lastRouteName : '')
+          : (names || []);
+        var proposal = proposeRouteName(occupied, contractor, date);
         applyShownRouteName(routeNameToShow({
           sessionLastName: '',
           proposal: proposal,
@@ -2523,8 +2571,21 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         return;
       }
       fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
-        propose(resp && resp.names ? resp.names : []);
+        propose(resp && Array.isArray(resp.names) ? resp.names : []);
       }).catch(function () { propose([]); });
+    }
+    function onNowaTrasaClick() {
+      if (!String(lastRouteName || '').trim()) return;
+      routeNameTouched = false;
+      routeRateTouched = false;
+      if (routeNameMode === 'new') {
+        routeNameMode = 'continue';
+      } else {
+        routeNameMode = 'new';
+        var rateEl = document.getElementById('doc-inp-stawka-trasy');
+        if (rateEl) rateEl.value = '';
+      }
+      refreshRouteNameField();
     }
     function onRouteCheckboxChange() {
       setRouteFieldsVisible(isRouteChecked());
@@ -2622,6 +2683,61 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function delayMs(ms) {
       return new Promise(function (resolve) { window.setTimeout(resolve, ms); });
     }
+    function existingRouteRateFor(name) {
+      var trimmed = String(name || '').trim();
+      if (!trimmed) return '';
+      if (trimmed === String(routeRateBaselineName || '').trim()) return String(routeRateBaseline || '').trim();
+      if (trimmed === String(lastRouteName || '').trim()) return String(lastRouteRate || '').trim();
+      return '';
+    }
+    function askDifferentRouteRate(name, existingRate, nextRate) {
+      var asNew = window.confirm(
+        'Stawka ' + nextRate + ' jest inna niż zapisana na trasie ' + name + ' (' + existingRate + ').\\n\\n' +
+        'OK — zapisz jako nową trasę z następnym numerem. Sklepy trasy ' + name + ' zostają przy ' + existingRate + '.\\n' +
+        'Anuluj — zapytam, czy zmienić stawkę na wszystkich sklepach tej trasy.'
+      );
+      if (asNew) return 'new-route';
+      var updateAll = window.confirm(
+        'Zmienić stawkę na ' + nextRate + ' na wszystkich nierozliczonych sklepach trasy ' + name + '?\\n\\nAnuluj przerywa zapis. Poprzednia stawka zostaje.'
+      );
+      return updateAll ? 'update-all' : 'cancel';
+    }
+    function proposeFreshRouteName(currentName) {
+      var contractor = contractorShortNameForRoute();
+      var date = pickupDateForRoute();
+      function fromNames(names) {
+        var occupied = typeof namesBlockingNewRoute === 'function'
+          ? namesBlockingNewRoute(names || [], currentName)
+          : (names || []).concat([currentName]);
+        return proposeRouteName(occupied, contractor, date);
+      }
+      if (!transportApiEnabled) return Promise.resolve(fromNames([]));
+      return fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
+        return fromNames(resp && Array.isArray(resp.names) ? resp.names : []);
+      }).catch(function () { return fromNames([]); });
+    }
+    function resolveRouteFieldsBeforeSave(fields) {
+      if (!fields || typeof routeRateConflictsWithExisting !== 'function') return Promise.resolve(fields);
+      var name = String(fields.trasa || '').trim();
+      var nextRate = String(fields.stawkaTrasy || '').trim();
+      var existing = existingRouteRateFor(name);
+      if (!routeRateConflictsWithExisting(name, nextRate, existing)) return Promise.resolve(fields);
+      var choice = askDifferentRouteRate(name, existing, nextRate);
+      if (choice === 'cancel') return Promise.resolve(null);
+      if (choice === 'update-all') return Promise.resolve(fields);
+      return proposeFreshRouteName(name).then(function (proposal) {
+        if (!proposal) {
+          alert('Brak wolnego numeru trasy (01–99). Zapis przerwany, stawka poprzedniej trasy nie została zmieniona.');
+          return null;
+        }
+        var nameEl = document.getElementById('doc-inp-trasa');
+        if (nameEl) nameEl.value = proposal;
+        routeNameMode = 'new';
+        routeRateBaseline = '';
+        routeRateBaselineName = '';
+        return routeBodyFields(true, proposal, nextRate);
+      });
+    }
     function runBulkDocGenerate() {
       if (transportApiEnabled && !window.__docModalDataReady) {
         alert('Poczekaj na załadowanie danych transportu.');
@@ -2638,6 +2754,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         alert('Brak zaznaczonych punktów do protokołu.');
         return;
       }
+      resolveRouteFieldsBeforeSave(form.routeFields).then(function (routeFields) {
+      if (form.routeFields && !routeFields) return;
+      form.routeFields = routeFields;
       var okBtn = document.getElementById('doc-btn-ok');
       var filterInfo = document.getElementById('doc-filter-info');
       if (okBtn) okBtn.disabled = true;
@@ -2706,6 +2825,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         if (okBtn) okBtn.disabled = false;
         setTransportDatesLoading(false);
       });
+      });
     }
     function runDocGenerate() {
       if (window.__docModalMode === 'bulk') {
@@ -2723,6 +2843,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       var form = parseDocFormValues();
       if (!form) return;
+      resolveRouteFieldsBeforeSave(form.routeFields).then(function (routeFields) {
+      if (form.routeFields && !routeFields) return;
+      form.routeFields = routeFields;
       var pr = form.pr;
       var md = form.md;
       var prOpt = form.prOpt;
@@ -2822,6 +2945,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       var numerManual = numEl ? String(numEl.value).trim() : '';
       finishWithNumber(numerManual);
+      });
     }
 
     if (wordDocEnabled) {
@@ -2836,6 +2960,8 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (routeChk) routeChk.onchange = onRouteCheckboxChange;
       var routeNameInput = document.getElementById('doc-inp-trasa');
       if (routeNameInput) routeNameInput.addEventListener('input', onRouteNameInput);
+      var nowaTrasaBtn = document.getElementById('doc-btn-nowa-trasa');
+      if (nowaTrasaBtn) nowaTrasaBtn.onclick = onNowaTrasaClick;
       var routeRateInput = document.getElementById('doc-inp-stawka-trasy');
       if (routeRateInput) routeRateInput.addEventListener('input', onRouteRateInput);
       var routeDateInput = document.getElementById('doc-inp-data-zaladunku');

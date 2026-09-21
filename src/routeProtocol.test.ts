@@ -7,6 +7,7 @@ import {
   routeNameToShow,
   routeProtocolBrowserScript,
   routeRateFromLookup,
+  routeRateConflictsWithExisting,
   routeRateFromSession,
   routeRateToKeep,
   type RouteBodyFields,
@@ -25,6 +26,7 @@ type RouteVm = {
     sessionName: string,
     sessionRate: string,
   ) => string;
+  routeRateConflictsWithExisting: (routeName: string, nextRate: string, existingRate: string) => boolean;
   assignRouteBody: (
     payload: Record<string, unknown> | null,
     fields: RouteBodyFields | null,
@@ -41,6 +43,7 @@ function browserFns(): RouteVm {
     typeof context.routeRateFromLookup !== 'function' ||
     typeof context.routeRateToKeep !== 'function' ||
     typeof context.routeRateFromSession !== 'function' ||
+    typeof context.routeRateConflictsWithExisting !== 'function' ||
     typeof context.assignRouteBody !== 'function'
   ) {
     throw new Error('Skrypt przeglądarki nie ma funkcji okna protokołu');
@@ -144,6 +147,21 @@ describe('routeProtocol', () => {
     expect(vm.routeRateFromSession(name, '', name, '   ')).toBe('');
   });
 
+  it('test_routeRateConflictsWithExisting_when_rate_differs_should_require_a_choice', () => {
+    expect(routeRateConflictsWithExisting('Papirus-21.09.26-01', '1010', '750')).toBe(true);
+    expect(vm.routeRateConflictsWithExisting('Papirus-21.09.26-01', '1010', '750')).toBe(true);
+    expect(routeRateConflictsWithExisting('Papirus-21.09.26-01', '750', '750')).toBe(false);
+    expect(vm.routeRateConflictsWithExisting('Papirus-21.09.26-01', '750', '750')).toBe(false);
+    expect(routeRateConflictsWithExisting('Papirus-21.09.26-01', '1010', '')).toBe(false);
+    expect(vm.routeRateConflictsWithExisting('Papirus-21.09.26-01', '1010', '')).toBe(false);
+    expect(routeRateConflictsWithExisting('Papirus-21.09.26-01', '', '750')).toBe(false);
+    expect(vm.routeRateConflictsWithExisting('Papirus-21.09.26-01', '', '750')).toBe(false);
+    expect(routeRateConflictsWithExisting('Papirus-21.09.26-01', '0', '750')).toBe(true);
+    expect(vm.routeRateConflictsWithExisting('Papirus-21.09.26-01', '0', '750')).toBe(true);
+    expect(routeRateConflictsWithExisting('  ', '1010', '750')).toBe(false);
+    expect(vm.routeRateConflictsWithExisting('  ', '1010', '750')).toBe(false);
+  });
+
   it('test_assignRouteBody_when_no_route_should_leave_payload_without_route_keys', () => {
     const payload = { komentarz2: 'x' };
     expect(assignRouteBody(payload, null)).toEqual({ komentarz2: 'x' });
@@ -167,6 +185,7 @@ describe('routeProtocol', () => {
     const script = routeProtocolBrowserScript();
     expect(script).toContain('function routeBodyFields');
     expect(script).toContain('function routeNameToShow');
+    expect(script).toContain('function routeRateConflictsWithExisting');
     expect(script).not.toContain('localStorage');
     expect(script).not.toContain('lastRouteName');
   });

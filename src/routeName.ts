@@ -72,7 +72,34 @@ export function proposeRouteName(
   return '';
 }
 
-/** Ten sam kod co `proposeRouteName`, wstrzykiwany do HTML. Nie duplikować reguł obok. */
+/**
+ * Nazwy, które blokują nowy numer. Sesja wchodzi razem z kolumną Trasa,
+ * żeby druga trasa nie dostała z powrotem nazwy pierwszej, zanim arkusz ją odda.
+ */
+export function namesBlockingNewRoute(
+  sheetNames: readonly string[] | null,
+  sessionLastName: string,
+): string[] {
+  const occupied: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: unknown): void => {
+    const name = String(raw ?? '').trim();
+    if (name.length === 0 || seen.has(name)) {
+      return;
+    }
+    seen.add(name);
+    occupied.push(name);
+  };
+  if (Array.isArray(sheetNames)) {
+    for (const raw of sheetNames) {
+      add(raw);
+    }
+  }
+  add(sessionLastName);
+  return occupied;
+}
+
+/** Ten sam kod co funkcje nazwy, wstrzykiwany do HTML. Nie duplikować reguł obok. */
 export function routeNameBrowserScript(): string {
-  return '\n' + proposeRouteName.toString() + '\n';
+  return '\n' + namesBlockingNewRoute.toString() + '\n' + proposeRouteName.toString() + '\n';
 }
