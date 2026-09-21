@@ -12061,6 +12061,27 @@
       "lng": 21.8450274,
       "wojewodztwo": "Podkarpackie",
       "updatedAt": "2026-09-18T15:38:35.265Z"
+    },
+    "06-450 Glinojeck Płocka 1B": {
+      "status": "ok",
+      "lat": 52.8198525,
+      "lng": 20.3021896,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-09-21T08:06:07.601Z"
+    },
+    "38-606 Baligród Wojska Polskiego 2": {
+      "status": "ok",
+      "lat": 49.3382676,
+      "lng": 22.2862159,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-09-21T08:06:10.184Z"
+    },
+    "42-520 Dąbrowa Górnicza Dworcowa 4": {
+      "status": "ok",
+      "lat": 50.3667569,
+      "lng": 19.2624408,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-09-21T08:06:13.680Z"
     }
   }
 }

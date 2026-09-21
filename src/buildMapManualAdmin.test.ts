@@ -34,6 +34,7 @@ describe('buildMapManualAdmin', () => {
     expect(panel).toContain('Kwota za podjazd');
     expect(panel).toContain('Kwota za worek');
     expect(panel).toContain('Od kiedy obowiązuje');
+    expect(panel).toContain('<input type="date" id="manual-admin-stawki-od-kiedy"');
     expect(panel).toContain('bez przebudowy mapy');
   });
 
@@ -41,9 +42,13 @@ describe('buildMapManualAdmin', () => {
     const script = manualAdminBrowserScript();
     expect(script).toContain("mode: 'saveRate'");
     expect(script).toContain("headers: { 'Content-Type': 'text/plain;charset=utf-8' }");
-    expect(script).toContain('adresy[i].adres');
+    expect(script).toContain('point.adres');
+    expect(script).toContain('point.sklep');
+    expect(script).toContain("sklep + ' — ' + adres");
     expect(script).toContain('PODWYKOLISTA[i].label');
     expect(script).toContain("'stawki'");
+    expect(script).toContain('rateValidFromFromPicker');
+    expect(script).toContain("split('-')");
     const saved = script.split('\n').find((line) => line.includes('Zapisano stawkę'));
     expect(saved).toBeTruthy();
     expect(saved).not.toContain('generate');

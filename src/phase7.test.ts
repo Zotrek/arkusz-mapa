@@ -309,6 +309,10 @@ describe('phase7 pipeline', () => {
           sheetCreated: true,
         };
       }),
+      syncBazaCenHarmonogram: vi.fn(async () => {
+        order.push('syncBazaCenHarmonogram');
+        return { shopCount: 1, appendedCount: 1, daysUpdatedCount: 0, sheetCreated: true };
+      }),
       executePhase3: vi.fn(() => {
         order.push('executePhase3');
         return { rowsDuplikatyPlomb: [], rowsBezDuplikatow: rows, groupedByAddress: grouped };
@@ -347,6 +351,7 @@ describe('phase7 pipeline', () => {
       'createSheetsClient',
       'loadSourceRows',
       'executeOdebraneZHarmonogramu',
+      'syncBazaCenHarmonogram',
       'executePhase3',
       'executePhase5',
       'executePhase4',

@@ -73,6 +73,8 @@ export const SHEET_NAME_BLISKIE_ADRESY = 'Bliskie adresy (≤20 m)';
 export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
 /** Kopia plomb maszynowych po minięciu dnia z harmonogramu (tworzona tylko gdy są przypadki). */
 export const SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU = 'odebrane z harmonogramu';
+/** Stawki i dni odbiorów modułu Harmonogram. Ten sam plik co ewidencja. */
+export const SHEET_NAME_BAZA_CEN_HARMONOGRAM = 'Baza cen harmonogram';
 
 /** Zakładki słowników w arkuszu transportów (osobny dokument od plomb). */
 export const SHEET_NAME_LISTA_PODWYKONAWCOW = 'Lista podwykonawców';

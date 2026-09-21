@@ -11,8 +11,8 @@
  * GET ?action=routeNameProposal  → { ok, names }  (kolumna 12, zajęte nazwy; propozycję liczy strona)
  * GET ?action=routeRateByName&name=…  → { ok, stawka }  (stawka z nierozliczonego wiersza, pusta gdy nazwy nie było)
  * GET ?action=listContractors  → { ok, data: [ { nazwa, dane } ] }  (odczyt, bez zapisu)
- * GET ?action=listStoreAddresses → { ok, data: [ adres, … ] }
- *   Unikalne teksty kolumny 2 (Adres sklepu) rejestru. Nie kolumna Sklep, nie pinezki. Bez zapisu.
+ * GET ?action=listStoreAddresses → { ok, data: [ { adres, sklep }, … ] }
+ *   Unikalny adres z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta. Zapis stawki i tak idzie adresem. Bez zapisu.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
  *   dataOd opcjonalna. To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
  * POST { action: patchBags | patchRouteRate | detachRoute | attachRoute | resolveRateTie | approve }
@@ -1466,7 +1466,7 @@ function listContractors_() {
 }
 
 /**
- * Adresy do okna stawek: kolumna Adres sklepu rejestru, nie Sklep i nie pinezki.
+ * Adresy do okna stawek: kolumna Adres sklepu plus nazwa z kolumny Sklep.
  * Nic nie zapisuje i zakładki nie zakłada.
  */
 function listStoreAddresses_() {
@@ -1475,29 +1475,38 @@ function listStoreAddresses_() {
   if (lastRow < 2) {
     return [];
   }
-  var values = sheet.getRange(2, COL.adres, lastRow - 1, 1).getValues();
-  var cells = [];
-  var i;
-  for (i = 0; i < values.length; i++) {
-    cells.push(values[i][0]);
-  }
-  return uniqueStoreAddresses_(cells);
+  var width = COL.sklep - COL.adres + 1;
+  var values = sheet.getRange(2, COL.adres, lastRow - 1, width).getValues();
+  return uniqueStoreAddresses_(values);
 }
 
-function uniqueStoreAddresses_(cells) {
-  var seen = {};
-  var out = [];
+function uniqueStoreAddresses_(rows) {
+  var byAddress = {};
+  var order = [];
   var i;
-  for (i = 0; i < cells.length; i++) {
-    var value = cells[i] == null ? '' : String(cells[i]).trim();
-    if (!value || seen[value]) {
+  for (i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (!row || typeof row.length !== 'number') {
       continue;
     }
-    seen[value] = true;
-    out.push(value);
+    var adres = row[0] == null ? '' : String(row[0]).trim();
+    var sklep = row.length > 2 && row[2] != null ? String(row[2]).trim() : '';
+    if (!adres) {
+      continue;
+    }
+    if (!byAddress[adres]) {
+      byAddress[adres] = { adres: adres, sklep: sklep };
+      order.push(adres);
+    } else if (!byAddress[adres].sklep && sklep) {
+      byAddress[adres].sklep = sklep;
+    }
+  }
+  var out = [];
+  for (i = 0; i < order.length; i++) {
+    out.push(byAddress[order[i]]);
   }
   out.sort(function (a, b) {
-    return a.localeCompare(b, 'pl');
+    return a.adres.localeCompare(b.adres, 'pl');
   });
   return out;
 }

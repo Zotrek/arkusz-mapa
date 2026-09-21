@@ -136,8 +136,8 @@ export function manualAdminHtml(): string {
         <label for="manual-admin-stawki-worek">Kwota za worek</label>
         <input type="text" id="manual-admin-stawki-worek" inputmode="decimal" autocomplete="off" />
         <label for="manual-admin-stawki-od-kiedy">Od kiedy obowiązuje</label>
-        <input type="text" id="manual-admin-stawki-od-kiedy" autocomplete="off" placeholder="dd.mm.yyyy" />
-        <p class="manual-admin-hint">Adres z pinezek mapy, podwykonawca z nazw krótkich. Zapis od razu, bez przebudowy mapy. Pusta data znaczy od zawsze.</p>
+        <input type="date" id="manual-admin-stawki-od-kiedy" />
+        <p class="manual-admin-hint">Nazwa sklepu i adres z pinezek mapy. Zapisuje się adres. Podwykonawca z nazw krótkich. Zapis od razu, bez przebudowy mapy. Pusta data znaczy od zawsze.</p>
         <button type="button" id="manual-admin-stawki-submit" class="manual-admin-submit">Zapisz stawkę</button>
       </div>
       <p id="manual-admin-status" class="manual-admin-status" aria-live="polite"></p>
@@ -169,6 +169,14 @@ ${referenceFormatsBrowserScript()}
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       }).then(function(res) { return res.json(); });
+    }
+
+    function rateValidFromFromPicker(value) {
+      var raw = String(value || '').trim();
+      if (!raw) return '';
+      var parts = raw.split('-');
+      if (parts.length !== 3 || parts[0].length !== 4) return raw;
+      return parts[2] + '.' + parts[1] + '.' + parts[0];
     }
 
     function hasPodwykoLabel(label) {
@@ -271,25 +279,40 @@ ${referenceFormatsBrowserScript()}
       sel.appendChild(empty);
       var i;
       for (i = 0; i < values.length; i++) {
+        var item = values[i];
+        var value = item && typeof item === 'object' ? item.value : item;
+        var text = item && typeof item === 'object' ? item.text : item;
         var opt = document.createElement('option');
-        opt.value = values[i];
-        opt.textContent = values[i];
+        opt.value = value;
+        opt.textContent = text;
         sel.appendChild(opt);
       }
       if (current) sel.value = current;
     }
 
+    function rateShopOptionLabel(sklep, adres) {
+      if (sklep && sklep !== adres) return sklep + ' — ' + adres;
+      return adres;
+    }
+
     function fillRateShopOptions() {
-      var addrs = [];
+      var options = [];
+      var seen = {};
       var i;
       if (typeof adresy === 'undefined' || !adresy) {
         fillRateSelect('manual-admin-stawki-sklep', [], '— wybierz adres —');
         return;
       }
       for (i = 0; i < adresy.length; i++) {
-        addrs.push(adresy[i] && adresy[i].adres);
+        var point = adresy[i];
+        var adres = String(point && point.adres || '').trim();
+        if (!adres || seen[adres]) continue;
+        seen[adres] = true;
+        var sklep = String(point && point.sklep || '').trim();
+        options.push({ value: adres, text: rateShopOptionLabel(sklep, adres) });
       }
-      fillRateSelect('manual-admin-stawki-sklep', uniqueSortedLabels(addrs), '— wybierz adres —');
+      options.sort(function(a, b) { return a.text.localeCompare(b.text, 'pl'); });
+      fillRateSelect('manual-admin-stawki-sklep', options, '— wybierz adres —');
     }
 
     function fillRateContractorOptions() {
@@ -438,7 +461,7 @@ ${referenceFormatsBrowserScript()}
             podwykonawca: podwykonawca,
             kwotaPodjazd: String((document.getElementById('manual-admin-stawki-podjazd') || {}).value || ''),
             kwotaWorek: String((document.getElementById('manual-admin-stawki-worek') || {}).value || ''),
-            odKiedy: String((document.getElementById('manual-admin-stawki-od-kiedy') || {}).value || '')
+            odKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-stawki-od-kiedy') || {}).value)
           }).then(function(resp) {
             stawkiSubmit.disabled = false;
             if (!resp || !resp.ok) {

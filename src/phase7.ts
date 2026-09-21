@@ -4,6 +4,7 @@
 
 import { getConfig, getPhase5CacheFilePath, getEwidencjaOdbiorowSheetsId, getTransportSheetsId, GEOJSON_WOJEWODZTWA_URL } from './config.js';
 import { isCopyOdebraneZHarmonogramuEnabled } from './harmonogramDays.js';
+import { syncBazaCenHarmonogram } from './bazaCenHarmonogram.js';
 import { executeOdebraneZHarmonogramu } from './odebraneZHarmonogramu.js';
 import { applyAddressAliases, createSheetsClient, loadAddressAliases, loadSourceRows } from './sheets.js';
 import { executePhase3 } from './phase3.js';
@@ -82,6 +83,7 @@ export interface Phase7Deps {
   createSheetsClient: typeof createSheetsClient;
   loadSourceRows: typeof loadSourceRows;
   executeOdebraneZHarmonogramu: typeof executeOdebraneZHarmonogramu;
+  syncBazaCenHarmonogram: typeof syncBazaCenHarmonogram;
   isCopyOdebraneZHarmonogramuEnabled: typeof isCopyOdebraneZHarmonogramuEnabled;
   getEwidencjaOdbiorowSheetsId: typeof getEwidencjaOdbiorowSheetsId;
   executePhase3: typeof executePhase3;
@@ -110,6 +112,7 @@ const defaultDeps: Phase7Deps = {
   createSheetsClient,
   loadSourceRows,
   executeOdebraneZHarmonogramu,
+  syncBazaCenHarmonogram,
   isCopyOdebraneZHarmonogramuEnabled,
   getEwidencjaOdbiorowSheetsId,
   executePhase3,
@@ -179,6 +182,16 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
       deps.logger,
     );
     odebraneAppendedCount = odebrane.appendedCount;
+    await withGoogleApiRetry(
+      'syncBazaCenHarmonogram',
+      () =>
+        deps.syncBazaCenHarmonogram(
+          sheetsClient,
+          { spreadsheetId: ewidencjaId },
+          deps.logger,
+        ),
+      deps.logger,
+    );
   }
 
   deps.logger.info('Executing phase 3 (duplicates + grouping)');

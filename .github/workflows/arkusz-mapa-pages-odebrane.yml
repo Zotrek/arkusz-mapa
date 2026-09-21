@@ -10,6 +10,7 @@
 #   + GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID — arkusz „ewidencja odbiorów” (zapis „odebrane z harmonogramu”)
 #
 # Odczyt plomb: trasówki (GOOGLE_SHEETS_ID). Zapis wyników: ewidencja (GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID).
+# Po kopiowaniu: uzupełnia zakładkę „Baza cen harmonogram” (adres, podwykonawca, dni). Cen nie nadpisuje.
 #
 # Concurrency „pages” — ten sam deployment GitHub Pages co zwykły generate.
 # Publikacja: peaceiris/actions-gh-pages → gałąź gh-pages (bez actions/deploy-pages).
