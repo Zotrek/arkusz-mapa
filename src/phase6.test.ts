@@ -1483,6 +1483,551 @@ __api = {
     });
   });
 
+  describe('contractorShortNameForRoute VM', () => {
+    type FakeEl = {
+      value: string;
+      setAttribute?: (name: string, value: string) => void;
+      removeAttribute?: (name: string) => void;
+      getAttribute?: (name: string) => string | null;
+    };
+
+    type ContractorApi = {
+      contractorShortNameForRoute: () => string;
+      proposeRouteName: (occupied: string[], contractor: string, date: string) => string;
+    };
+
+    function sliceHtml(html: string, start: string, end: string): string {
+      const a = html.indexOf(start);
+      const b = html.indexOf(end);
+      if (a < 0 || b < 0 || b <= a) {
+        throw new Error(`Nie znaleziono wycinka: ${start} … ${end}`);
+      }
+      return html.slice(a, b);
+    }
+
+    function fakeEl(value = ''): FakeEl {
+      return { value };
+    }
+
+    function loadContractorShortName(): {
+      api: ContractorApi;
+      els: Record<string, FakeEl>;
+    } {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [
+          { label: 'GPW', dane: 'GPW Transport Sp. z o.o.' },
+          { label: 'BLUECARGO', dane: 'BLUECARGO Sp. ul. Rajska 1' },
+          { label: 'REDCARGO', dane: 'REDCARGO Sp. ul. Portowa 2' },
+          { label: 'Geodis', dane: 'Geodis Poland' },
+        ],
+      }, 'https://script.google.com/macros/s/test/exec');
+
+      const els: Record<string, FakeEl> = {
+        'doc-val-przewoznik': fakeEl(''),
+        'doc-sel-przewoznik': fakeEl(''),
+      };
+
+      const sandbox: Record<string, unknown> = {
+        document: {
+          getElementById(id: string) {
+            return els[id] ?? null;
+          },
+        },
+        __api: null,
+      };
+
+      const podwykoStart = html.indexOf('const PODWYKOLISTA = ');
+      const podwykoEnd = html.indexOf(';', podwykoStart) + 1;
+      if (podwykoStart < 0 || podwykoEnd <= podwykoStart) {
+        throw new Error('Nie znaleziono PODWYKOLISTA w HTML');
+      }
+
+      const script = `
+${html.slice(podwykoStart, podwykoEnd)}
+${routeNameBrowserScript()}
+${sliceHtml(html, 'function normalizeForAddressSearchMap(', 'function foldLocalityMap(')}
+${sliceHtml(html, 'function podwykoOptionMatchesQuery(', 'var docComboboxInited = false;')}
+${sliceHtml(html, 'function findPodwykoIdxByLabel(', 'function selectDocComboboxOption(')}
+${sliceHtml(html, 'function contractorShortNameForRoute(', 'function pickupDateForRoute(')}
+__api = {
+  contractorShortNameForRoute: contractorShortNameForRoute,
+  proposeRouteName: proposeRouteName
+};
+`;
+      runInNewContext(script, sandbox);
+      const api = sandbox.__api as ContractorApi | null;
+      if (!api) {
+        throw new Error('Harness nie wystawił API contractorShortNameForRoute');
+      }
+      return { api, els };
+    }
+
+    it('test_contractorShortNameForRoute_when_valid_index_should_return_label', () => {
+      const { api, els } = loadContractorShortName();
+      els['doc-val-przewoznik'].value = '0';
+      els['doc-sel-przewoznik'].value = '';
+
+      expect(api.contractorShortNameForRoute()).toBe('GPW');
+    });
+
+    it('test_contractorShortNameForRoute_when_index_set_should_ignore_visible_text', () => {
+      const { api, els } = loadContractorShortName();
+      // Ukryty indeks Geodis (3), widoczny tekst sugeruje GPW — indeks wygrywa.
+      els['doc-val-przewoznik'].value = '3';
+      els['doc-sel-przewoznik'].value = 'GPW';
+
+      expect(api.contractorShortNameForRoute()).toBe('Geodis');
+    });
+
+    it('test_contractorShortNameForRoute_when_visible_label_exact_should_resolve_and_set_index', () => {
+      const { api, els } = loadContractorShortName();
+      els['doc-val-przewoznik'].value = '';
+      els['doc-sel-przewoznik'].value = 'BLUECARGO';
+
+      expect(api.contractorShortNameForRoute()).toBe('BLUECARGO');
+      expect(els['doc-val-przewoznik'].value).toBe('1');
+    });
+
+    it('test_contractorShortNameForRoute_when_normalized_label_should_resolve', () => {
+      const { api, els } = loadContractorShortName();
+      els['doc-val-przewoznik'].value = '';
+      els['doc-sel-przewoznik'].value = 'gpw';
+
+      expect(api.contractorShortNameForRoute()).toBe('GPW');
+      expect(els['doc-val-przewoznik'].value).toBe('0');
+    });
+
+    it('test_contractorShortNameForRoute_when_unique_partial_match_should_resolve', () => {
+      const { api, els } = loadContractorShortName();
+      els['doc-val-przewoznik'].value = '';
+      els['doc-sel-przewoznik'].value = 'blue';
+
+      expect(api.contractorShortNameForRoute()).toBe('BLUECARGO');
+      expect(els['doc-val-przewoznik'].value).toBe('1');
+    });
+
+    it('test_contractorShortNameForRoute_when_ambiguous_match_should_return_empty', () => {
+      const { api, els } = loadContractorShortName();
+      els['doc-val-przewoznik'].value = '';
+      // „cargo” pasuje do BLUECARGO i REDCARGO — bez jednoznaczności.
+      els['doc-sel-przewoznik'].value = 'cargo';
+
+      expect(api.contractorShortNameForRoute()).toBe('');
+      expect(els['doc-val-przewoznik'].value).toBe('');
+    });
+
+    it('test_contractorShortNameForRoute_when_unknown_text_should_return_empty', () => {
+      const { api, els } = loadContractorShortName();
+      els['doc-val-przewoznik'].value = '';
+      els['doc-sel-przewoznik'].value = 'NieistniejacyPrzewoznik';
+
+      expect(api.contractorShortNameForRoute()).toBe('');
+    });
+
+    it('test_contractorShortNameForRoute_when_wrong_short_name_should_propose_wrong_route_name', () => {
+      const { api, els } = loadContractorShortName();
+      const date = '2026-09-23';
+
+      els['doc-val-przewoznik'].value = '0';
+      els['doc-sel-przewoznik'].value = 'GPW';
+      const correct = api.contractorShortNameForRoute();
+      expect(correct).toBe('GPW');
+      expect(api.proposeRouteName([], correct, date)).toBe('GPW-23.09.26-01');
+
+      // Zły indeks / skrót → prefiks nazwy trasy od innego przewoźnika.
+      els['doc-val-przewoznik'].value = '3';
+      els['doc-sel-przewoznik'].value = 'GPW';
+      const wrong = api.contractorShortNameForRoute();
+      expect(wrong).toBe('Geodis');
+      expect(api.proposeRouteName([], wrong, date)).toBe('Geodis-23.09.26-01');
+      expect(api.proposeRouteName([], wrong, date)).not.toBe(
+        api.proposeRouteName([], 'GPW', date),
+      );
+    });
+  });
+
+  describe('resolveRouteFieldsBeforeSave VM', () => {
+    type FakeEl = { value: string };
+
+    type ResolveApi = {
+      resolveRouteFieldsBeforeSave: (
+        fields: { trasa: string; stawkaTrasy: string } | null,
+      ) => Promise<{ trasa: string; stawkaTrasy: string } | null>;
+      getState: () => {
+        routeNameMode: string;
+        routeRateBaseline: string;
+        routeRateBaselineName: string;
+      };
+      setExistingRate: (name: string, rate: string) => void;
+      setConfirmAnswers: (answers: boolean[]) => void;
+      pendingFetches: Array<(resp: { ok?: boolean; names?: string[] }) => void>;
+    };
+
+    function sliceHtml(html: string, start: string, end: string): string {
+      const a = html.indexOf(start);
+      const b = html.indexOf(end);
+      if (a < 0 || b < 0 || b <= a) {
+        throw new Error(`Nie znaleziono wycinka: ${start} … ${end}`);
+      }
+      return html.slice(a, b);
+    }
+
+    function loadResolveRouteFields(): {
+      api: ResolveApi;
+      els: Record<string, FakeEl>;
+      alerts: string[];
+    } {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+
+      const els: Record<string, FakeEl> = {
+        'doc-inp-trasa': { value: 'GPW-23.09.26-01' },
+      };
+      const alerts: string[] = [];
+      const confirmAnswers: boolean[] = [];
+      const pendingFetches: Array<(resp: { ok?: boolean; names?: string[] }) => void> = [];
+
+      const sandbox: Record<string, unknown> = {
+        Promise,
+        confirmAnswers,
+        document: {
+          getElementById(id: string) {
+            return els[id] ?? null;
+          },
+        },
+        window: {
+          confirm() {
+            return confirmAnswers.length > 0 ? !!confirmAnswers.shift() : false;
+          },
+          setTimeout(fn: () => void) {
+            fn();
+            return 1;
+          },
+        },
+        alert(msg: string) {
+          alerts.push(String(msg));
+        },
+        fetchTransportGet() {
+          return new Promise<{ ok?: boolean; names?: string[] }>((resolve) => {
+            pendingFetches.push(resolve);
+          });
+        },
+        __api: null,
+      };
+
+      const script = `
+${routeNameBrowserScript()}
+${routeProtocolBrowserScript()}
+var lastRouteName = '';
+var lastRouteRate = '';
+var routeNameMode = 'continue';
+var routeRateBaseline = '';
+var routeRateBaselineName = '';
+var transportApiEnabled = true;
+function contractorShortNameForRoute() { return 'GPW'; }
+function pickupDateForRoute() { return '2026-09-23'; }
+${sliceHtml(html, 'function existingRouteRateFor(', 'function askDifferentRouteRate(')}
+${sliceHtml(html, 'function askDifferentRouteRate(', 'function proposeFreshRouteName(')}
+${sliceHtml(html, 'function proposeFreshRouteName(', 'function resolveRouteFieldsBeforeSave(')}
+${sliceHtml(html, 'function resolveRouteFieldsBeforeSave(', 'function runBulkDocGenerate(')}
+__api = {
+  resolveRouteFieldsBeforeSave: resolveRouteFieldsBeforeSave,
+  getState: function () {
+    return {
+      routeNameMode: routeNameMode,
+      routeRateBaseline: routeRateBaseline,
+      routeRateBaselineName: routeRateBaselineName
+    };
+  },
+  setExistingRate: function (name, rate) {
+    routeRateBaselineName = String(name || '');
+    routeRateBaseline = String(rate || '');
+  },
+  setConfirmAnswers: function (answers) {
+    confirmAnswers.length = 0;
+    for (var i = 0; i < answers.length; i++) confirmAnswers.push(!!answers[i]);
+  }
+};
+`;
+      runInNewContext(script, sandbox);
+      const api = sandbox.__api as Omit<ResolveApi, 'pendingFetches'> | null;
+      if (!api) {
+        throw new Error('Harness nie wystawił API resolveRouteFieldsBeforeSave');
+      }
+      return {
+        api: { ...api, pendingFetches },
+        els,
+        alerts,
+      };
+    }
+
+    async function flushMicrotasks(): Promise<void> {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    it('test_resolveRouteFieldsBeforeSave_when_no_conflict_should_return_same_fields', async () => {
+      const { api } = loadResolveRouteFields();
+      api.setExistingRate('GPW-23.09.26-01', '750');
+      const fields = { trasa: 'GPW-23.09.26-01', stawkaTrasy: '750' };
+
+      const result = await api.resolveRouteFieldsBeforeSave(fields);
+      expect(result).toEqual(fields);
+      expect(api.getState().routeNameMode).toBe('continue');
+      expect(api.pendingFetches).toHaveLength(0);
+    });
+
+    it('test_resolveRouteFieldsBeforeSave_when_null_fields_should_passthrough', async () => {
+      const { api } = loadResolveRouteFields();
+      expect(await api.resolveRouteFieldsBeforeSave(null)).toBeNull();
+    });
+
+    it('test_resolveRouteFieldsBeforeSave_when_cancel_should_return_null', async () => {
+      const { api } = loadResolveRouteFields();
+      api.setExistingRate('GPW-23.09.26-01', '750');
+      api.setConfirmAnswers([false, false]);
+
+      const result = await api.resolveRouteFieldsBeforeSave({
+        trasa: 'GPW-23.09.26-01',
+        stawkaTrasy: '1010',
+      });
+      expect(result).toBeNull();
+      expect(api.getState().routeNameMode).toBe('continue');
+    });
+
+    it('test_resolveRouteFieldsBeforeSave_when_update_all_should_keep_fields', async () => {
+      const { api } = loadResolveRouteFields();
+      api.setExistingRate('GPW-23.09.26-01', '750');
+      api.setConfirmAnswers([false, true]);
+      const fields = { trasa: 'GPW-23.09.26-01', stawkaTrasy: '1010' };
+
+      const result = await api.resolveRouteFieldsBeforeSave(fields);
+      expect(result).toEqual(fields);
+      expect(api.getState().routeNameMode).toBe('continue');
+    });
+
+    it('test_resolveRouteFieldsBeforeSave_when_new_route_should_propose_next_name_and_keep_rate', async () => {
+      const { api, els } = loadResolveRouteFields();
+      api.setExistingRate('GPW-23.09.26-01', '750');
+      api.setConfirmAnswers([true]);
+      els['doc-inp-trasa'].value = 'GPW-23.09.26-01';
+
+      const pending = api.resolveRouteFieldsBeforeSave({
+        trasa: 'GPW-23.09.26-01',
+        stawkaTrasy: '1010',
+      });
+      await flushMicrotasks();
+      expect(api.pendingFetches).toHaveLength(1);
+      api.pendingFetches[0]({ ok: true, names: ['GPW-23.09.26-01'] });
+
+      const result = await pending;
+      expect(result).toEqual({ trasa: 'GPW-23.09.26-02', stawkaTrasy: '1010' });
+      expect(els['doc-inp-trasa'].value).toBe('GPW-23.09.26-02');
+      expect(api.getState()).toEqual({
+        routeNameMode: 'new',
+        routeRateBaseline: '',
+        routeRateBaselineName: '',
+      });
+    });
+
+    it('test_resolveRouteFieldsBeforeSave_when_new_route_no_free_number_should_abort', async () => {
+      const { api, alerts } = loadResolveRouteFields();
+      api.setExistingRate('GPW-23.09.26-01', '750');
+      api.setConfirmAnswers([true]);
+
+      const occupied = Array.from({ length: 99 }, (_, i) => {
+        const n = String(i + 1).padStart(2, '0');
+        return `GPW-23.09.26-${n}`;
+      });
+
+      const pending = api.resolveRouteFieldsBeforeSave({
+        trasa: 'GPW-23.09.26-01',
+        stawkaTrasy: '1010',
+      });
+      await flushMicrotasks();
+      api.pendingFetches[0]({ ok: true, names: occupied });
+
+      const result = await pending;
+      expect(result).toBeNull();
+      expect(alerts.some((m) => m.includes('Brak wolnego numeru'))).toBe(true);
+      expect(api.getState().routeNameMode).toBe('continue');
+    });
+  });
+
+  describe('lookupRouteRateNow race VM', () => {
+    type FakeEl = { value: string };
+
+    type LookupApi = {
+      lookupRouteRateNow: (name: string) => void;
+      bumpRequest: () => void;
+      setRouteRateTouched: (value: boolean) => void;
+      getState: () => {
+        routeRateRequest: number;
+        routeRateBaseline: string;
+        routeRateBaselineName: string;
+      };
+      pendingFetches: Array<(resp: { ok?: boolean; stawka?: string }) => void>;
+    };
+
+    function sliceHtml(html: string, start: string, end: string): string {
+      const a = html.indexOf(start);
+      const b = html.indexOf(end);
+      if (a < 0 || b < 0 || b <= a) {
+        throw new Error(`Nie znaleziono wycinka: ${start} … ${end}`);
+      }
+      return html.slice(a, b);
+    }
+
+    function loadLookupRouteRate(): {
+      api: LookupApi;
+      els: Record<string, FakeEl>;
+    } {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+
+      const els: Record<string, FakeEl> = {
+        'doc-inp-trasa': { value: 'GPW-23.09.26-01' },
+        'doc-inp-stawka-trasy': { value: '' },
+      };
+      const pendingFetches: Array<(resp: { ok?: boolean; stawka?: string }) => void> = [];
+
+      const sandbox: Record<string, unknown> = {
+        Promise,
+        document: {
+          getElementById(id: string) {
+            return els[id] ?? null;
+          },
+        },
+        fetchTransportGet() {
+          return new Promise<{ ok?: boolean; stawka?: string }>((resolve) => {
+            pendingFetches.push(resolve);
+          });
+        },
+        __api: null,
+      };
+
+      const script = `
+${routeProtocolBrowserScript()}
+var routeRateRequest = 0;
+var routeRateTouched = false;
+var routeRateBaseline = '';
+var routeRateBaselineName = '';
+var transportApiEnabled = true;
+${sliceHtml(html, 'function lookupRouteRateNow(', 'function applyShownRouteName(')}
+__api = {
+  lookupRouteRateNow: lookupRouteRateNow,
+  bumpRequest: function () { routeRateRequest += 1; },
+  setRouteRateTouched: function (value) { routeRateTouched = !!value; },
+  getState: function () {
+    return {
+      routeRateRequest: routeRateRequest,
+      routeRateBaseline: routeRateBaseline,
+      routeRateBaselineName: routeRateBaselineName
+    };
+  }
+};
+`;
+      runInNewContext(script, sandbox);
+      const api = sandbox.__api as Omit<LookupApi, 'pendingFetches'> | null;
+      if (!api) {
+        throw new Error('Harness nie wystawił API lookupRouteRateNow');
+      }
+      return { api: { ...api, pendingFetches }, els };
+    }
+
+    async function flushMicrotasks(): Promise<void> {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    it('test_lookupRouteRateNow_when_response_arrives_should_fill_rate_and_baseline', async () => {
+      const { api, els } = loadLookupRouteRate();
+      els['doc-inp-trasa'].value = 'GPW-23.09.26-01';
+
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+      expect(api.pendingFetches).toHaveLength(1);
+      expect(api.getState().routeRateRequest).toBe(1);
+
+      api.pendingFetches[0]({ ok: true, stawka: '750' });
+      await flushMicrotasks();
+
+      expect(els['doc-inp-stawka-trasy'].value).toBe('750');
+      expect(api.getState().routeRateBaseline).toBe('750');
+      expect(api.getState().routeRateBaselineName).toBe('GPW-23.09.26-01');
+    });
+
+    it('test_lookupRouteRateNow_when_stale_ticket_should_not_overwrite_newer_rate', async () => {
+      const { api, els } = loadLookupRouteRate();
+      els['doc-inp-trasa'].value = 'GPW-23.09.26-01';
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+
+      els['doc-inp-trasa'].value = 'GPW-23.09.26-02';
+      api.lookupRouteRateNow('GPW-23.09.26-02');
+      expect(api.pendingFetches).toHaveLength(2);
+      expect(api.getState().routeRateRequest).toBe(2);
+
+      // Starszy fetch kończy się później — ticket 1 ≠ routeRateRequest 2.
+      api.pendingFetches[0]({ ok: true, stawka: '111' });
+      await flushMicrotasks();
+      expect(els['doc-inp-stawka-trasy'].value).toBe('');
+
+      api.pendingFetches[1]({ ok: true, stawka: '222' });
+      await flushMicrotasks();
+      expect(els['doc-inp-stawka-trasy'].value).toBe('222');
+      expect(api.getState().routeRateBaseline).toBe('222');
+      expect(api.getState().routeRateBaselineName).toBe('GPW-23.09.26-02');
+    });
+
+    it('test_lookupRouteRateNow_when_name_changed_during_flight_should_ignore_response', async () => {
+      const { api, els } = loadLookupRouteRate();
+      els['doc-inp-trasa'].value = 'GPW-23.09.26-01';
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+      expect(api.pendingFetches).toHaveLength(1);
+
+      els['doc-inp-trasa'].value = 'inna-trasa';
+      // Ticket nadal aktualny (jeden request), ale nazwa w polu już inna.
+      api.pendingFetches[0]({ ok: true, stawka: '999' });
+      await flushMicrotasks();
+
+      expect(els['doc-inp-stawka-trasy'].value).toBe('');
+      expect(api.getState().routeRateBaseline).toBe('');
+    });
+
+    it('test_lookupRouteRateNow_when_request_bumped_externally_should_drop_inflight', async () => {
+      const { api, els } = loadLookupRouteRate();
+      els['doc-inp-trasa'].value = 'GPW-23.09.26-01';
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+      // resetRouteFormForOpen / nowa sesja inkrementuje ticket bez nowego fetcha.
+      api.bumpRequest();
+      expect(api.getState().routeRateRequest).toBe(2);
+
+      api.pendingFetches[0]({ ok: true, stawka: '750' });
+      await flushMicrotasks();
+      expect(els['doc-inp-stawka-trasy'].value).toBe('');
+    });
+
+    it('test_lookupRouteRateNow_when_user_edited_rate_should_keep_current_value', async () => {
+      const { api, els } = loadLookupRouteRate();
+      els['doc-inp-trasa'].value = 'GPW-23.09.26-01';
+      els['doc-inp-stawka-trasy'].value = '500';
+      api.setRouteRateTouched(true);
+
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+      api.pendingFetches[0]({ ok: true, stawka: '750' });
+      await flushMicrotasks();
+
+      expect(els['doc-inp-stawka-trasy'].value).toBe('500');
+      // Baseline z lookupu nadal zapamiętany (do konfliktu przy zapisie).
+      expect(api.getState().routeRateBaseline).toBe('750');
+      expect(api.getState().routeRateBaselineName).toBe('GPW-23.09.26-01');
+    });
+  });
+
   describe('executePhase6', () => {
     it('test_executePhase6_when_called_should_create_directory_and_write_html_file', async () => {
       const mkdirFn = vi.fn().mockResolvedValue(undefined);

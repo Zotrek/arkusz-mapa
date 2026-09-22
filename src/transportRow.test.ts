@@ -169,10 +169,15 @@ class FakeSheet {
   }
 }
 
+type SettlementResult = { ok: boolean; error?: string };
+
 type GasFns = {
   appendTransportRow_: (numer: string, body: Record<string, unknown>) => void;
   listOccupiedRouteNames_: () => string[];
   routeRateByName_: (name: string) => string;
+  patchRouteRate_: (body: Record<string, unknown>) => SettlementResult;
+  detachRoute_: (body: Record<string, unknown>) => SettlementResult;
+  attachRoute_: (body: Record<string, unknown>) => SettlementResult;
 };
 
 const gsPath = join(
@@ -302,6 +307,9 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
   const append = context.appendTransportRow_;
   const occupied = context.listOccupiedRouteNames_;
   const rateByName = context.routeRateByName_;
+  const patchRouteRate = context.patchRouteRate_;
+  const detachRoute = context.detachRoute_;
+  const attachRoute = context.attachRoute_;
   if (typeof append !== 'function') {
     throw new Error('transport-log.gs nie wystawił appendTransportRow_');
   }
@@ -311,10 +319,22 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
   if (typeof rateByName !== 'function') {
     throw new Error('transport-log.gs nie wystawił routeRateByName_');
   }
+  if (typeof patchRouteRate !== 'function') {
+    throw new Error('transport-log.gs nie wystawił patchRouteRate_');
+  }
+  if (typeof detachRoute !== 'function') {
+    throw new Error('transport-log.gs nie wystawił detachRoute_');
+  }
+  if (typeof attachRoute !== 'function') {
+    throw new Error('transport-log.gs nie wystawił attachRoute_');
+  }
   return {
     appendTransportRow_: append as GasFns['appendTransportRow_'],
     listOccupiedRouteNames_: occupied as GasFns['listOccupiedRouteNames_'],
     routeRateByName_: rateByName as GasFns['routeRateByName_'],
+    patchRouteRate_: patchRouteRate as GasFns['patchRouteRate_'],
+    detachRoute_: detachRoute as GasFns['detachRoute_'],
+    attachRoute_: attachRoute as GasFns['attachRoute_'],
   };
 }
 
@@ -330,6 +350,54 @@ function seedRouteRow(
   sheet.put(row, 10, name);
   sheet.put(row, 11, rate);
   sheet.put(row, 14, settled);
+}
+
+/**
+ * Pełniejszy wiersz rejestru pod zapisy settlement (klucz: sheetRow + numer kol. 1).
+ * Kolumny 16–17 = koszt — settlement write nie może ich ruszyć.
+ */
+function seedSettlementRow(
+  sheet: FakeSheet,
+  row: number,
+  over: Partial<Record<number, Cell>> = {},
+): void {
+  const cols: Cell[] = [
+    15,
+    'Sklepowa 1',
+    'Firma',
+    'Sklep',
+    '18.09.2026',
+    'gpw',
+    '',
+    '',
+    2,
+    'trasa-a',
+    '150',
+    '',
+    '',
+    '',
+    '',
+    '999',
+    '111',
+    '',
+  ];
+  for (let i = 0; i < cols.length; i += 1) {
+    sheet.put(row, i + 1, cols[i]);
+  }
+  for (const [key, value] of Object.entries(over)) {
+    sheet.put(row, Number(key), value);
+  }
+}
+
+function expectCostsUntouched(sheet: FakeSheet, rows: number[]): void {
+  for (const row of rows) {
+    expect(sheet.cell(row, 16)).toBe('999');
+    expect(sheet.cell(row, 17)).toBe('111');
+  }
+  for (const write of sheet.writes) {
+    const end = write.col + write.numCols - 1;
+    expect(end < 16 || write.col > 17).toBe(true);
+  }
 }
 
 const HEADERS_10_20 = [
@@ -758,5 +826,182 @@ describe('routeRateByName_', () => {
     sheet.put(2, 14, '');
 
     expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('150');
+  });
+});
+
+describe('patchRouteRate_', () => {
+  it('test_patchRouteRate_when_same_name_should_update_unsettled_skip_settled', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2);
+    seedSettlementRow(sheet, 3, { 1: 16, 5: '01.01.2026', 6: 'inny', 11: '10' });
+    seedSettlementRow(sheet, 4, { 1: 17, 11: '77', 14: 'tak' });
+    seedSettlementRow(sheet, 5, { 1: 18, 10: 'inna', 11: '5' });
+
+    const result = loadGas(sheet).patchRouteRate_({
+      sheetRow: 2,
+      transportNumber: '15',
+      trasa: 'trasa-a',
+      stawkaTrasy: '200',
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(sheet.cell(2, 11)).toBe('200');
+    expect(sheet.cell(3, 11)).toBe('200');
+    expect(sheet.cell(4, 11)).toBe('77');
+    expect(sheet.cell(5, 11)).toBe('5');
+    expect(sheet.cell(2, 10)).toBe('trasa-a');
+    expectCostsUntouched(sheet, [2, 3, 4, 5]);
+  });
+
+  it('test_patchRouteRate_when_zero_or_empty_should_write_zero_or_clear', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2);
+    const gas = loadGas(sheet);
+
+    expect(
+      gas.patchRouteRate_({
+        sheetRow: 2,
+        transportNumber: '15',
+        trasa: 'trasa-a',
+        stawkaTrasy: 0,
+      }),
+    ).toEqual({ ok: true });
+    expect(sheet.cell(2, 11)).toBe('0');
+
+    expect(
+      gas.patchRouteRate_({
+        sheetRow: 2,
+        transportNumber: '15',
+        trasa: 'trasa-a',
+        stawkaTrasy: '',
+      }),
+    ).toEqual({ ok: true });
+    expect(sheet.cell(2, 11)).toBe('');
+    expectCostsUntouched(sheet, [2]);
+  });
+
+  it('test_patchRouteRate_when_key_mismatch_or_settled_should_write_nothing', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2);
+    seedSettlementRow(sheet, 3, { 1: 16, 11: '10' });
+    seedSettlementRow(sheet, 4, { 1: 17, 14: 'tak' });
+    const gas = loadGas(sheet);
+
+    expect(
+      gas.patchRouteRate_({
+        sheetRow: 2,
+        transportNumber: '16',
+        trasa: 'trasa-a',
+        stawkaTrasy: '200',
+      }),
+    ).toEqual({ ok: false, error: 'key' });
+    expect(
+      gas.patchRouteRate_({
+        sheetRow: 4,
+        transportNumber: '17',
+        trasa: 'trasa-a',
+        stawkaTrasy: '200',
+      }),
+    ).toEqual({ ok: false, error: 'settled' });
+    expect(sheet.writes).toEqual([]);
+    expect(sheet.cell(2, 11)).toBe('150');
+    expect(sheet.cell(3, 11)).toBe('10');
+  });
+});
+
+describe('detachRoute_', () => {
+  it('test_detachRoute_when_ok_should_clear_one_row_and_leave_rest_of_route', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2);
+    seedSettlementRow(sheet, 3, { 1: 16 });
+
+    expect(
+      loadGas(sheet).detachRoute_({ sheetRow: 2, transportNumber: '15' }),
+    ).toEqual({ ok: true });
+    expect(sheet.cell(2, 10)).toBe('');
+    expect(sheet.cell(2, 11)).toBe('');
+    expect(sheet.cell(3, 10)).toBe('trasa-a');
+    expect(sheet.cell(3, 11)).toBe('150');
+    expect(sheet.cell(2, 9)).toBe(2);
+    expectCostsUntouched(sheet, [2, 3]);
+  });
+
+  it('test_detachRoute_when_key_mismatch_should_write_nothing', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2);
+
+    expect(
+      loadGas(sheet).detachRoute_({ sheetRow: 9, transportNumber: '15' }),
+    ).toEqual({ ok: false, error: 'key' });
+    expect(sheet.writes).toEqual([]);
+    expect(sheet.cell(2, 10)).toBe('trasa-a');
+    expectCostsUntouched(sheet, [2]);
+  });
+});
+
+describe('attachRoute_', () => {
+  it('test_attachRoute_when_zero_rate_should_write_and_propagate_by_name', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2, { 10: '', 11: '' });
+    seedSettlementRow(sheet, 3, { 1: 16, 6: 'inny', 10: 'nowa', 11: '10' });
+    seedSettlementRow(sheet, 4, { 1: 17, 10: 'nowa', 11: '77', 14: 'tak' });
+
+    const result = loadGas(sheet).attachRoute_({
+      sheetRow: 2,
+      transportNumber: '15',
+      trasa: '  nowa  ',
+      stawkaTrasy: '0',
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(sheet.cell(2, 10)).toBe('nowa');
+    expect(sheet.cell(2, 11)).toBe('0');
+    expect(sheet.cell(3, 10)).toBe('nowa');
+    expect(sheet.cell(3, 11)).toBe('0');
+    expect(sheet.cell(4, 11)).toBe('77');
+    expectCostsUntouched(sheet, [2, 3, 4]);
+  });
+
+  it('test_attachRoute_when_empty_rate_or_name_should_write_nothing', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2, { 10: '', 11: '' });
+    const gas = loadGas(sheet);
+
+    expect(
+      gas.attachRoute_({
+        sheetRow: 2,
+        transportNumber: '15',
+        trasa: 'nowa',
+        stawkaTrasy: '',
+      }),
+    ).toEqual({ ok: false, error: 'rate' });
+    expect(
+      gas.attachRoute_({
+        sheetRow: 2,
+        transportNumber: '15',
+        trasa: ' ',
+        stawkaTrasy: '0',
+      }),
+    ).toEqual({ ok: false, error: 'name' });
+    expect(sheet.writes).toEqual([]);
+    expect(sheet.cell(2, 10)).toBe('');
+    expect(sheet.cell(2, 11)).toBe('');
+    expectCostsUntouched(sheet, [2]);
+  });
+
+  it('test_attachRoute_when_key_mismatch_should_write_nothing', () => {
+    const sheet = new FakeSheet();
+    seedSettlementRow(sheet, 2, { 10: '', 11: '' });
+
+    expect(
+      loadGas(sheet).attachRoute_({
+        sheetRow: 2,
+        transportNumber: '99',
+        trasa: 'nowa',
+        stawkaTrasy: '0',
+      }),
+    ).toEqual({ ok: false, error: 'key' });
+    expect(sheet.writes).toEqual([]);
+    expect(sheet.cell(2, 10)).toBe('');
   });
 });

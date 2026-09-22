@@ -4,26 +4,59 @@
  */
 
 import 'dotenv/config';
+import { pathToFileURL } from 'node:url';
 import { getTransportWebAppUrl } from './config.js';
-import { fetchReferenceDataFromWebApp, writeReferencePodwykoJsonFile } from './referenceData.js';
+import {
+  fetchReferenceDataFromWebApp,
+  writeReferencePodwykoJsonFile,
+  type ReferenceDataBundle,
+} from './referenceData.js';
+import type { PodwykoOption } from './wordMapSupport.js';
 
-async function main(): Promise<void> {
-  const webAppUrl = getTransportWebAppUrl();
-  if (!webAppUrl) {
-    console.error('[arkusz-mapa] pull:reference — brak TRANSPORT_WEBAPP_URL w .env');
-    process.exit(1);
-  }
-
-  console.log('[arkusz-mapa] pull:reference start');
-  const data = await fetchReferenceDataFromWebApp(webAppUrl);
-  const podwykoLista = data.podwykoLista ?? [];
-
-  await writeReferencePodwykoJsonFile(podwykoLista);
-  console.log(`  podwykoLista: ${podwykoLista.length}`);
-  console.log(`  poprawAdres (runtime only): ${data.poprawAdres?.length ?? 0}`);
+interface LoggerLike {
+  log: (message?: unknown, ...args: unknown[]) => void;
+  error: (message?: unknown, ...args: unknown[]) => void;
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+export interface PullReferenceCliDeps {
+  getWebAppUrl?: () => string | undefined;
+  fetchReference?: (webAppUrl: string) => Promise<Partial<ReferenceDataBundle>>;
+  writeJson?: (podwykoLista: PodwykoOption[]) => Promise<void>;
+  logger?: LoggerLike;
+  exitFn?: (code: number) => void;
+}
+
+export async function runPullReferenceCli(deps: PullReferenceCliDeps = {}): Promise<void> {
+  const getWebAppUrl = deps.getWebAppUrl ?? getTransportWebAppUrl;
+  const fetchReference = deps.fetchReference ?? fetchReferenceDataFromWebApp;
+  const writeJson = deps.writeJson ?? writeReferencePodwykoJsonFile;
+  const logger = deps.logger ?? console;
+  const exitFn = deps.exitFn ?? process.exit;
+
+  try {
+    const webAppUrl = getWebAppUrl();
+    if (!webAppUrl) {
+      logger.error('[arkusz-mapa] pull:reference — brak TRANSPORT_WEBAPP_URL w .env');
+      exitFn(1);
+      return;
+    }
+
+    logger.log('[arkusz-mapa] pull:reference start');
+    const data = await fetchReference(webAppUrl);
+    const podwykoLista = data.podwykoLista ?? [];
+
+    await writeJson(podwykoLista);
+    logger.log(`  podwykoLista: ${podwykoLista.length}`);
+    logger.log(`  poprawAdres (runtime only): ${data.poprawAdres?.length ?? 0}`);
+  } catch (err: unknown) {
+    logger.error(err);
+    exitFn(1);
+  }
+}
+
+const isDirectRun =
+  typeof process.argv[1] === 'string' && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+  await runPullReferenceCli();
+}
