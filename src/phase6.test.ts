@@ -908,6 +908,7 @@ describe('phase6', () => {
         html.indexOf('function pickupDateForRoute('),
       );
       expect(contractor).toContain('opt.label');
+      expect(contractor).toContain('findPodwykoIdxByLabel');
       expect(contractor).not.toContain('.dane');
 
       const refresh = html.slice(
@@ -918,11 +919,21 @@ describe('phase6', () => {
       expect(refresh.indexOf('lastRouteName')).toBeLessThan(refresh.indexOf('proposeRouteName'));
       expect(refresh).toContain("routeNameMode !== 'new'");
       expect(refresh).toContain('namesBlockingNewRoute');
+      expect(refresh).toContain('routeNameMissingDepsHint');
+      expect(html).toContain('Najpierw wybierz kto odbiera');
+      expect(html).toContain('Uzupełnij datę załadunku');
       expect(refresh).toContain("action: 'routeNameProposal'");
       expect(refresh).toContain('setRouteNameFieldLoading(true)');
-      expect(refresh).toContain('clearRouteNameFieldLoading');
+      expect(refresh).toContain('routeNameProposeTicket');
+      expect(refresh).toContain('setRouteNameFieldLoading(false)');
       expect(refresh).not.toContain('setTransportDatesLoading');
       expect(html).toContain("action: 'routeRateByName'");
+      expect(html).toContain('routeNameProposeTicket');
+      const applyShown = html.slice(
+        html.indexOf('function applyShownRouteName('),
+        html.indexOf('function updateRouteSessionUi('),
+      );
+      expect(applyShown).toContain("!next.trim() && String(nameEl.value || '').trim()");
       const lookupNow = html.slice(
         html.indexOf('function lookupRouteRateNow('),
         html.indexOf('function applyShownRouteName('),

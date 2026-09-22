@@ -1094,7 +1094,7 @@ ${
     const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
-${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameMode = 'continue';\n    var routeRateBaseline = '';\n    var routeRateBaselineName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n" : ''}
+${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameMode = 'continue';\n    var routeRateBaseline = '';\n    var routeRateBaselineName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n    var routeNameProposeTicket = 0;\n" : ''}
 
     const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -2693,12 +2693,35 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function contractorShortNameForRoute() {
       var prVal = document.getElementById('doc-val-przewoznik');
       var idx = prVal ? parseInt(prVal.value, 10) : NaN;
-      var opt = PODWYKOLISTA[idx];
-      return opt && opt.label ? String(opt.label) : '';
+      var opt = !isNaN(idx) ? PODWYKOLISTA[idx] : null;
+      if (opt && opt.label) return String(opt.label);
+      // Widoczny tekst bez ukrytego indeksu (wpis / autofill) — dociągnij z listy bez refresh.
+      var inputEl = document.getElementById('doc-sel-przewoznik');
+      var text = inputEl ? String(inputEl.value || '').trim() : '';
+      if (!text) return '';
+      var found = findPodwykoIdxByLabel(text);
+      if (found < 0) {
+        var q = normalizeForAddressSearchMap(text);
+        var matches = [];
+        var i;
+        for (i = 0; i < PODWYKOLISTA.length; i++) {
+          if (podwykoOptionMatchesQuery(PODWYKOLISTA[i], text)) matches.push(i);
+          else if (normalizeForAddressSearchMap(PODWYKOLISTA[i].label) === q) matches.push(i);
+        }
+        if (matches.length === 1) found = matches[0];
+      }
+      if (found < 0) return '';
+      if (prVal) prVal.value = String(found);
+      return String(PODWYKOLISTA[found].label || '');
     }
     function pickupDateForRoute() {
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       return dateEl ? String(dateEl.value || '').trim() : '';
+    }
+    function routeNameMissingDepsHint(contractor, date) {
+      if (!contractor) return 'Najpierw wybierz kto odbiera';
+      if (!date) return 'Uzupełnij datę załadunku';
+      return '';
     }
     function resetRouteFormForOpen() {
       routeNameMode = 'continue';
@@ -2707,6 +2730,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       routeNameTouched = false;
       routeRateTouched = false;
       routeRateRequest += 1;
+      if (typeof routeNameProposeTicket !== 'undefined') routeNameProposeTicket += 1;
       if (routeRateTimer) {
         window.clearTimeout(routeRateTimer);
         routeRateTimer = 0;
@@ -2715,8 +2739,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (chk) chk.checked = false;
       var nameEl = document.getElementById('doc-inp-trasa');
       var rateEl = document.getElementById('doc-inp-stawka-trasy');
-      if (nameEl) nameEl.value = '';
+      if (nameEl) {
+        nameEl.value = '';
+        nameEl.placeholder = '';
+        nameEl.removeAttribute('aria-busy');
+      }
       if (rateEl) rateEl.value = '';
+      routeNameFieldLoadDepth = 0;
       setRouteFieldsVisible(false);
     }
     function lookupRouteRate(name) {
@@ -2751,10 +2780,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function applyShownRouteName(shown) {
       var nameEl = document.getElementById('doc-inp-trasa');
       if (!nameEl || routeNameTouched) return;
-      var changed = nameEl.value !== shown;
+      var next = shown == null ? '' : String(shown);
+      // Pusta propozycja ze starego fetcha nie kasuje już wyliczonej nazwy.
+      if (!next.trim() && String(nameEl.value || '').trim()) return;
+      var changed = nameEl.value !== next;
       if (changed) {
         routeRateTouched = false;
-        nameEl.value = shown;
+        nameEl.value = next;
         if (routeNameMode === 'new') {
           var clearRate = document.getElementById('doc-inp-stawka-trasy');
           if (clearRate) clearRate.value = '';
@@ -2765,15 +2797,15 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (!routeRateTouched && typeof routeRateFromSession === 'function') {
         var rateEl = document.getElementById('doc-inp-stawka-trasy');
         if (rateEl) {
-          var filled = routeRateFromSession(shown, rateEl.value, lastRouteName, lastRouteRate);
+          var filled = routeRateFromSession(next, rateEl.value, lastRouteName, lastRouteRate);
           rateEl.value = filled;
           if (String(filled || '').trim()) {
-            routeRateBaselineName = String(shown || '').trim();
+            routeRateBaselineName = String(next || '').trim();
             routeRateBaseline = String(filled).trim();
           }
         }
       }
-      if (changed || !readRouteRateInput()) lookupRouteRate(shown);
+      if (changed || !readRouteRateInput()) lookupRouteRate(next);
     }
     function updateRouteSessionUi() {
       var btn = document.getElementById('doc-btn-nowa-trasa');
@@ -2801,7 +2833,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       nameEl.setAttribute('aria-busy', busy ? 'true' : 'false');
       if (busy) {
         if (!String(nameEl.value || '').trim()) nameEl.placeholder = 'Ładowanie nazwy trasy…';
-      } else {
+      } else if (nameEl.placeholder === 'Ładowanie nazwy trasy…') {
         nameEl.placeholder = '';
       }
     }
@@ -2821,10 +2853,19 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         }));
         return;
       }
-      var contractor = contractorShortNameForRoute();
-      var date = pickupDateForRoute();
       function propose(names) {
         if (!isRouteChecked() || routeNameTouched || (routeNameMode !== 'new' && String(lastRouteName || '').trim())) return;
+        // Odczyt w momencie apply — nie z domknięcia sprzed fetcha (kto odbiera mógł dojść w trakcie).
+        var contractor = contractorShortNameForRoute();
+        var date = pickupDateForRoute();
+        var missing = routeNameMissingDepsHint(contractor, date);
+        if (missing) {
+          var emptyEl = document.getElementById('doc-inp-trasa');
+          if (emptyEl && !String(emptyEl.value || '').trim()) {
+            emptyEl.placeholder = missing;
+          }
+          return;
+        }
         var occupied = typeof namesBlockingNewRoute === 'function'
           ? namesBlockingNewRoute(names || [], routeNameMode === 'new' ? lastRouteName : '')
           : (names || []);
@@ -2836,20 +2877,34 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           inputTouched: false
         }));
       }
+      var contractorNow = contractorShortNameForRoute();
+      var dateNow = pickupDateForRoute();
+      var missingNow = routeNameMissingDepsHint(contractorNow, dateNow);
+      if (missingNow) {
+        var hintEl = document.getElementById('doc-inp-trasa');
+        if (hintEl) {
+          hintEl.value = '';
+          hintEl.placeholder = missingNow;
+        }
+        return;
+      }
       if (!transportApiEnabled) {
         propose([]);
         return;
       }
-      // Osobny stan pola — nie mapLoaderDepth (overlay „nazwa trasy” zostawał pod modalData/bulk).
+      // Osobny stan pola — nie mapLoaderDepth. Ticket odrzuca spóźnione apply; loading zawsze zdejmij.
+      routeNameProposeTicket += 1;
+      var ticket = routeNameProposeTicket;
       setRouteNameFieldLoading(true);
-      function clearRouteNameFieldLoading() {
-        setRouteNameFieldLoading(false);
-      }
       fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
-        propose(resp && Array.isArray(resp.names) ? resp.names : []);
+        return resp && Array.isArray(resp.names) ? resp.names : [];
       }).catch(function () {
-        try { propose([]); } catch (err) {}
-      }).then(clearRouteNameFieldLoading, clearRouteNameFieldLoading);
+        return [];
+      }).then(function (names) {
+        setRouteNameFieldLoading(false);
+        if (ticket !== routeNameProposeTicket) return;
+        propose(names);
+      });
     }
     function onNowaTrasaClick() {
       if (!String(lastRouteName || '').trim()) return;
