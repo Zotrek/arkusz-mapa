@@ -927,8 +927,16 @@ describe('phase6', () => {
       expect(refresh).toContain('routeNameProposeTicket');
       expect(refresh).toContain('setRouteNameFieldLoading(false)');
       expect(refresh).not.toContain('setTransportDatesLoading');
+      expect(html).toContain('function syncMapLoaderUi');
+      expect(html).toContain('routeNameFieldLoadDepth');
+      expect(html).toContain('Ładowanie nazwy trasy…');
       expect(html).toContain("action: 'routeRateByName'");
       expect(html).toContain('routeNameProposeTicket');
+      const routeNameLoading = html.slice(
+        html.indexOf('function setRouteNameFieldLoading('),
+        html.indexOf('function refreshRouteNameField('),
+      );
+      expect(routeNameLoading).toContain('syncMapLoaderUi');
       const applyShown = html.slice(
         html.indexOf('function applyShownRouteName('),
         html.indexOf('function updateRouteSessionUi('),

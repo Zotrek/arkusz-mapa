@@ -1709,16 +1709,29 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       });
     }
     var mapLoaderDepth = 0;
-    function setTransportDatesLoading(loading, message) {
+    var routeNameFieldLoadDepth = 0;
+    var mapLoaderLastMessage = 'Pobieranie danych transportu…';
+    /** Wspólny overlay z pulsującym logo. Autonazwa ma własny depth — nie truje komunikatu bulk/modal. */
+    function syncMapLoaderUi(messageForTransport) {
       var el = document.getElementById('map-transport-loader');
       if (!el) return;
-      if (loading) mapLoaderDepth += 1;
-      else mapLoaderDepth = Math.max(0, mapLoaderDepth - 1);
-      var on = mapLoaderDepth > 0;
+      var on = mapLoaderDepth > 0 || routeNameFieldLoadDepth > 0;
       el.hidden = !on;
       el.setAttribute('aria-busy', on ? 'true' : 'false');
       var label = document.getElementById('map-transport-loader-label');
-      if (label && message) label.textContent = message;
+      if (!label) return;
+      if (messageForTransport) mapLoaderLastMessage = messageForTransport;
+      if (routeNameFieldLoadDepth > 0) {
+        label.textContent = 'Ładowanie nazwy trasy…';
+      } else if (mapLoaderDepth > 0) {
+        label.textContent = mapLoaderLastMessage;
+      }
+    }
+    function setTransportDatesLoading(loading, message) {
+      if (!document.getElementById('map-transport-loader')) return;
+      if (loading) mapLoaderDepth += 1;
+      else mapLoaderDepth = Math.max(0, mapLoaderDepth - 1);
+      syncMapLoaderUi(message || null);
     }
     function loadBulkTransportDates() {
       window.__transportDateByKey = {};
@@ -2746,6 +2759,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       if (rateEl) rateEl.value = '';
       routeNameFieldLoadDepth = 0;
+      if (typeof syncMapLoaderUi === 'function') syncMapLoaderUi(null);
       setRouteFieldsVisible(false);
     }
     function lookupRouteRate(name) {
@@ -2823,19 +2837,21 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           : '';
       }
     }
-    var routeNameFieldLoadDepth = 0;
     function setRouteNameFieldLoading(on) {
       if (on) routeNameFieldLoadDepth += 1;
       else routeNameFieldLoadDepth = Math.max(0, routeNameFieldLoadDepth - 1);
-      var nameEl = document.getElementById('doc-inp-trasa');
-      if (!nameEl) return;
       var busy = routeNameFieldLoadDepth > 0;
-      nameEl.setAttribute('aria-busy', busy ? 'true' : 'false');
-      if (busy) {
-        if (!String(nameEl.value || '').trim()) nameEl.placeholder = 'Ładowanie nazwy trasy…';
-      } else if (nameEl.placeholder === 'Ładowanie nazwy trasy…') {
-        nameEl.placeholder = '';
+      var nameEl = document.getElementById('doc-inp-trasa');
+      if (nameEl) {
+        nameEl.setAttribute('aria-busy', busy ? 'true' : 'false');
+        if (busy) {
+          if (!String(nameEl.value || '').trim()) nameEl.placeholder = 'Ładowanie nazwy trasy…';
+        } else if (nameEl.placeholder === 'Ładowanie nazwy trasy…') {
+          nameEl.placeholder = '';
+        }
       }
+      // Pulsujące logo (ten sam overlay co transport), ale depth osobny od mapLoaderDepth.
+      syncMapLoaderUi(null);
     }
     function refreshRouteNameField() {
       if (!isRouteChecked() || typeof routeNameToShow !== 'function' || typeof lastRouteName === 'undefined') return;
