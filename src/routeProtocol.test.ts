@@ -189,4 +189,11 @@ describe('routeProtocol', () => {
     expect(script).not.toContain('localStorage');
     expect(script).not.toContain('lastRouteName');
   });
+
+  it('test_routeProtocolBrowserScript_when_built_should_not_inject_esbuild_keepNames', () => {
+    // Regresja jak przy namesBlockingNewRoute: `__name` nie istnieje w przeglądarce.
+    const script = routeProtocolBrowserScript();
+    expect(script).not.toMatch(/__name\s*\(/);
+    expect(() => browserFns()).not.toThrow();
+  });
 });

@@ -1,6 +1,7 @@
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
+  functionSourceForBrowser,
   namesBlockingNewRoute,
   proposeRouteName,
   routeNameBrowserScript,
@@ -19,6 +20,29 @@ function proposeRouteNameInBrowser(
   );
   if (typeof context.result !== 'string') {
     throw new Error('Skrypt przeglądarki nie zwrócił stringa');
+  }
+  return context.result;
+}
+
+/** Pełna ścieżka jak na mapie: zajęte nazwy → propozycja. Bez helpera `__name` z tsx/esbuild. */
+function proposeFromSheetInBrowser(
+  sheetNames: readonly string[] | null,
+  sessionLastName: string,
+  contractorShortName: string,
+  pickupDate: string,
+): string {
+  const context: { result?: unknown } = {};
+  runInNewContext(
+    `${routeNameBrowserScript()}
+result = proposeRouteName(
+  namesBlockingNewRoute(${JSON.stringify(sheetNames)}, ${JSON.stringify(sessionLastName)}),
+  ${JSON.stringify(contractorShortName)},
+  ${JSON.stringify(pickupDate)}
+);`,
+    context,
+  );
+  if (typeof context.result !== 'string') {
+    throw new Error('Skrypt przeglądarki nie zwrócił stringa z pełnej ścieżki nazwy');
   }
   return context.result;
 }
@@ -143,5 +167,47 @@ describe('proposeRouteName', () => {
     const out = stripEsbuildKeepNames(wrapped);
     expect(out).not.toContain('__name');
     expect(out).toContain('const add=raw=>{return raw}');
+  });
+
+  it('test_namesBlockingNewRoute_source_when_stringified_should_avoid_tsx_keepNames_pattern', () => {
+    // Regresja: zagnieżdżona `const add = (...) =>` → tsx wstawia `__name(...)`,
+    // a wstrzyknięcie .toString() do HTML mapy wywala ReferenceError w przeglądarce.
+    const src = namesBlockingNewRoute.toString();
+    expect(src).not.toMatch(/__name\s*\(/);
+    expect(src).not.toMatch(/\bconst\s+add\s*=/);
+    expect(functionSourceForBrowser(namesBlockingNewRoute)).not.toMatch(/__name\s*\(/);
+  });
+
+  it('test_routeNameBrowserScript_when_evaled_without_name_helper_should_propose_like_live_map', () => {
+    // Scenariusz z produkcji: GPW + data ISO z input[type=date] + zajęte nazwy z arkusza.
+    const sheetNames = [
+      'GPW Iława -22.09.26-01',
+      'Papirus-21.09.26-01',
+      'Geodis - 23.09.2026',
+    ];
+    expect(proposeFromSheetInBrowser(sheetNames, '', 'GPW', '2026-09-23')).toBe('GPW-23.09.26-01');
+    expect(proposeFromSheetInBrowser(sheetNames, 'GPW-23.09.26-01', 'GPW', '2026-09-23')).toBe(
+      'GPW-23.09.26-02',
+    );
+    expect(proposeFromSheetInBrowser([], '', 'GPW', '23.09.2026')).toBe('GPW-23.09.26-01');
+  });
+
+  it('test_routeNameBrowserScript_when_keepNames_leaks_into_source_should_still_run_after_strip', () => {
+    const leaked =
+      'function namesBlockingNewRoute(sheetNames,sessionLastName){' +
+      'const occupied=[];const seen=new Set;' +
+      'const add=__name(raw=>{const name=String(raw??"").trim();' +
+      'if(name.length===0||seen.has(name)){return}seen.add(name);occupied.push(name)},"add");' +
+      'if(Array.isArray(sheetNames)){for(const raw of sheetNames){add(raw)}}' +
+      'add(sessionLastName);return occupied}\n' +
+      functionSourceForBrowser(proposeRouteName);
+    const cleaned = stripEsbuildKeepNames(leaked);
+    expect(cleaned).not.toContain('__name');
+    const context: { result?: unknown } = {};
+    runInNewContext(
+      `${cleaned}\nresult = proposeRouteName(namesBlockingNewRoute(['x-01'], 'y-01'), 'GPW', '2026-09-23');`,
+      context,
+    );
+    expect(context.result).toBe('GPW-23.09.26-01');
   });
 });

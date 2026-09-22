@@ -171,6 +171,8 @@ class FakeSheet {
 
 type GasFns = {
   appendTransportRow_: (numer: string, body: Record<string, unknown>) => void;
+  listOccupiedRouteNames_: () => string[];
+  routeRateByName_: (name: string) => string;
 };
 
 const gsPath = join(
@@ -298,10 +300,36 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
   };
   runInNewContext(readFileSync(gsPath, 'utf8'), context);
   const append = context.appendTransportRow_;
+  const occupied = context.listOccupiedRouteNames_;
+  const rateByName = context.routeRateByName_;
   if (typeof append !== 'function') {
     throw new Error('transport-log.gs nie wystawił appendTransportRow_');
   }
-  return { appendTransportRow_: append as GasFns['appendTransportRow_'] };
+  if (typeof occupied !== 'function') {
+    throw new Error('transport-log.gs nie wystawił listOccupiedRouteNames_');
+  }
+  if (typeof rateByName !== 'function') {
+    throw new Error('transport-log.gs nie wystawił routeRateByName_');
+  }
+  return {
+    appendTransportRow_: append as GasFns['appendTransportRow_'],
+    listOccupiedRouteNames_: occupied as GasFns['listOccupiedRouteNames_'],
+    routeRateByName_: rateByName as GasFns['routeRateByName_'],
+  };
+}
+
+/** Wiersz danych: kolumna 10 = trasa, 11 = stawka, 14 = rozliczony. */
+function seedRouteRow(
+  sheet: FakeSheet,
+  row: number,
+  name: Cell,
+  rate: Cell = '',
+  settled: Cell = '',
+): void {
+  sheet.put(row, 1, String(row - 1));
+  sheet.put(row, 10, name);
+  sheet.put(row, 11, rate);
+  sheet.put(row, 14, settled);
 }
 
 const HEADERS_10_20 = [
@@ -626,5 +654,109 @@ describe('appendTransportRow_', () => {
     expect(doc).toContain('"stawkaTrasy"');
     expect(doc).toContain('tak');
     expect(doc).toContain('nie');
+  });
+});
+
+describe('listOccupiedRouteNames_', () => {
+  it('test_listOccupiedRouteNames_when_no_data_rows_should_return_empty', () => {
+    const sheet = new FakeSheet();
+    sheet.put(1, 10, 'Trasa');
+
+    expect(loadGas(sheet).listOccupiedRouteNames_()).toEqual([]);
+  });
+
+  it('test_listOccupiedRouteNames_when_names_in_column_10_should_return_unique_in_order', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'gpw-18.09.26-01');
+    seedRouteRow(sheet, 3, '  gpw-18.09.26-02  ');
+    seedRouteRow(sheet, 4, 'gpw-18.09.26-01');
+    seedRouteRow(sheet, 5, '');
+    seedRouteRow(sheet, 6, '   ');
+    seedRouteRow(sheet, 7, 'inna');
+    // Fałszywa „trasa” w innej kolumnie — odczyt musi brać tylko kolumnę 10
+    sheet.put(2, 9, 'nie-ta-kolumna');
+    sheet.put(2, 11, 'nie-ta-kolumna');
+
+    expect(loadGas(sheet).listOccupiedRouteNames_()).toEqual([
+      'gpw-18.09.26-01',
+      'gpw-18.09.26-02',
+      'inna',
+    ]);
+  });
+
+  it('test_listOccupiedRouteNames_when_duplicate_with_spaces_should_dedupe_after_trim', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'Papirus-21.09.26-01');
+    seedRouteRow(sheet, 3, '  Papirus-21.09.26-01  ');
+
+    expect(loadGas(sheet).listOccupiedRouteNames_()).toEqual(['Papirus-21.09.26-01']);
+  });
+});
+
+describe('routeRateByName_', () => {
+  it('test_routeRateByName_when_name_blank_or_sheet_empty_should_return_empty', () => {
+    const sheet = new FakeSheet();
+    sheet.put(1, 10, 'Trasa');
+    const gas = loadGas(sheet);
+
+    expect(gas.routeRateByName_('')).toBe('');
+    expect(gas.routeRateByName_('   ')).toBe('');
+    expect(gas.routeRateByName_('brak')).toBe('');
+  });
+
+  it('test_routeRateByName_when_last_unsettled_match_should_win', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', '');
+    seedRouteRow(sheet, 3, 'trasa-a', '20', '');
+    seedRouteRow(sheet, 4, 'inna', '99', '');
+
+    expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('20');
+  });
+
+  it('test_routeRateByName_when_settled_tak_should_skip_and_keep_earlier_unsettled', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', '');
+    seedRouteRow(sheet, 3, 'trasa-a', '999', 'TAK');
+    seedRouteRow(sheet, 4, 'trasa-a', '30', ' tak ');
+
+    expect(loadGas(sheet).routeRateByName_('  trasa-a  ')).toBe('10');
+  });
+
+  it('test_routeRateByName_when_all_matches_settled_should_return_empty', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', 'tak');
+    seedRouteRow(sheet, 3, 'trasa-a', '20', 'TAK');
+
+    expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('');
+  });
+
+  it('test_routeRateByName_when_rate_zero_should_keep_zero_and_empty_rate_stays_empty', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'zero', 0, '');
+    seedRouteRow(sheet, 3, 'pusta', '', '');
+    seedRouteRow(sheet, 4, 'pusta', null, '');
+
+    const gas = loadGas(sheet);
+    expect(gas.routeRateByName_('zero')).toBe('0');
+    expect(gas.routeRateByName_('pusta')).toBe('');
+  });
+
+  it('test_routeRateByName_when_nie_or_blank_settled_should_not_skip', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', 'nie');
+    seedRouteRow(sheet, 3, 'trasa-a', '20', '');
+
+    expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('20');
+  });
+
+  it('test_routeRateByName_reads_rate_from_column_11_not_neighbors', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '150', '');
+    sheet.put(2, 10, 'trasa-a');
+    sheet.put(2, 9, 'WRONG9');
+    sheet.put(2, 12, 'WRONG12');
+    sheet.put(2, 14, '');
+
+    expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('150');
   });
 });

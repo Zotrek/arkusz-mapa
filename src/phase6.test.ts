@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { describe, it, expect, vi } from 'vitest';
 import type { GeocodedAddress } from './phase5';
 import type { SheetRow } from './sheets';
@@ -858,6 +859,78 @@ describe('phase6', () => {
       expect(html).toContain('function proposeRouteName');
     });
 
+    it('test_buildMapHtml_when_word_embed_given_should_not_inject_esbuild_keepNames_helper', () => {
+      // Regresja: puste pole „Nazwa trasy” bo `ReferenceError: __name is not defined`.
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      expect(html).not.toMatch(/__name\s*\(/);
+      expect(html).not.toContain('add=__name');
+    });
+
+    it('test_buildMapHtml_when_word_embed_given_should_eval_injected_route_name_proposal', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const start = html.indexOf('function namesBlockingNewRoute');
+      const end = html.indexOf("var lastRouteName = ''");
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const injected = html.slice(start, end);
+      const context: { result?: unknown } = {};
+      runInNewContext(
+        `${injected}
+result = proposeRouteName(
+  namesBlockingNewRoute(['Papirus-21.09.26-01', 'Geodis - 23.09.2026'], ''),
+  'GPW',
+  '2026-09-23'
+);`,
+        context,
+      );
+      expect(context.result).toBe('GPW-23.09.26-01');
+    });
+
+    it('test_buildMapHtml_when_route_name_fetch_fails_should_still_clear_loading_indicator', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const refresh = html.slice(
+        html.indexOf('function refreshRouteNameField('),
+        html.indexOf('function onRouteCheckboxChange('),
+      );
+      const loadingOn = refresh.indexOf('setRouteNameFieldLoading(true)');
+      const catchEmpty = refresh.indexOf('.catch(function () {\n        return [];\n      })');
+      const loadingOff = refresh.indexOf('setRouteNameFieldLoading(false)');
+      expect(loadingOn).toBeGreaterThan(-1);
+      expect(catchEmpty).toBeGreaterThan(loadingOn);
+      expect(loadingOff).toBeGreaterThan(catchEmpty);
+      // try/catch wokół namesBlocking/propose — wyjątek nie zostawia pustego pola w ciszy.
+      expect(refresh).toContain('catch (eOcc)');
+      expect(refresh).toContain('catch (eProp)');
+    });
+
+    it('test_buildMapHtml_when_route_name_loading_should_use_own_depth_not_shared_map_loader', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const sync = html.slice(
+        html.indexOf('function syncMapLoaderUi('),
+        html.indexOf('function setTransportDatesLoading('),
+      );
+      expect(sync).toContain('mapLoaderDepth > 0 || routeNameFieldLoadDepth > 0');
+      expect(sync).toContain('Ładowanie nazwy trasy…');
+      const refresh = html.slice(
+        html.indexOf('function refreshRouteNameField('),
+        html.indexOf('function onRouteCheckboxChange('),
+      );
+      expect(refresh).not.toContain('setTransportDatesLoading');
+      expect(refresh).toContain('setRouteNameFieldLoading(true)');
+    });
+
     it('test_buildMapHtml_when_word_embed_missing_should_omit_proposeRouteName', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
       expect(html).not.toContain('function proposeRouteName');
@@ -1103,6 +1176,310 @@ describe('phase6', () => {
       expect(html).toContain('"sklep":"Sklep A"');
       expect(html).toContain('"sealRows"');
       expect(html).toContain('"numerPlomby":"7001"');
+    });
+  });
+
+  describe('route orchestration VM', () => {
+    type FakeEl = {
+      value: string;
+      checked: boolean;
+      hidden: boolean;
+      placeholder: string;
+      textContent: string;
+      attrs: Record<string, string>;
+      setAttribute: (name: string, value: string) => void;
+      removeAttribute: (name: string) => void;
+      getAttribute: (name: string) => string | null;
+    };
+
+    type OrchestrationApi = {
+      syncMapLoaderUi: (messageForTransport: string | null) => void;
+      setTransportDatesLoading: (loading: boolean, message?: string) => void;
+      setRouteNameFieldLoading: (on: boolean) => void;
+      applyShownRouteName: (shown: string) => void;
+      resetRouteFormForOpen: () => void;
+      refreshRouteNameField: () => void;
+      getState: () => {
+        mapLoaderDepth: number;
+        routeNameFieldLoadDepth: number;
+        mapLoaderLastMessage: string;
+        routeNameProposeTicket: number;
+        routeNameTouched: boolean;
+      };
+      setRouteNameTouched: (value: boolean) => void;
+      setRouteNameMode: (mode: string) => void;
+      lookupRouteRateCalls: string[];
+      pendingFetches: Array<(resp: { ok?: boolean; names?: string[] }) => void>;
+    };
+
+    function sliceHtml(html: string, start: string, end: string): string {
+      const a = html.indexOf(start);
+      const b = html.indexOf(end);
+      if (a < 0 || b < 0 || b <= a) {
+        throw new Error(`Nie znaleziono wycinka: ${start} … ${end}`);
+      }
+      return html.slice(a, b);
+    }
+
+    function fakeEl(init: Partial<FakeEl> = {}): FakeEl {
+      const attrs: Record<string, string> = { ...(init.attrs ?? {}) };
+      const el: FakeEl = {
+        value: init.value ?? '',
+        checked: init.checked ?? false,
+        hidden: init.hidden ?? false,
+        placeholder: init.placeholder ?? '',
+        textContent: init.textContent ?? '',
+        attrs,
+        setAttribute(name: string, value: string) {
+          attrs[name] = value;
+          if (name === 'hidden') el.hidden = true;
+          if (name === 'aria-busy') attrs['aria-busy'] = value;
+        },
+        removeAttribute(name: string) {
+          delete attrs[name];
+          if (name === 'hidden') el.hidden = false;
+        },
+        getAttribute(name: string) {
+          return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+        },
+      };
+      return el;
+    }
+
+    function loadOrchestration(): { api: OrchestrationApi; els: Record<string, FakeEl> } {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW dane' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+
+      const els: Record<string, FakeEl> = {
+        'map-transport-loader': fakeEl({ hidden: true, attrs: { 'aria-busy': 'false' } }),
+        'map-transport-loader-label': fakeEl({ textContent: 'Pobieranie danych transportu…' }),
+        'doc-chk-odbior-z-trasy': fakeEl({ checked: true }),
+        'doc-route-fields': fakeEl({ hidden: true, attrs: { hidden: '' } }),
+        'doc-inp-trasa': fakeEl({ value: '', placeholder: '' }),
+        'doc-inp-stawka-trasy': fakeEl({ value: '' }),
+        'doc-btn-nowa-trasa': fakeEl({ hidden: true }),
+        'doc-route-continue-hint': fakeEl({ hidden: true, textContent: '' }),
+      };
+
+      const pendingFetches: Array<(resp: { ok?: boolean; names?: string[] }) => void> = [];
+      const lookupRouteRateCalls: string[] = [];
+
+      const sandbox: Record<string, unknown> = {
+        Promise,
+        document: {
+          getElementById(id: string) {
+            return els[id] ?? null;
+          },
+        },
+        window: {
+          clearTimeout() {},
+          setTimeout(fn: () => void) {
+            fn();
+            return 1;
+          },
+        },
+        fetchTransportGet() {
+          return new Promise<{ ok?: boolean; names?: string[] }>((resolve) => {
+            pendingFetches.push(resolve);
+          });
+        },
+        __api: null,
+      };
+
+      const script = `
+${routeNameBrowserScript()}
+${routeProtocolBrowserScript()}
+var mapLoaderDepth = 0;
+var routeNameFieldLoadDepth = 0;
+var mapLoaderLastMessage = 'Pobieranie danych transportu…';
+var lastRouteName = '';
+var lastRouteRate = '';
+var routeNameMode = 'continue';
+var routeRateBaseline = '';
+var routeRateBaselineName = '';
+var routeNameTouched = false;
+var routeRateTouched = false;
+var routeRateRequest = 0;
+var routeRateTimer = 0;
+var routeNameProposeTicket = 0;
+var transportApiEnabled = true;
+var lookupRouteRateCalls = [];
+function lookupRouteRate(name) {
+  lookupRouteRateCalls.push(String(name == null ? '' : name));
+}
+function updateRouteSessionUi() {}
+function contractorShortNameForRoute() { return 'GPW'; }
+function pickupDateForRoute() { return '2026-09-23'; }
+function isRouteChecked() {
+  var el = document.getElementById('doc-chk-odbior-z-trasy');
+  return !!(el && el.checked);
+}
+${sliceHtml(html, 'function syncMapLoaderUi(', 'function setTransportDatesLoading(')}
+${sliceHtml(html, 'function setTransportDatesLoading(', 'function loadBulkTransportDates(')}
+${sliceHtml(html, 'function setRouteFieldsVisible(', 'function readRouteNameInput(')}
+${sliceHtml(html, 'function readRouteNameInput(', 'function readRouteRateInput(')}
+${sliceHtml(html, 'function readRouteRateInput(', 'function contractorShortNameForRoute(')}
+${sliceHtml(html, 'function routeNameMissingDepsHint(', 'function resetRouteFormForOpen(')}
+${sliceHtml(html, 'function resetRouteFormForOpen(', 'function lookupRouteRate(')}
+${sliceHtml(html, 'function applyShownRouteName(', 'function updateRouteSessionUi(')}
+${sliceHtml(html, 'function setRouteNameFieldLoading(', 'function refreshRouteNameField(')}
+${sliceHtml(html, 'function refreshRouteNameField(', 'function onNowaTrasaClick(')}
+__api = {
+  syncMapLoaderUi: syncMapLoaderUi,
+  setTransportDatesLoading: setTransportDatesLoading,
+  setRouteNameFieldLoading: setRouteNameFieldLoading,
+  applyShownRouteName: applyShownRouteName,
+  resetRouteFormForOpen: resetRouteFormForOpen,
+  refreshRouteNameField: refreshRouteNameField,
+  getState: function () {
+    return {
+      mapLoaderDepth: mapLoaderDepth,
+      routeNameFieldLoadDepth: routeNameFieldLoadDepth,
+      mapLoaderLastMessage: mapLoaderLastMessage,
+      routeNameProposeTicket: routeNameProposeTicket,
+      routeNameTouched: routeNameTouched
+    };
+  },
+  setRouteNameTouched: function (value) { routeNameTouched = !!value; },
+  setRouteNameMode: function (mode) { routeNameMode = String(mode); },
+  lookupRouteRateCalls: lookupRouteRateCalls
+};
+`;
+      runInNewContext(script, sandbox);
+      const api = sandbox.__api as Omit<OrchestrationApi, 'pendingFetches'> | null;
+      if (!api) {
+        throw new Error('Harness nie wystawił API orkiestracji trasy');
+      }
+      return {
+        api: { ...api, pendingFetches, lookupRouteRateCalls: api.lookupRouteRateCalls },
+        els,
+      };
+    }
+
+    async function flushFetch(): Promise<void> {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    it('test_syncMapLoaderUi_when_route_load_ends_should_restore_transport_message', () => {
+      const { api, els } = loadOrchestration();
+      const loader = els['map-transport-loader'];
+      const label = els['map-transport-loader-label'];
+
+      api.setTransportDatesLoading(true, 'Pobieranie danych transportu…');
+      expect(loader.hidden).toBe(false);
+      expect(label.textContent).toBe('Pobieranie danych transportu…');
+
+      api.setRouteNameFieldLoading(true);
+      expect(api.getState().routeNameFieldLoadDepth).toBe(1);
+      expect(label.textContent).toBe('Ładowanie nazwy trasy…');
+      expect(loader.hidden).toBe(false);
+
+      api.setRouteNameFieldLoading(false);
+      expect(api.getState().routeNameFieldLoadDepth).toBe(0);
+      expect(api.getState().mapLoaderDepth).toBe(1);
+      expect(label.textContent).toBe('Pobieranie danych transportu…');
+      expect(loader.hidden).toBe(false);
+    });
+
+    it('test_applyShownRouteName_when_empty_proposal_should_not_overwrite_existing_name', () => {
+      const { api, els } = loadOrchestration();
+      const nameEl = els['doc-inp-trasa'];
+      nameEl.value = 'GPW-23.09.26-01';
+
+      api.applyShownRouteName('');
+      expect(nameEl.value).toBe('GPW-23.09.26-01');
+
+      api.applyShownRouteName('   ');
+      expect(nameEl.value).toBe('GPW-23.09.26-01');
+
+      api.applyShownRouteName('GPW-23.09.26-02');
+      expect(nameEl.value).toBe('GPW-23.09.26-02');
+    });
+
+    it('test_applyShownRouteName_when_touched_should_leave_input', () => {
+      const { api, els } = loadOrchestration();
+      const nameEl = els['doc-inp-trasa'];
+      nameEl.value = 'reczna';
+      api.setRouteNameTouched(true);
+
+      api.applyShownRouteName('GPW-23.09.26-01');
+      expect(nameEl.value).toBe('reczna');
+    });
+
+    it('test_resetRouteFormForOpen_when_route_loader_active_should_clear_depth_and_hide_overlay', () => {
+      const { api, els } = loadOrchestration();
+      const loader = els['map-transport-loader'];
+      const nameEl = els['doc-inp-trasa'];
+      const rateEl = els['doc-inp-stawka-trasy'];
+      const chk = els['doc-chk-odbior-z-trasy'];
+
+      api.setRouteNameFieldLoading(true);
+      api.setRouteNameFieldLoading(true);
+      nameEl.value = 'GPW-01';
+      nameEl.placeholder = 'Ładowanie nazwy trasy…';
+      rateEl.value = '150';
+      chk.checked = true;
+      expect(loader.hidden).toBe(false);
+      expect(api.getState().routeNameFieldLoadDepth).toBe(2);
+      const ticketBefore = api.getState().routeNameProposeTicket;
+
+      api.resetRouteFormForOpen();
+
+      expect(api.getState().routeNameFieldLoadDepth).toBe(0);
+      expect(api.getState().routeNameProposeTicket).toBe(ticketBefore + 1);
+      expect(loader.hidden).toBe(true);
+      expect(loader.getAttribute('aria-busy')).toBe('false');
+      expect(nameEl.value).toBe('');
+      expect(nameEl.placeholder).toBe('');
+      expect(nameEl.getAttribute('aria-busy')).toBeNull();
+      expect(rateEl.value).toBe('');
+      expect(chk.checked).toBe(false);
+      expect(els['doc-route-fields'].getAttribute('hidden')).toBe('');
+    });
+
+    it('test_refreshRouteNameField_when_stale_ticket_should_not_apply_proposal', async () => {
+      const { api, els } = loadOrchestration();
+      const nameEl = els['doc-inp-trasa'];
+      api.setRouteNameMode('new');
+
+      api.refreshRouteNameField();
+      expect(api.pendingFetches).toHaveLength(1);
+      expect(api.getState().routeNameFieldLoadDepth).toBe(1);
+
+      api.refreshRouteNameField();
+      expect(api.pendingFetches).toHaveLength(2);
+      expect(api.getState().routeNameFieldLoadDepth).toBe(2);
+
+      // Starszy fetch: gdyby się zastosował, zaproponowałby -02; ticket musi go odrzucić.
+      api.pendingFetches[0]({ ok: true, names: ['GPW-23.09.26-01'] });
+      await flushFetch();
+      expect(nameEl.value).toBe('');
+      expect(api.getState().routeNameFieldLoadDepth).toBe(1);
+
+      api.pendingFetches[1]({ ok: true, names: [] });
+      await flushFetch();
+      expect(nameEl.value).toBe('GPW-23.09.26-01');
+      expect(api.getState().routeNameFieldLoadDepth).toBe(0);
+    });
+
+    it('test_refreshRouteNameField_when_reset_invalidates_ticket_should_keep_cleared_name', async () => {
+      const { api, els } = loadOrchestration();
+      const nameEl = els['doc-inp-trasa'];
+      api.setRouteNameMode('new');
+
+      api.refreshRouteNameField();
+      expect(api.pendingFetches).toHaveLength(1);
+
+      api.resetRouteFormForOpen();
+      expect(nameEl.value).toBe('');
+      expect(api.getState().routeNameFieldLoadDepth).toBe(0);
+
+      api.pendingFetches[0]({ ok: true, names: [] });
+      await flushFetch();
+      expect(nameEl.value).toBe('');
     });
   });
 
