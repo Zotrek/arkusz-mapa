@@ -3,6 +3,8 @@
  * Pamięć sesji nie jest tutaj. Żyje w zmiennej otwartej strony, nie w localStorage.
  */
 
+import { functionSourceForBrowser } from './routeName.js';
+
 export type RouteBodyFields = {
   trasa: string;
   stawkaTrasy: string;
@@ -139,21 +141,21 @@ export function assignRouteBody(
 export function routeProtocolBrowserScript(): string {
   return (
     '\n' +
-    routeBodyFields.toString() +
+    functionSourceForBrowser(routeBodyFields) +
     '\n' +
-    routeNameToShow.toString() +
+    functionSourceForBrowser(routeNameToShow) +
     '\n' +
-    routeNameRememberedAfterSave.toString() +
+    functionSourceForBrowser(routeNameRememberedAfterSave) +
     '\n' +
-    routeRateFromLookup.toString() +
+    functionSourceForBrowser(routeRateFromLookup) +
     '\n' +
-    routeRateToKeep.toString() +
+    functionSourceForBrowser(routeRateToKeep) +
     '\n' +
-    routeRateFromSession.toString() +
+    functionSourceForBrowser(routeRateFromSession) +
     '\n' +
-    routeRateConflictsWithExisting.toString() +
+    functionSourceForBrowser(routeRateConflictsWithExisting) +
     '\n' +
-    assignRouteBody.toString() +
+    functionSourceForBrowser(assignRouteBody) +
     '\n'
   );
 }

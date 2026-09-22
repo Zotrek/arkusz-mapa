@@ -1,6 +1,11 @@
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import { namesBlockingNewRoute, proposeRouteName, routeNameBrowserScript } from './routeName.js';
+import {
+  namesBlockingNewRoute,
+  proposeRouteName,
+  routeNameBrowserScript,
+  stripEsbuildKeepNames,
+} from './routeName.js';
 
 function proposeRouteNameInBrowser(
   occupiedNames: readonly string[] | null,
@@ -117,8 +122,26 @@ describe('proposeRouteName', () => {
 
   it('test_routeNameBrowserScript_when_built_should_be_proposeRouteName_source', () => {
     const script = routeNameBrowserScript();
-    expect(script).toContain(namesBlockingNewRoute.toString());
-    expect(script).toContain(proposeRouteName.toString());
+    expect(script).toContain('function namesBlockingNewRoute');
+    expect(script).toContain('function proposeRouteName');
+    expect(script).not.toContain('__name');
     expect(script).not.toContain('function proposeRouteNameJs');
+  });
+
+  it('test_routeNameBrowserScript_when_evaled_should_run_namesBlockingNewRoute', () => {
+    const context: { result?: unknown } = {};
+    runInNewContext(
+      `${routeNameBrowserScript()}\nresult = namesBlockingNewRoute(['a-01'], 'b-01');`,
+      context,
+    );
+    expect(context.result).toEqual(['a-01', 'b-01']);
+  });
+
+  it('test_stripEsbuildKeepNames_when_keepNames_wrapper_should_strip_name_helper', () => {
+    const wrapped =
+      'function demo(){const add=__name(raw=>{return raw},"add");return add(1)}';
+    const out = stripEsbuildKeepNames(wrapped);
+    expect(out).not.toContain('__name');
+    expect(out).toContain('const add=raw=>{return raw}');
   });
 });

@@ -2866,10 +2866,22 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           }
           return;
         }
-        var occupied = typeof namesBlockingNewRoute === 'function'
-          ? namesBlockingNewRoute(names || [], routeNameMode === 'new' ? lastRouteName : '')
-          : (names || []);
-        var proposal = proposeRouteName(occupied, contractor, date);
+        var occupied = names || [];
+        try {
+          if (typeof namesBlockingNewRoute === 'function') {
+            occupied = namesBlockingNewRoute(names || [], routeNameMode === 'new' ? lastRouteName : '');
+          }
+        } catch (eOcc) {
+          occupied = names || [];
+        }
+        var proposal = '';
+        try {
+          if (typeof proposeRouteName === 'function') {
+            proposal = proposeRouteName(occupied, contractor, date);
+          }
+        } catch (eProp) {
+          proposal = '';
+        }
         applyShownRouteName(routeNameToShow({
           sessionLastName: '',
           proposal: proposal,

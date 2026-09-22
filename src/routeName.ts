@@ -80,26 +80,98 @@ export function namesBlockingNewRoute(
   sheetNames: readonly string[] | null,
   sessionLastName: string,
 ): string[] {
+  // Bez zagnieżdżonej arrow/function: tsx/esbuild owija je w `__name(...)`,
+  // a `.toString()` wstrzyknięte do HTML mapy wywala ReferenceError w przeglądarce.
   const occupied: string[] = [];
   const seen = new Set<string>();
-  const add = (raw: unknown): void => {
-    const name = String(raw ?? '').trim();
-    if (name.length === 0 || seen.has(name)) {
-      return;
-    }
-    seen.add(name);
-    occupied.push(name);
-  };
   if (Array.isArray(sheetNames)) {
     for (const raw of sheetNames) {
-      add(raw);
+      const name = String(raw ?? '').trim();
+      if (name.length === 0 || seen.has(name)) {
+        continue;
+      }
+      seen.add(name);
+      occupied.push(name);
     }
   }
-  add(sessionLastName);
+  const session = String(sessionLastName ?? '').trim();
+  if (session.length > 0 && !seen.has(session)) {
+    occupied.push(session);
+  }
   return occupied;
+}
+
+/**
+ * Usuwa wrapper `__name(expr, "id")` z tsx/esbuild keepNames
+ * (w przeglądarce helpera `__name` nie ma).
+ */
+export function stripEsbuildKeepNames(source: string): string {
+  let out = source;
+  for (;;) {
+    const start = out.indexOf('__name(');
+    if (start < 0) {
+      return out;
+    }
+    let i = start + '__name('.length;
+    let depth = 1;
+    let argSplit = -1;
+    let inStr: '"' | "'" | '`' | null = null;
+    let escape = false;
+    for (; i < out.length; i += 1) {
+      const c = out[i];
+      if (inStr) {
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (c === '\\') {
+          escape = true;
+          continue;
+        }
+        if (c === inStr) {
+          inStr = null;
+        }
+        continue;
+      }
+      if (c === '"' || c === "'" || c === '`') {
+        inStr = c;
+        continue;
+      }
+      if (c === '(') {
+        depth += 1;
+        continue;
+      }
+      if (c === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          break;
+        }
+        continue;
+      }
+      if (c === ',' && depth === 1 && argSplit < 0) {
+        argSplit = i;
+      }
+    }
+    if (depth !== 0 || argSplit < 0) {
+      return out;
+    }
+    const expr = out.slice(start + '__name('.length, argSplit);
+    out = out.slice(0, start) + expr + out.slice(i + 1);
+  }
+}
+
+/** Źródło funkcji do HTML — bez wrapperów keepNames z tsx/esbuild. */
+export function functionSourceForBrowser(fn: (...args: never[]) => unknown): string {
+  return stripEsbuildKeepNames(Function.prototype.toString.call(fn));
 }
 
 /** Ten sam kod co funkcje nazwy, wstrzykiwany do HTML. Nie duplikować reguł obok. */
 export function routeNameBrowserScript(): string {
-  return '\n' + namesBlockingNewRoute.toString() + '\n' + proposeRouteName.toString() + '\n';
+  return (
+    '\n' +
+    functionSourceForBrowser(namesBlockingNewRoute) +
+    '\n' +
+    functionSourceForBrowser(proposeRouteName) +
+    '\n'
+  );
 }
