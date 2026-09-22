@@ -41,10 +41,14 @@
  *   Brak zakładki Baza stawek: ten zapis ją zakłada, z nagłówkami w wierszu 1.
  * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
  *
- * Zakładki referencyjne (ten sam arkusz, poza pierwszą z transportami):
+ * Zakładki (ten sam plik; rejestr po nazwie, nie po kolejności kart):
+ *   Arkusz1 — rejestr transportów
  *   Lista podwykonawców, Popraw adres, Baza stawek
  *   (legacy odczyt: Przewoźnicy, Miejsca dostawy — scalane przy listReferenceData)
  */
+
+/** Nazwa zakładki rejestru. Kolejność kart w pliku nie ma znaczenia. */
+var REGISTER_SHEET_NAME = 'Arkusz1';
 
 var COL = {
   numer: 1,
@@ -238,7 +242,16 @@ function jsonResponse(obj, statusCode) {
 }
 
 function getDataSheet_() {
-  return SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(REGISTER_SHEET_NAME);
+  if (!sheet) {
+    throw new Error(
+      'Brak zakładki "' +
+        REGISTER_SHEET_NAME +
+        '" — rejestr transportów szukany po nazwie, nie po kolejności kart.',
+    );
+  }
+  return sheet;
 }
 
 /** Kolumna 10, bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */

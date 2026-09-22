@@ -1,6 +1,6 @@
 # Migracja rejestru V2 — stawki podjazdu/worka
 
-Jednorazowa zmiana układu pierwszej zakładki arkusza
+Jednorazowa zmiana układu zakładki **`Arkusz1`** (rejestr) w arkuszu
 `1hvSvy9c069SefhYH3rCUDtCViRhAoRQ6DDj_EIlmWNk`.
 
 ## Docelowy układ

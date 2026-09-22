@@ -8,6 +8,8 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 - **ID (przykład):** `1hvSvy9c069SefhYH3rCUDtCViRhAoRQ6DDj_EIlmWNk`
 
+- **Zakładka rejestru:** `Arkusz1` — Web App szuka jej **po nazwie**, nie po kolejności kart w pliku.
+
 - **Wiersz 1 — nagłówki (kolejność kolumn):**
 
   1. Numer transportowy

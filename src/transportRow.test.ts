@@ -189,6 +189,9 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
             return [sheet];
           },
           getSheetByName(name: string) {
+            if (name === 'Arkusz1') {
+              return sheet;
+            }
             if (name === 'Baza stawek') {
               return rateSheet;
             }

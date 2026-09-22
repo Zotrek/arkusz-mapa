@@ -78,13 +78,19 @@ const KEY = 'firma\0test 1';
 const OLDER = Date.UTC(2026, 5, 10);
 const NEWER = Date.UTC(2026, 5, 20);
 
-function loadGas(sheet: FakeSheet): GasFns {
+function loadGas(sheet: FakeSheet, otherFirst?: FakeSheet): GasFns {
   const context: Record<string, unknown> = {
     SpreadsheetApp: {
       getActiveSpreadsheet() {
         return {
           getSheets() {
-            return [sheet];
+            return otherFirst ? [otherFirst, sheet] : [sheet];
+          },
+          getSheetByName(name: string) {
+            if (name === 'Arkusz1') {
+              return sheet;
+            }
+            return null;
           },
         };
       },
@@ -212,6 +218,20 @@ describe('buildBulkLastTransportDatesMap_', () => {
     seed(sheet, 2, '20.06.2026', 'Inny', 'nie');
 
     expect(loadGas(sheet).buildBulkLastTransportDatesMap_()).toEqual({});
+  });
+
+  it('test_buildBulkLastTransportDatesMap_when_register_not_first_tab_should_still_find_by_name', () => {
+    const register = new FakeSheet();
+    const other = new FakeSheet();
+    seed(register, 2, '20.06.2026', 'Nowy', '');
+    other.put(2, 2, 'nie-adres');
+    other.put(2, 3, 'nie-podmiot');
+    other.put(2, 5, '01.01.2000');
+    other.put(2, 6, 'Zła zakładka');
+
+    expect(loadGas(register, other).buildBulkLastTransportDatesMap_()).toEqual({
+      [KEY]: { ms: NEWER, ktoOdbiera: 'Nowy' },
+    });
   });
 
   it('test_buildBulkLastTransportDatesMap_when_newer_row_is_nie_should_keep_older_cutoff', () => {

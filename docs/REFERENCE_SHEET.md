@@ -10,7 +10,7 @@ Jak historycznie `docs/podwyko lista.xlsx`: **jedna lista** dla obu comboboxów 
 
 | Zakładka | Kolumny | Rola |
 |----------|---------|------|
-| *(pierwsza)* | Rejestr transportów | Bez zmian — patrz [TRANSPORT_SHEET.md](./TRANSPORT_SHEET.md) |
+| `Arkusz1` | Rejestr transportów | Po nazwie — patrz [TRANSPORT_SHEET.md](./TRANSPORT_SHEET.md) |
 | **Lista podwykonawców** | Nazwa, Dane do Worda | Wspólna lista comboboxów |
 | **Popraw adres** | Podmiot handlowy, Sklep, Adres, Lat, Lon, Uwagi, UpdatedAt, Author, Województwo | Najwyższy priorytet współrzędnych przy `npm run generate` |
 
