@@ -2791,6 +2791,20 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           : '';
       }
     }
+    var routeNameFieldLoadDepth = 0;
+    function setRouteNameFieldLoading(on) {
+      if (on) routeNameFieldLoadDepth += 1;
+      else routeNameFieldLoadDepth = Math.max(0, routeNameFieldLoadDepth - 1);
+      var nameEl = document.getElementById('doc-inp-trasa');
+      if (!nameEl) return;
+      var busy = routeNameFieldLoadDepth > 0;
+      nameEl.setAttribute('aria-busy', busy ? 'true' : 'false');
+      if (busy) {
+        if (!String(nameEl.value || '').trim()) nameEl.placeholder = 'Ładowanie nazwy trasy…';
+      } else {
+        nameEl.placeholder = '';
+      }
+    }
     function refreshRouteNameField() {
       if (!isRouteChecked() || typeof routeNameToShow !== 'function' || typeof lastRouteName === 'undefined') return;
       updateRouteSessionUi();
@@ -2826,12 +2840,16 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         propose([]);
         return;
       }
-      setTransportDatesLoading(true, 'Ładowanie nazwy trasy…');
+      // Osobny stan pola — nie mapLoaderDepth (overlay „nazwa trasy” zostawał pod modalData/bulk).
+      setRouteNameFieldLoading(true);
+      function clearRouteNameFieldLoading() {
+        setRouteNameFieldLoading(false);
+      }
       fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
         propose(resp && Array.isArray(resp.names) ? resp.names : []);
-      }).catch(function () { propose([]); }).then(function () {
-        setTransportDatesLoading(false);
-      });
+      }).catch(function () {
+        try { propose([]); } catch (err) {}
+      }).then(clearRouteNameFieldLoading, clearRouteNameFieldLoading);
     }
     function onNowaTrasaClick() {
       if (!String(lastRouteName || '').trim()) return;
