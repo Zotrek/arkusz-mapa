@@ -103,6 +103,11 @@ type GasFns = {
     register: { sheetRow: number; cells: Cell[] }[],
     rates: { sheetRow: number; cells: Cell[] }[],
   ) => SettlementResult;
+  buildSettlementHarmonogramRead_: (
+    query: Record<string, unknown>,
+    bazaCen: { sheetRow: number; cells: Cell[] }[],
+    odebrane: { headers: string[]; rows: Cell[][] },
+  ) => SettlementResult;
 };
 
 const gsPath = join(
@@ -157,12 +162,14 @@ beforeAll(() => {
   const doGet = context.doGet;
   const buildRead = context.buildSettlementRead_;
   const buildStats = context.buildSettlementStats_;
+  const buildHarm = context.buildSettlementHarmonogramRead_;
   if (
     typeof search !== 'function' ||
     typeof stats !== 'function' ||
     typeof doGet !== 'function' ||
     typeof buildRead !== 'function' ||
-    typeof buildStats !== 'function'
+    typeof buildStats !== 'function' ||
+    typeof buildHarm !== 'function'
   ) {
     throw new Error('transport-log.gs nie wystawił settlementSearch/settlementStats');
   }
@@ -172,6 +179,7 @@ beforeAll(() => {
     doGet: doGet as GasFns['doGet'],
     buildSettlementRead_: buildRead as GasFns['buildSettlementRead_'],
     buildSettlementStats_: buildStats as GasFns['buildSettlementStats_'],
+    buildSettlementHarmonogramRead_: buildHarm as GasFns['buildSettlementHarmonogramRead_'],
   };
 });
 
@@ -485,5 +493,156 @@ describe('buildSettlementRead_ pure amounts', () => {
       bagCount: 2.5,
       routeRate: 150,
     });
+  });
+});
+
+describe('buildSettlementHarmonogramRead_', () => {
+  const odebraneHeaders = [
+    'NIP',
+    'Podmiot handlowy',
+    'Sklep',
+    'Wg harmonogramu',
+    'Dni harmonogramu',
+    'Firma transportowa',
+    'Kod pocztowy',
+    'Miasto',
+    'Ulica',
+    'Numer budynku',
+    'Gmina',
+    'Województwo',
+    'Numer plomby',
+    'Stan worka',
+    'Status TMS worka',
+    'Data zamknięcia worka',
+  ];
+
+  it('test_buildSettlementHarmonogramRead_pickup_days_even_without_bags', () => {
+    // wt=2: 15.09.2026 i 22.09.2026 w zakresie 14–23.09
+    const result = gas.buildSettlementHarmonogramRead_(
+      { podwykonawca: 'THOR', dataOd: '14.09.2026', dataDo: '23.09.2026' },
+      [
+        {
+          sheetRow: 2,
+          cells: ['31-342 Kraków Radzikowskiego 138', 'THOR', '', 100, 0, '', '01.01.2026', 'wt'],
+        },
+        {
+          sheetRow: 3,
+          cells: ['30-045 Kraków ul. Królewska 52', 'THOR', '', 100, 0, '', '01.01.2026', 'wt'],
+        },
+        {
+          sheetRow: 4,
+          cells: ['32-353 Trzyciąż Krakowska 8a', 'THOR', '', 100, 0, '', '01.01.2026', 'wt'],
+        },
+      ],
+      { headers: odebraneHeaders, rows: [] },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toHaveLength(6);
+    expect(result.rows.every((r) => r.bagCount === 0)).toBe(true);
+    expect(result.rows.every((r) => r.pickupRate === 10000)).toBe(true);
+    expect(result.rows.filter((r) => r.pickupDate === '15.09.2026')).toHaveLength(3);
+    expect(result.rows.filter((r) => r.pickupDate === '22.09.2026')).toHaveLength(3);
+  });
+
+  it('test_buildSettlementHarmonogramRead_counts_odebrane_bags_on_matching_day', () => {
+    const result = gas.buildSettlementHarmonogramRead_(
+      { podwykonawca: 'THOR', dataOd: '15.09.2026', dataDo: '15.09.2026' },
+      [
+        {
+          sheetRow: 2,
+          cells: ['31-342 Kraków Radzikowskiego 138', 'THOR', '', 50, 10, '', '', 'wt'],
+        },
+      ],
+      {
+        headers: odebraneHeaders,
+        rows: [
+          [
+            '',
+            '',
+            'Radzikowskiego',
+            'Tak',
+            'wt',
+            'THOR',
+            '31-342',
+            'Kraków',
+            'Radzikowskiego',
+            '138',
+            '',
+            '',
+            '1',
+            '',
+            '',
+            '15.09.2026',
+          ],
+          [
+            '',
+            '',
+            'Radzikowskiego',
+            'Tak',
+            'wt',
+            'THOR',
+            '31-342',
+            'Kraków',
+            'Radzikowskiego',
+            '138',
+            '',
+            '',
+            '2',
+            '',
+            '',
+            '15.09.2026',
+          ],
+        ],
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      bagCount: 2,
+      pickupRate: 5000,
+      bagRate: 1000,
+      pickupDate: '15.09.2026',
+    });
+  });
+
+  it('test_buildSettlementHarmonogramRead_ignores_shops_only_in_odebrane', () => {
+    const result = gas.buildSettlementHarmonogramRead_(
+      { podwykonawca: 'THOR', dataOd: '15.09.2026', dataDo: '15.09.2026' },
+      [],
+      {
+        headers: odebraneHeaders,
+        rows: [
+          [
+            '',
+            '',
+            'X',
+            'Tak',
+            'wt',
+            'THOR',
+            '31-342',
+            'Kraków',
+            'Radzikowskiego',
+            '138',
+            '',
+            '',
+            '1',
+            '',
+            '',
+            '15.09.2026',
+          ],
+        ],
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toHaveLength(0);
   });
 });

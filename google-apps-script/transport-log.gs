@@ -2299,6 +2299,346 @@ function buildSettlementStats_(query, register, rates) {
   }
   return { ok: true, rows: rows, rates: rateRows };
 }
+
+function settlementFoldPl_(text) {
+  return settlementText_(text)
+    .toLowerCase()
+    .replace(/ą/g, 'a')
+    .replace(/ć/g, 'c')
+    .replace(/ę/g, 'e')
+    .replace(/ł/g, 'l')
+    .replace(/ń/g, 'n')
+    .replace(/ó/g, 'o')
+    .replace(/ś/g, 's')
+    .replace(/ź/g, 'z')
+    .replace(/ż/g, 'z')
+    .replace(/,/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function settlementNormalizeDayToken_(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/ą/g, 'a')
+    .replace(/ć/g, 'c')
+    .replace(/ę/g, 'e')
+    .replace(/ł/g, 'l')
+    .replace(/ń/g, 'n')
+    .replace(/ó/g, 'o')
+    .replace(/ś/g, 's')
+    .replace(/ź/g, 'z')
+    .replace(/ż/g, 'z')
+    .replace(/[^a-z]/g, '');
+}
+
+/** Unikalne getDay() JS (0=nd … 6=sb) z tekstu „pn, cz”. */
+function settlementParseWeekdays_(raw) {
+  var map = {
+    nd: 0,
+    niedziela: 0,
+    niedziele: 0,
+    pn: 1,
+    poniedzialek: 1,
+    poniedzialki: 1,
+    wt: 2,
+    wtorek: 2,
+    wtorki: 2,
+    sr: 3,
+    sroda: 3,
+    srody: 3,
+    cz: 4,
+    czw: 4,
+    czwartek: 4,
+    czwartki: 4,
+    pt: 5,
+    piatek: 5,
+    piatki: 5,
+    sb: 6,
+    so: 6,
+    sobota: 6,
+    soboty: 6,
+  };
+  var text = settlementText_(raw);
+  if (!text) {
+    return [];
+  }
+  var found = {};
+  var parts = text.split(/[/;,]+|\s+/);
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    var norm = settlementNormalizeDayToken_(parts[i]);
+    if (!norm) {
+      continue;
+    }
+    if (map[norm] !== undefined) {
+      found[map[norm]] = true;
+      continue;
+    }
+    var name;
+    for (name in map) {
+      if (name.length >= 2 && (norm === name || norm.indexOf(name) !== -1)) {
+        found[map[name]] = true;
+      }
+    }
+  }
+  var out = [];
+  var d;
+  for (d = 0; d <= 6; d++) {
+    if (found[d]) {
+      out.push(d);
+    }
+  }
+  return out;
+}
+
+/** Daty dd.mm.yyyy w [dataOd, dataDo] o getDay() z listy weekdays. dataOd puste = 366 dni wstecz od dataDo. */
+function settlementDatesMatchingWeekdays_(dataOd, dataDo, weekdays) {
+  if (!dataDo || !weekdays || !weekdays.length) {
+    return [];
+  }
+  var end = settlementDateText_(dataDo);
+  if (!end) {
+    return [];
+  }
+  var start = dataOd ? settlementDateText_(dataOd) : '';
+  if (!start) {
+    var endParts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(end);
+    var endUtc = Date.UTC(
+      parseInt(endParts[3], 10),
+      parseInt(endParts[2], 10) - 1,
+      parseInt(endParts[1], 10),
+    );
+    var startUtc = endUtc - 366 * 86400000;
+    var s = new Date(startUtc);
+    start = settlementFormatDate_(s.getUTCFullYear(), s.getUTCMonth() + 1, s.getUTCDate());
+  }
+  if (settlementCompareDate_(start, end) > 0) {
+    return [];
+  }
+  var wanted = {};
+  var w;
+  for (w = 0; w < weekdays.length; w++) {
+    wanted[weekdays[w]] = true;
+  }
+  var out = [];
+  var curParts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(start);
+  var y = parseInt(curParts[3], 10);
+  var m = parseInt(curParts[2], 10);
+  var d = parseInt(curParts[1], 10);
+  var guard = 0;
+  while (guard < 400) {
+    guard += 1;
+    var text = settlementFormatDate_(y, m, d);
+    if (settlementCompareDate_(text, end) > 0) {
+      break;
+    }
+    var jsDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    if (wanted[jsDay]) {
+      out.push(text);
+    }
+    d += 1;
+    var check = new Date(Date.UTC(y, m - 1, d));
+    y = check.getUTCFullYear();
+    m = check.getUTCMonth() + 1;
+    d = check.getUTCDate();
+  }
+  return out;
+}
+
+function settlementHeaderIndex_(headers, name) {
+  var wanted = settlementFoldPl_(name);
+  var i;
+  for (i = 0; i < headers.length; i++) {
+    if (settlementFoldPl_(headers[i]) === wanted) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function settlementBuildAddressParts_(kod, miasto, ulica, numer) {
+  var items = [settlementText_(kod), settlementText_(miasto)];
+  var street = settlementText_(ulica);
+  var streetFold = settlementFoldPl_(street);
+  if (street && streetFold !== 'brak' && streetFold !== '-') {
+    items.push(street);
+  }
+  items.push(settlementText_(numer));
+  var out = [];
+  var i;
+  for (i = 0; i < items.length; i++) {
+    if (items[i]) {
+      out.push(items[i]);
+    }
+  }
+  return out.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Odczyt Harmonogram. bazaCen = cells Bazy cen (8 kolumn).
+ * odebrane = { headers, rows } z zakładki odebrane.
+ * Każdy dzień podjazdu = wiersz; worki mogą być 0.
+ */
+function buildSettlementHarmonogramRead_(query, bazaCen, odebrane) {
+  var error = settlementQueryError_(query);
+  if (error) {
+    return { ok: false, error: error };
+  }
+  var q = settlementNormalizeQuery_(query);
+  var dataOd = q.dataOd ? settlementDateText_(q.dataOd) : '';
+  var dataDo = settlementDateText_(q.dataDo);
+  var who = settlementFoldPl_(q.podwykonawca);
+
+  var shops = {};
+  var rateRows = [];
+  var sourceBaza = bazaCen || [];
+  var bi;
+  for (bi = 0; bi < sourceBaza.length; bi++) {
+    var item = sourceBaza[bi];
+    var cells = item.cells || [];
+    var shop = settlementText_(cells[0]);
+    var contractor = settlementText_(cells[1]);
+    if (!shop || settlementFoldPl_(contractor) !== who) {
+      continue;
+    }
+    var rawFrom = cells[6];
+    var validFrom = '';
+    var hasFrom = rawFrom instanceof Date || settlementText_(rawFrom) !== '';
+    if (hasFrom) {
+      validFrom = settlementDateText_(rawFrom);
+      if (!validFrom) {
+        continue;
+      }
+    }
+    var pickupAmount = settlementAmountToGrosze_(cells[3]);
+    var bagAmount = settlementAmountToGrosze_(cells[4]);
+    var days = settlementText_(cells[7]);
+    rateRows.push({
+      sheetRow: item.sheetRow,
+      shop: shop,
+      contractor: contractor,
+      pickupAmount: pickupAmount,
+      bagAmount: bagAmount,
+      validFrom: validFrom,
+      days: days,
+    });
+    if (!shops[shop]) {
+      shops[shop] = { address: shop, contractor: contractor, days: days };
+    } else if (!shops[shop].days && days) {
+      shops[shop].days = days;
+    }
+  }
+
+  var bagCounts = {};
+  var odebraneHeaders = (odebrane && odebrane.headers) || [];
+  var odebraneRows = (odebrane && odebrane.rows) || [];
+  var ixKod = settlementHeaderIndex_(odebraneHeaders, 'Kod pocztowy');
+  var ixMiasto = settlementHeaderIndex_(odebraneHeaders, 'Miasto');
+  var ixUlica = settlementHeaderIndex_(odebraneHeaders, 'Ulica');
+  var ixNumer = settlementHeaderIndex_(odebraneHeaders, 'Numer budynku');
+  var ixFirma = settlementHeaderIndex_(odebraneHeaders, 'Firma transportowa');
+  var ixData = settlementHeaderIndex_(odebraneHeaders, 'Data zamknięcia worka');
+  var ixSklep = settlementHeaderIndex_(odebraneHeaders, 'Sklep');
+  if (ixKod >= 0 && ixMiasto >= 0 && ixUlica >= 0 && ixNumer >= 0 && ixFirma >= 0 && ixData >= 0) {
+    var oi;
+    for (oi = 0; oi < odebraneRows.length; oi++) {
+      var orow = odebraneRows[oi];
+      var firma = settlementText_(orow[ixFirma]);
+      if (settlementFoldPl_(firma) !== who) {
+        continue;
+      }
+      var adres = settlementBuildAddressParts_(orow[ixKod], orow[ixMiasto], orow[ixUlica], orow[ixNumer]);
+      if (!adres) {
+        continue;
+      }
+      var closeDate = settlementDateText_(orow[ixData]);
+      if (!closeDate) {
+        continue;
+      }
+      var bagKey = settlementFoldPl_(adres) + '\n' + closeDate;
+      bagCounts[bagKey] = (bagCounts[bagKey] || 0) + 1;
+    }
+  }
+
+  var rows = [];
+  var nextSheetRow = 2;
+  var shopAddr;
+  for (shopAddr in shops) {
+    if (!Object.prototype.hasOwnProperty.call(shops, shopAddr)) {
+      continue;
+    }
+    var meta = shops[shopAddr];
+    var weekdays = settlementParseWeekdays_(meta.days);
+    if (!weekdays.length) {
+      continue;
+    }
+    var dates = settlementDatesMatchingWeekdays_(dataOd, dataDo, weekdays);
+    var di;
+    for (di = 0; di < dates.length; di++) {
+      var day = dates[di];
+      var best = null;
+      var ri;
+      for (ri = 0; ri < rateRows.length; ri++) {
+        var rate = rateRows[ri];
+        if (rate.shop !== shopAddr) {
+          continue;
+        }
+        if (rate.validFrom && settlementCompareDate_(rate.validFrom, day) > 0) {
+          continue;
+        }
+        if (
+          !best ||
+          settlementCompareDate_(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
+        ) {
+          best = rate;
+        }
+      }
+      var pickupRate = best ? best.pickupAmount : null;
+      var bagRate = best ? best.bagAmount : null;
+      var bagKey2 = settlementFoldPl_(shopAddr) + '\n' + day;
+      var bags = bagCounts[bagKey2] || 0;
+      rows.push({
+        sheetRow: nextSheetRow,
+        transportNumber: '',
+        address: shopAddr,
+        shopName: ixSklep >= 0 ? '' : '',
+        pickupDate: day,
+        contractor: q.podwykonawca,
+        bagCount: bags,
+        routeName: '',
+        routeRate: null,
+        pickupRate: pickupRate,
+        bagRate: bagRate,
+      });
+      nextSheetRow += 1;
+    }
+  }
+
+  rows.sort(function (a, b) {
+    var byDate = settlementCompareDate_(a.pickupDate, b.pickupDate);
+    if (byDate !== 0) {
+      return byDate;
+    }
+    return a.address.localeCompare(b.address, 'pl');
+  });
+  for (var si = 0; si < rows.length; si++) {
+    rows[si].sheetRow = si + 2;
+  }
+
+  var publicRates = [];
+  for (ri = 0; ri < rateRows.length; ri++) {
+    publicRates.push({
+      sheetRow: rateRows[ri].sheetRow,
+      shop: rateRows[ri].shop,
+      contractor: rateRows[ri].contractor,
+      pickupAmount: rateRows[ri].pickupAmount,
+      bagAmount: rateRows[ri].bagAmount,
+      validFrom: rateRows[ri].validFrom,
+    });
+  }
+  return { ok: true, rows: rows, rates: publicRates };
+}
 /* settlement-read-pure:end */
 
 function isSettlementWriteAction_(action) {
