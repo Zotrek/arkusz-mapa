@@ -102,7 +102,23 @@ jobs:
       - name: Strona indeksu i stały adres /map
         run: node scripts/build-pages-index.mjs
 
-      - name: Publikacja na gałąź gh-pages
+      - name: Publikacja na Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Brak CLOUDFLARE_API_TOKEN lub CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+          PROJECT="${{ secrets.CLOUDFLARE_PAGES_PROJECT }}"
+          if [ -z "$PROJECT" ]; then
+            echo "::error::Brak CLOUDFLARE_PAGES_PROJECT"
+            exit 1
+          fi
+          npx --yes wrangler@4 pages deploy ./site --project-name="$PROJECT" --commit-dirty=true
+
+      - name: Publikacja na gałąź gh-pages (legacy github.io)
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
