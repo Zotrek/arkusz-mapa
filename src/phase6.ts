@@ -943,12 +943,12 @@ export function buildMapHtml(
       background: rgba(255, 255, 255, 0.84);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
-      padding: 14px;
-      border-radius: 14px;
+      padding: 10px;
+      border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.7);
       box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 1px 3px rgba(15, 23, 42, 0.06);
-      min-width: 240px;
-      max-width: min(420px, calc(100vw - 48px));
+      min-width: 200px;
+      max-width: min(340px, calc(100vw - 48px));
       font-family: system-ui, "Segoe UI", sans-serif;
       color: var(--map-ink);
     }
@@ -956,39 +956,39 @@ export function buildMapHtml(
     .map-zbiorka-filter-title,
     .map-harmonogram-filter-title,
     .map-wojewodztwo-filter-title {
-      display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
-      text-transform: uppercase; margin-bottom: 8px; color: var(--map-muted);
+      display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; margin-bottom: 6px; color: var(--map-muted);
     }
-    .map-search-input-row { display: flex; align-items: center; gap: 8px; }
+    .map-search-input-row { display: flex; align-items: center; gap: 6px; }
     .map-search-input {
-      flex: 1; min-width: 0; padding: 9px 11px; font-size: 13px; color: var(--map-ink);
-      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 10px;
+      flex: 1; min-width: 0; padding: 6px 9px; font-size: 12px; color: var(--map-ink);
+      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 8px;
       background: rgba(255, 255, 255, 0.92); box-sizing: border-box; outline: none;
     }
     .map-search-input:focus { border-color: var(--map-accent); box-shadow: 0 0 0 3px var(--map-accent-soft); }
     .map-search-input::placeholder { color: #94a3b8; }
     .map-zoom-inline {
       display: flex; flex-direction: row; flex-shrink: 0;
-      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 10px; overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 8px; overflow: hidden;
       background: rgba(255, 255, 255, 0.92);
     }
     .map-zoom-inline button {
-      width: 34px; height: 34px; padding: 0; border: none; background: transparent;
-      cursor: pointer; font-size: 17px; line-height: 1; color: #334155;
+      width: 28px; height: 28px; padding: 0; border: none; background: transparent;
+      cursor: pointer; font-size: 15px; line-height: 1; color: #334155;
       display: flex; align-items: center; justify-content: center;
     }
     .map-zoom-inline button:hover { background: var(--map-accent-soft); color: var(--map-accent-deep); }
     .map-zoom-inline button:first-child { border-right: 1px solid rgba(148, 163, 184, 0.45); }
     .map-zoom-inline button:last-child { border-radius: 0; }
-    .map-search-status { margin-top: 6px; font-size: 11px; color: var(--map-muted); min-height: 1.2em; }
+    .map-search-status { margin-top: 4px; font-size: 10px; color: var(--map-muted); min-height: 1.2em; }
     .map-zbiorka-filter,
     .map-harmonogram-filter,
     .map-wojewodztwo-filter,
-    .map-cluster-filter { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--map-line); }
-    .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 2px; }
+    .map-cluster-filter { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--map-line); }
+    .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 1px; }
     .map-zbiorka-filter-options label {
-      display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500;
-      color: #334155; cursor: pointer; margin: 0; padding: 7px 8px; border-radius: 8px;
+      display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500;
+      color: #334155; cursor: pointer; margin: 0; padding: 5px 6px; border-radius: 6px;
     }
     .map-zbiorka-filter-options label:hover { background: rgba(148, 163, 184, 0.12); }
     .map-zbiorka-filter-options label:has(input:checked) {
@@ -997,14 +997,14 @@ export function buildMapHtml(
     .map-zbiorka-filter-options input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
     .map-harmonogram-filter-options {
       display: flex; flex-direction: row; gap: 0;
-      padding: 3px; border-radius: 10px;
+      padding: 2px; border-radius: 8px;
       background: rgba(148, 163, 184, 0.16);
       border: 1px solid rgba(148, 163, 184, 0.25);
     }
     .map-harmonogram-filter-options label {
       flex: 1; display: flex; align-items: center; justify-content: center;
-      gap: 0; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer;
-      margin: 0; padding: 7px 6px; border-radius: 8px; position: relative; user-select: none;
+      gap: 0; font-size: 11px; font-weight: 600; color: #475569; cursor: pointer;
+      margin: 0; padding: 5px 4px; border-radius: 6px; position: relative; user-select: none;
     }
     .map-harmonogram-filter-options input {
       position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
@@ -1016,8 +1016,8 @@ export function buildMapHtml(
     .map-wojewodztwo-dropdown { position: relative; }
     .map-wojewodztwo-toggle {
       width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; padding: 9px 11px; font-size: 13px;
-      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 10px;
+      gap: 6px; padding: 6px 9px; font-size: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 8px;
       background: rgba(255, 255, 255, 0.92); color: var(--map-ink); cursor: pointer; text-align: left;
     }
     .map-wojewodztwo-toggle:hover { background: #f8fafc; border-color: var(--map-accent); }
@@ -1025,40 +1025,40 @@ export function buildMapHtml(
     .map-wojewodztwo-toggle-caret { flex-shrink: 0; color: var(--map-muted); font-size: 10px; line-height: 1; }
     .map-wojewodztwo-menu {
       display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
-      max-height: 180px; overflow-y: auto; padding: 8px;
+      max-height: 160px; overflow-y: auto; padding: 6px;
       background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 8px;
       box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
     }
     .map-wojewodztwo-dropdown.is-open .map-wojewodztwo-menu { display: block; }
     .map-wojewodztwo-clear {
-      display: block; width: 100%; box-sizing: border-box; margin: 0 0 6px; padding: 6px 8px;
-      font-size: 12px; font-weight: 600; border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 8px;
+      display: block; width: 100%; box-sizing: border-box; margin: 0 0 4px; padding: 5px 6px;
+      font-size: 11px; font-weight: 600; border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 6px;
       background: #f8fafc; color: #334155; cursor: pointer; text-align: center;
     }
     .map-wojewodztwo-clear:hover { background: var(--map-accent-soft); color: var(--map-accent-deep); border-color: rgba(13, 148, 136, 0.35); }
     .map-wojewodztwo-menu label {
-      display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500;
-      color: #334155; cursor: pointer; margin: 0; padding: 5px 4px; border-radius: 6px;
+      display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500;
+      color: #334155; cursor: pointer; margin: 0; padding: 4px 3px; border-radius: 5px;
     }
     .map-wojewodztwo-menu label:hover { background: rgba(148, 163, 184, 0.12); }
     .map-wojewodztwo-menu input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
     .map-cluster-filter label {
-      display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500;
-      color: #334155; cursor: pointer; margin: 0; padding: 2px 0;
+      display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500;
+      color: #334155; cursor: pointer; margin: 0; padding: 1px 0;
     }
-    .map-cluster-filter input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); width: 15px; height: 15px; }
+    .map-cluster-filter input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); width: 14px; height: 14px; }
     .map-clear-all-filters {
-      display: block; width: 100%; box-sizing: border-box; margin-top: 12px; padding: 6px 8px;
-      font-size: 12px; font-weight: 600; border: none; border-radius: 8px;
+      display: block; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 5px 6px;
+      font-size: 11px; font-weight: 600; border: none; border-radius: 6px;
       background: transparent; color: var(--map-accent-deep); cursor: pointer; text-align: center;
       text-decoration: underline; text-underline-offset: 2px;
     }
     .map-clear-all-filters:hover { background: var(--map-accent-soft); text-decoration: none; }
     .map-filter-count {
-      display: inline-flex; align-items: center; margin-top: 10px; padding: 6px 11px;
+      display: inline-flex; align-items: center; margin-top: 8px; padding: 4px 9px;
       border-radius: 999px; border: 1px solid rgba(13, 148, 136, 0.22);
-      background: var(--map-accent-soft); font-size: 12px; font-weight: 700; color: var(--map-accent-deep);
+      background: var(--map-accent-soft); font-size: 11px; font-weight: 700; color: var(--map-accent-deep);
     }
 ${
   transportApiEnabled
