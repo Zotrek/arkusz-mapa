@@ -835,6 +835,8 @@ describe('phase6', () => {
       expect(html).toContain('setAutoBulkMode');
       expect(html).toContain('openBulkRatesModal');
       expect(html).toContain('runBulkRatesSave');
+      expect(html).toContain('closeBulkRatesModal');
+      expect(html).toContain("alert('Zapisano stawki dla ' + savedCount + ' sklepów.')");
       expect(html).toContain("mode: 'saveRate'");
       expect(html).toContain('appendTransportRow');
       expect(html).toContain('filterSealRowsByMinDate');

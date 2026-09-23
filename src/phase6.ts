@@ -2550,7 +2550,10 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       function saveNext() {
         if (done >= shops.length) {
           if (okBtn) okBtn.disabled = false;
-          setBulkRatesStatus('Zapisano stawki dla ' + shops.length + ' sklepów.');
+          var savedCount = shops.length;
+          closeBulkRatesModal();
+          clearBulkSelection();
+          alert('Zapisano stawki dla ' + savedCount + ' sklepów.');
           return;
         }
         var shop = shops[done];
