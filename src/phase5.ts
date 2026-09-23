@@ -86,6 +86,8 @@ export interface GeocodedAddress {
   zbiorka?: string;
   /** Wg harmonogramu: "tak" / "nie" (agregat z wierszy; brak/mixed → undefined). */
   wgHarmonogramu?: string;
+  /** Dni harmonogramu (jedna wspólna wartość z wierszy; brak/mixed → undefined). */
+  dniHarmonogramu?: string;
   /** Firma transportowa (agregat unikalnych wartości z wierszy). */
   firmaTransportowa?: string;
   rows: SheetRow[];
@@ -408,6 +410,24 @@ export function aggregateFirmaTransportowa(rows: SheetRow[]): string | undefined
     return undefined;
   }
   return [...values].sort((a, b) => a.localeCompare(b, 'pl')).join(', ');
+}
+
+/**
+ * Agregat „Dni harmonogramu” na pinezkę: jedna wspólna niepusta wartość;
+ * różne dni albo same puste → undefined.
+ */
+export function aggregateDniHarmonogramu(rows: SheetRow[]): string | undefined {
+  const values = new Set<string>();
+  for (const row of rows) {
+    const v = (row.dniHarmonogramu ?? '').trim().replace(/\s+/g, ' ');
+    if (v) {
+      values.add(v);
+    }
+  }
+  if (values.size === 1) {
+    return [...values][0];
+  }
+  return undefined;
 }
 
 function pushQuery(target: string[], query: string): void {
@@ -1229,6 +1249,7 @@ function applyGeocodingFromCache(
     count: group.count,
     zbiorka: aggregateZbiorka(group.rows),
     wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
+    dniHarmonogramu: aggregateDniHarmonogramu(group.rows),
     firmaTransportowa: aggregateFirmaTransportowa(group.rows),
     rows: group.rows,
   };
@@ -1536,6 +1557,7 @@ export async function executePhase5(
               wojewodztwo,
               zbiorka: aggregateZbiorka(group.rows),
               wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
+              dniHarmonogramu: aggregateDniHarmonogramu(group.rows),
               firmaTransportowa: aggregateFirmaTransportowa(group.rows),
               rows: group.rows,
             };

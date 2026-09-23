@@ -351,6 +351,8 @@ type MapPoint = {
   zbiorka?: string;
   /** Wg harmonogramu: tak / nie */
   wgHarmonogramu?: string;
+  /** Dni harmonogramu (np. pn, cz) — do prefilla stawek z harmonogramu. */
+  dniHarmonogramu?: string;
   /** Firma transportowa (gdy harmonogram tak — pokazywana w popupie). */
   firmaTransportowa?: string;
   /** Agregat zbiórki całej pinezki (mapa). Protokół Word i rejestr transportu liczą rodzaj z `sealRows` po filtrze daty. */
@@ -667,6 +669,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     ),
     zbiorka: item.zbiorka,
     wgHarmonogramu: item.wgHarmonogramu,
+    dniHarmonogramu: item.dniHarmonogramu,
     firmaTransportowa: item.firmaTransportowa,
     rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
     doc: buildMapPointDocPayload(item.rows),
@@ -767,10 +770,17 @@ export function buildMapHtml(
     ? `  <div id="bulk-rates-modal" class="doc-modal-overlay" style="display:none" aria-hidden="true">
     <div class="doc-modal-panel" role="dialog" aria-labelledby="bulk-rates-modal-title">
       <h3 id="bulk-rates-modal-title">Ustaw stawki w bazie</h3>
-      <p class="doc-modal-hint">Te same wartości trafią do Bazy stawek dla każdego zaznaczonego sklepu (zapis po adresie).</p>
+      <p id="bulk-rates-hint" class="doc-modal-hint">Te same wartości trafią do Bazy stawek dla każdego zaznaczonego sklepu (zapis po adresie).</p>
       <div class="doc-bulk-points-wrap">
         <p class="doc-bulk-points-title">Zaznaczone sklepy</p>
         <ul id="bulk-rates-points-list" class="doc-bulk-points-list"></ul>
+      </div>
+      <div class="bulk-rates-target" role="group" aria-labelledby="bulk-rates-target-title">
+        <span id="bulk-rates-target-title" class="bulk-rates-target-title">Cel zapisu</span>
+        <div class="bulk-rates-target-options">
+          <label><input type="radio" name="bulk-rates-target" value="stawki" checked /> Baza stawek</label>
+          <label><input type="radio" name="bulk-rates-target" value="harmonogram" /> Baza cen harmonogram</label>
+        </div>
       </div>
       <label for="bulk-rates-podwykonawca">Podwykonawca</label>
       <div class="doc-combobox-wrap">
@@ -782,6 +792,10 @@ export function buildMapHtml(
       <input type="text" id="bulk-rates-podjazd" inputmode="decimal" autocomplete="off" />
       <label for="bulk-rates-worek">Kwota za worek</label>
       <input type="text" id="bulk-rates-worek" inputmode="decimal" autocomplete="off" />
+      <div id="bulk-rates-dni-wrap" hidden>
+        <label for="bulk-rates-dni">Dni transportu</label>
+        <input type="text" id="bulk-rates-dni" autocomplete="off" spellcheck="false" placeholder="np. pn, cz" />
+      </div>
       <label for="bulk-rates-od-kiedy">Od kiedy obowiązuje</label>
       <input type="date" id="bulk-rates-od-kiedy" />
       <p class="doc-modal-hint" style="margin-top:10px;margin-bottom:0">Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone.</p>
@@ -829,6 +843,11 @@ export function buildMapHtml(
     .doc-bulk-points-wrap { margin-top: 8px; max-height: 160px; overflow-y: auto; border: 1px solid var(--map-line); border-radius: 10px; padding: 8px 10px; background: rgba(248, 250, 252, 0.9); }
     .doc-bulk-points-title { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 6px; color: var(--map-muted); }
     .doc-bulk-points-list { margin: 0; padding: 0 0 0 16px; font-size: 12px; color: #334155; line-height: 1.45; }
+    .bulk-rates-target { margin: 12px 0 4px; }
+    .bulk-rates-target-title { display: block; font-size: 12.5px; font-weight: 600; margin: 0 0 6px; color: var(--map-ink); }
+    .bulk-rates-target-options { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+    .bulk-rates-target-options label { display: flex !important; align-items: center; gap: 6px; margin: 0 !important; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+    .bulk-rates-target-options input { margin: 0; }
     .doc-bulk-numer-info { font-size: 12px; color: var(--map-accent-deep); margin: 8px 0 0; min-height: 1.2em; }
     .popup-bulk-select { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; cursor: pointer; color: #334155; }
     .popup-bulk-select input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
@@ -2448,9 +2467,40 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           ? addressWithCommaAfterLocalityMap(adres, p.miasto)
           : adres;
         var label = sklep && sklep !== adres && sklep !== shown ? sklep + ' — ' + shown : shown;
-        out.push({ adres: adres, label: label });
+        out.push({
+          adres: adres,
+          label: label,
+          dniHarmonogramu: String(p.dniHarmonogramu || '').trim(),
+          firmaTransportowa: String(p.firmaTransportowa || '').trim()
+        });
       }
       return out;
+    }
+    function getBulkRatesTarget() {
+      var el = document.querySelector('input[name="bulk-rates-target"]:checked');
+      return el && el.value === 'harmonogram' ? 'harmonogram' : 'stawki';
+    }
+    function syncBulkRatesTargetUi() {
+      var isHarm = getBulkRatesTarget() === 'harmonogram';
+      var dniWrap = document.getElementById('bulk-rates-dni-wrap');
+      if (dniWrap) dniWrap.hidden = !isHarm;
+      var hint = document.getElementById('bulk-rates-hint');
+      if (hint) {
+        hint.textContent = isHarm
+          ? 'Te same wartości trafią do Bazy cen harmonogram dla każdego zaznaczonego sklepu (zapis po adresie + dni transportu).'
+          : 'Te same wartości trafią do Bazy stawek dla każdego zaznaczonego sklepu (zapis po adresie).';
+      }
+    }
+    function commonBulkShopField(shops, field) {
+      var value = null;
+      var i;
+      for (i = 0; i < shops.length; i++) {
+        var v = String(shops[i][field] || '').trim();
+        if (!v) continue;
+        if (value === null) value = v;
+        else if (value !== v) return '';
+      }
+      return value || '';
     }
     function setBulkRatesStatus(msg, kind) {
       var el = document.getElementById('bulk-rates-status');
@@ -2486,16 +2536,22 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (titleEl) {
         titleEl.textContent = 'Ustaw stawki w bazie (' + shops.length + ' sklepów)';
       }
+      var targetStawki = document.querySelector('input[name="bulk-rates-target"][value="stawki"]');
+      if (targetStawki) targetStawki.checked = true;
+      var commonFirma = commonBulkShopField(shops, 'firmaTransportowa');
       var podInput = document.getElementById('bulk-rates-podwykonawca');
       var podValue = document.getElementById('bulk-rates-podwykonawca-value');
-      if (podInput) podInput.value = '';
-      if (podValue) podValue.value = '';
+      if (podInput) podInput.value = commonFirma;
+      if (podValue) podValue.value = commonFirma;
       var podjazd = document.getElementById('bulk-rates-podjazd');
       var worek = document.getElementById('bulk-rates-worek');
       var odKiedy = document.getElementById('bulk-rates-od-kiedy');
+      var dni = document.getElementById('bulk-rates-dni');
       if (podjazd) podjazd.value = '';
       if (worek) worek.value = '';
       if (odKiedy) odKiedy.value = '';
+      if (dni) dni.value = commonBulkShopField(shops, 'dniHarmonogramu');
+      syncBulkRatesTargetUi();
       setBulkRatesStatus('');
       if (typeof fillRateContractorOptions === 'function') fillRateContractorOptions();
       var m = document.getElementById('bulk-rates-modal');
@@ -2528,6 +2584,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         setBulkRatesStatus('Brak połączenia z bazą stawek.', 'error');
         return;
       }
+      var target = getBulkRatesTarget();
       var podwykonawca = String((document.getElementById('bulk-rates-podwykonawca-value') || {}).value || '').trim();
       if (!podwykonawca) {
         var podInput = document.getElementById('bulk-rates-podwykonawca');
@@ -2543,6 +2600,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var kwotaPodjazd = String((document.getElementById('bulk-rates-podjazd') || {}).value || '');
       var kwotaWorek = String((document.getElementById('bulk-rates-worek') || {}).value || '');
       var odKiedy = rateValidFromFromPicker((document.getElementById('bulk-rates-od-kiedy') || {}).value);
+      var dniOdbiorow = String((document.getElementById('bulk-rates-dni') || {}).value || '').trim();
       var okBtn = document.getElementById('bulk-rates-btn-ok');
       if (okBtn) okBtn.disabled = true;
       setBulkRatesStatus('Zapisuję 0/' + shops.length + '…');
@@ -2558,14 +2616,16 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         }
         var shop = shops[done];
         setBulkRatesStatus('Zapisuję ' + (done + 1) + '/' + shops.length + '…');
-        postReferencePayload({
-          mode: 'saveRate',
+        var payload = {
+          mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate',
           sklep: shop.adres,
           podwykonawca: podwykonawca,
           kwotaPodjazd: kwotaPodjazd,
           kwotaWorek: kwotaWorek,
           odKiedy: odKiedy
-        }).then(function (resp) {
+        };
+        if (target === 'harmonogram') payload.dniOdbiorow = dniOdbiorow;
+        postReferencePayload(payload).then(function (resp) {
           if (!resp || !resp.ok) {
             if (okBtn) okBtn.disabled = false;
             setBulkRatesStatus(
@@ -3344,6 +3404,11 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         bulkRatesModalEl.onclick = function (ev) {
           if (ev.target.id === 'bulk-rates-modal') closeBulkRatesModal();
         };
+      }
+      var bulkTargetRadios = document.querySelectorAll('input[name="bulk-rates-target"]');
+      var bri;
+      for (bri = 0; bri < bulkTargetRadios.length; bri++) {
+        bulkTargetRadios[bri].addEventListener('change', syncBulkRatesTargetUi);
       }
     }
 

@@ -93,6 +93,7 @@ export function manualAdminHtml(): string {
         <button type="button" id="manual-admin-tab-lista" class="active" data-tab="lista">Lista podwykonawców</button>
         <button type="button" id="manual-admin-tab-popraw" data-tab="popraw">Popraw adres</button>
         <button type="button" id="manual-admin-tab-stawki" data-tab="stawki">Baza stawek</button>
+        <button type="button" id="manual-admin-tab-harmonogram" data-tab="harmonogram">Baza cen harmonogram</button>
       </div>
       <div id="manual-admin-panel-lista" class="manual-admin-panel active">
         <label for="manual-admin-lista-nazwa">Nazwa (combobox)</label>
@@ -154,6 +155,30 @@ export function manualAdminHtml(): string {
         <input type="date" id="manual-admin-stawki-od-kiedy" />
         <p class="manual-admin-hint">Nazwa sklepu i adres z pinezek mapy. Zapisuje się adres. Podwykonawca z nazw krótkich. Zapis od razu, bez przebudowy mapy. Pusta data znaczy od zawsze.</p>
         <button type="button" id="manual-admin-stawki-submit" class="manual-admin-submit">Zapisz stawkę</button>
+      </div>
+      <div id="manual-admin-panel-harmonogram" class="manual-admin-panel">
+        <label for="manual-admin-harmonogram-sklep">Sklep</label>
+        <div class="doc-combobox-wrap">
+          <input type="text" id="manual-admin-harmonogram-sklep" class="doc-combobox-input" autocomplete="off" spellcheck="false" placeholder="Wpisz fragment nazwy lub adresu…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="manual-admin-harmonogram-sklep-list" />
+          <input type="hidden" id="manual-admin-harmonogram-sklep-value" />
+          <ul id="manual-admin-harmonogram-sklep-list" class="doc-combobox-list" role="listbox" hidden></ul>
+        </div>
+        <label for="manual-admin-harmonogram-podwykonawca">Podwykonawca</label>
+        <div class="doc-combobox-wrap">
+          <input type="text" id="manual-admin-harmonogram-podwykonawca" class="doc-combobox-input" autocomplete="off" spellcheck="false" placeholder="Wpisz fragment nazwy…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="manual-admin-harmonogram-podwykonawca-list" />
+          <input type="hidden" id="manual-admin-harmonogram-podwykonawca-value" />
+          <ul id="manual-admin-harmonogram-podwykonawca-list" class="doc-combobox-list" role="listbox" hidden></ul>
+        </div>
+        <label for="manual-admin-harmonogram-podjazd">Cena za podjazd</label>
+        <input type="text" id="manual-admin-harmonogram-podjazd" inputmode="decimal" autocomplete="off" />
+        <label for="manual-admin-harmonogram-worek">Cena za worek</label>
+        <input type="text" id="manual-admin-harmonogram-worek" inputmode="decimal" autocomplete="off" />
+        <label for="manual-admin-harmonogram-dni">Dni transportu</label>
+        <input type="text" id="manual-admin-harmonogram-dni" autocomplete="off" spellcheck="false" placeholder="np. pn, cz" />
+        <label for="manual-admin-harmonogram-od-kiedy">Od kiedy obowiązuje</label>
+        <input type="date" id="manual-admin-harmonogram-od-kiedy" />
+        <p class="manual-admin-hint">Zapis do zakładki „Baza cen harmonogram”. Adres + podwykonawca + data. Dni to dni tygodnia z transportem (np. pn, cz).</p>
+        <button type="button" id="manual-admin-harmonogram-submit" class="manual-admin-submit">Zapisz stawkę harmonogramu</button>
       </div>
       <p id="manual-admin-status" class="manual-admin-status" aria-live="polite"></p>
       <div class="doc-modal-actions">
@@ -442,6 +467,12 @@ ${referenceFormatsBrowserScript()}
       setupRateCombobox('manual-admin-stawki-podwykonawca', 'manual-admin-stawki-podwykonawca-value', 'manual-admin-stawki-podwykonawca-list', function() {
         return rateContractorOptions;
       });
+      setupRateCombobox('manual-admin-harmonogram-sklep', 'manual-admin-harmonogram-sklep-value', 'manual-admin-harmonogram-sklep-list', function() {
+        return rateShopOptions;
+      });
+      setupRateCombobox('manual-admin-harmonogram-podwykonawca', 'manual-admin-harmonogram-podwykonawca-value', 'manual-admin-harmonogram-podwykonawca-list', function() {
+        return rateContractorOptions;
+      });
       setupRateCombobox('bulk-rates-podwykonawca', 'bulk-rates-podwykonawca-value', 'bulk-rates-podwykonawca-list', function() {
         return rateContractorOptions;
       });
@@ -485,14 +516,14 @@ ${referenceFormatsBrowserScript()}
     }
 
     function setManualAdminTab(tab) {
-      ['lista', 'popraw', 'stawki'].forEach(function(name) {
+      ['lista', 'popraw', 'stawki', 'harmonogram'].forEach(function(name) {
         var panel = document.getElementById('manual-admin-panel-' + name);
         var btn = document.getElementById('manual-admin-tab-' + name);
         var active = name === tab;
         if (panel) panel.classList.toggle('active', active);
         if (btn) btn.classList.toggle('active', active);
       });
-      if (tab === 'stawki') {
+      if (tab === 'stawki' || tab === 'harmonogram') {
         fillRateShopOptions();
         fillRateContractorOptions();
       }
@@ -514,7 +545,7 @@ ${referenceFormatsBrowserScript()}
     }
 
     function bindManualAdminUi() {
-      ['manual-admin-tab-lista', 'manual-admin-tab-popraw', 'manual-admin-tab-stawki'].forEach(function(id) {
+      ['manual-admin-tab-lista', 'manual-admin-tab-popraw', 'manual-admin-tab-stawki', 'manual-admin-tab-harmonogram'].forEach(function(id) {
         var btn = document.getElementById(id);
         if (!btn) return;
         btn.addEventListener('click', function() {
@@ -638,6 +669,49 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-stawki-od-kiedy').value = '';
           }).catch(function() {
             stawkiSubmit.disabled = false;
+            setManualAdminStatus('Zapis nieudany.', 'error');
+          });
+        });
+      }
+
+      var harmonogramSubmit = document.getElementById('manual-admin-harmonogram-submit');
+      if (harmonogramSubmit) {
+        harmonogramSubmit.addEventListener('click', function() {
+          var sklep = String((document.getElementById('manual-admin-harmonogram-sklep-value') || {}).value || '').trim();
+          var podwykonawca = String((document.getElementById('manual-admin-harmonogram-podwykonawca-value') || {}).value || '').trim();
+          if (!sklep || !podwykonawca) {
+            setManualAdminStatus('Wybierz sklep i podwykonawcę.', 'error');
+            return;
+          }
+          harmonogramSubmit.disabled = true;
+          postReferencePayload({
+            mode: 'saveRateHarmonogram',
+            sklep: sklep,
+            podwykonawca: podwykonawca,
+            kwotaPodjazd: String((document.getElementById('manual-admin-harmonogram-podjazd') || {}).value || ''),
+            kwotaWorek: String((document.getElementById('manual-admin-harmonogram-worek') || {}).value || ''),
+            odKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-harmonogram-od-kiedy') || {}).value),
+            dniOdbiorow: String((document.getElementById('manual-admin-harmonogram-dni') || {}).value || '').trim()
+          }).then(function(resp) {
+            harmonogramSubmit.disabled = false;
+            if (!resp || !resp.ok) {
+              var code = resp && resp.error;
+              var msg = 'Zapis nieudany.';
+              if (code === 'tie') msg = 'Więcej niż jeden wiersz tej daty. Zapisu nie ma.';
+              if (code === 'date') msg = 'Data w formacie dd.mm.yyyy albo puste.';
+              if (code === 'amount') msg = 'Nieprawidłowa kwota.';
+              if (code === 'shop') msg = 'Wybierz sklep i podwykonawcę.';
+              if (code === 'no_webapp') msg = 'Brak adresu Web App.';
+              setManualAdminStatus(msg, 'error');
+              return;
+            }
+            setManualAdminStatus('Zapisano stawkę harmonogramu.', 'ok');
+            document.getElementById('manual-admin-harmonogram-podjazd').value = '';
+            document.getElementById('manual-admin-harmonogram-worek').value = '';
+            document.getElementById('manual-admin-harmonogram-dni').value = '';
+            document.getElementById('manual-admin-harmonogram-od-kiedy').value = '';
+          }).catch(function() {
+            harmonogramSubmit.disabled = false;
             setManualAdminStatus('Zapis nieudany.', 'error');
           });
         });

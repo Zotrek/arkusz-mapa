@@ -837,7 +837,7 @@ describe('phase6', () => {
       expect(html).toContain('runBulkRatesSave');
       expect(html).toContain('closeBulkRatesModal');
       expect(html).toContain("alert('Zapisano stawki dla ' + savedCount + ' sklepów.')");
-      expect(html).toContain("mode: 'saveRate'");
+      expect(html).toContain("mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate'");
       expect(html).toContain('appendTransportRow');
       expect(html).toContain('filterSealRowsByMinDate');
       expect(html).toContain('buildDocListsFromSealRows');
@@ -961,6 +961,11 @@ result = proposeRouteName(
       expect(html).toContain('id="bulk-rates-podjazd"');
       expect(html).toContain('id="bulk-rates-worek"');
       expect(html).toContain('id="bulk-rates-od-kiedy"');
+      expect(html).toContain('name="bulk-rates-target"');
+      expect(html).toContain('value="harmonogram"');
+      expect(html).toContain('id="bulk-rates-dni"');
+      expect(html).toContain("mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate'");
+      expect(html).toContain('dniOdbiorow');
       expect(html).toContain("var lastRouteName = ''");
       expect(html).toContain("var routeNameMode = 'continue'");
       expect(html).toContain("var routeRateBaseline = ''");

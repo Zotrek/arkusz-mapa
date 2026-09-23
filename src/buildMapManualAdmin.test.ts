@@ -23,7 +23,7 @@ describe('buildMapManualAdmin', () => {
   it('test_manualAdminHtml_when_built_should_offer_rate_tab_without_free_text_or_route_rate', () => {
     const html = manualAdminHtml();
     const start = html.indexOf('id="manual-admin-panel-stawki"');
-    const end = html.indexOf('id="manual-admin-status"');
+    const end = html.indexOf('id="manual-admin-panel-harmonogram"');
     const panel = html.slice(start, end);
     expect(html).toContain('data-tab="stawki"');
     expect(html).toContain('Baza stawek');
@@ -44,9 +44,26 @@ describe('buildMapManualAdmin', () => {
     expect(panel).toContain('bez przebudowy mapy');
   });
 
+  it('test_manualAdminHtml_when_built_should_offer_harmonogram_rate_tab_with_days', () => {
+    const html = manualAdminHtml();
+    const start = html.indexOf('id="manual-admin-panel-harmonogram"');
+    const end = html.indexOf('id="manual-admin-status"');
+    const panel = html.slice(start, end);
+    expect(html).toContain('data-tab="harmonogram"');
+    expect(html).toContain('Baza cen harmonogram');
+    expect(panel).toContain('id="manual-admin-harmonogram-sklep"');
+    expect(panel).toContain('id="manual-admin-harmonogram-podwykonawca"');
+    expect(panel).toContain('id="manual-admin-harmonogram-dni"');
+    expect(panel).toContain('Dni transportu');
+    expect(panel).toContain('Cena za podjazd');
+    expect(panel).toContain('Cena za worek');
+  });
+
   it('test_manualAdminBrowserScript_when_built_should_post_saveRate_as_text_plain', () => {
     const script = manualAdminBrowserScript();
     expect(script).toContain("mode: 'saveRate'");
+    expect(script).toContain("mode: 'saveRateHarmonogram'");
+    expect(script).toContain('dniOdbiorow:');
     expect(script).toContain("headers: { 'Content-Type': 'text/plain;charset=utf-8' }");
     expect(script).toContain('point.adres');
     expect(script).toContain('point.sklep');
@@ -57,10 +74,12 @@ describe('buildMapManualAdmin', () => {
     expect(script).toContain('normalizeForAddressSearchMap(String(text || \'\').replace(/,/g, \'\')).indexOf(q)');
     expect(script).toContain('manual-admin-stawki-sklep-value');
     expect(script).toContain('manual-admin-stawki-podwykonawca-value');
+    expect(script).toContain('manual-admin-harmonogram-sklep-value');
     expect(script).toContain("'stawki'");
+    expect(script).toContain("'harmonogram'");
     expect(script).toContain('rateValidFromFromPicker');
     expect(script).toContain("split('-')");
-    const saved = script.split('\n').find((line) => line.includes('Zapisano stawkę'));
+    const saved = script.split('\n').find((line) => line.includes('Zapisano stawkę.'));
     expect(saved).toBeTruthy();
     expect(saved).not.toContain('generate');
   });

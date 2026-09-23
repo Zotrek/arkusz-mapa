@@ -25,6 +25,7 @@ import {
   stripAfterSlash,
   aggregateWgHarmonogramu,
   aggregateFirmaTransportowa,
+  aggregateDniHarmonogramu,
   normalizeWgHarmonogramuCell,
 } from './phase5';
 
@@ -103,6 +104,34 @@ describe('phase5', () => {
           makeRow({ firmaTransportowa: 'Beta' }),
         ]),
       ).toBe('Alpha, Beta');
+    });
+  });
+
+  describe('aggregateDniHarmonogramu', () => {
+    it('test_aggregateDniHarmonogramu_when_single_value_should_return_it', () => {
+      expect(aggregateDniHarmonogramu([makeRow({ dniHarmonogramu: 'pn, cz' })])).toBe('pn, cz');
+    });
+
+    it('test_aggregateDniHarmonogramu_when_empty_should_return_undefined', () => {
+      expect(aggregateDniHarmonogramu([makeRow({ dniHarmonogramu: '' })])).toBeUndefined();
+    });
+
+    it('test_aggregateDniHarmonogramu_when_mixed_should_return_undefined', () => {
+      expect(
+        aggregateDniHarmonogramu([
+          makeRow({ dniHarmonogramu: 'pn' }),
+          makeRow({ dniHarmonogramu: 'cz' }),
+        ]),
+      ).toBeUndefined();
+    });
+
+    it('test_aggregateDniHarmonogramu_when_same_with_spacing_should_collapse', () => {
+      expect(
+        aggregateDniHarmonogramu([
+          makeRow({ dniHarmonogramu: 'pn,  cz' }),
+          makeRow({ dniHarmonogramu: 'pn, cz' }),
+        ]),
+      ).toBe('pn, cz');
     });
   });
 

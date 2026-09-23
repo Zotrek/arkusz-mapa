@@ -160,4 +160,22 @@ describe('saveRate', () => {
     expect(creator).toContain('if (!existed)');
     expect(creator).not.toContain('getDataSheet_');
   });
+
+  it('test_transportLog_when_saveRateHarmonogram_should_update_days_only_when_changed', () => {
+    const gas = gasSource();
+    const postStart = gas.indexOf('function doPost');
+    const harmIdx = gas.indexOf("mode === 'saveRateHarmonogram'", postStart);
+    const appendIdx = gas.indexOf('resolveTransportNumber_', postStart);
+    expect(harmIdx).toBeGreaterThan(postStart);
+    expect(harmIdx).toBeLessThan(appendIdx);
+
+    const handler = functionBody(gas, 'handleSaveRateHarmonogramPost_');
+    expect(handler).toContain('updateHarmonogramDaysIfChanged_');
+    expect(handler).toContain('getRange(decision.row, 4, 1, 2)');
+    expect(handler).not.toContain('getRange(decision.row, 8)');
+
+    const daysUpdate = functionBody(gas, 'updateHarmonogramDaysIfChanged_');
+    expect(daysUpdate).toContain('row.days === days');
+    expect(daysUpdate).toContain('getRange(row.row, 8)');
+  });
 });

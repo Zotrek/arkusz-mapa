@@ -33,17 +33,21 @@
  *   Kolumny 12–13 (Stawka za podjazd / Stawka za worek) zawsze ze snapshotu Bazy stawek
  *   (adres + kto odbiera + data odbioru). Remis albo brak pary → puste.
  *   Komentarze 1–2 na kolumnach 19–20.
- *   mode=addReferencePodwyko | addPoprawAdres | saveRate
+ *   mode=addReferencePodwyko | addPoprawAdres | saveRate | saveRateHarmonogram
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
  *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
  *   Jeden wiersz klucza nadpisuje kwoty. Dwa i więcej: { ok:false, error:'tie' }. Inna data: nowy wiersz.
  *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 14–17) nie rusza.
  *   Brak zakładki Baza stawek: ten zapis ją zakłada, z nagłówkami w wierszu 1.
+ *   saveRateHarmonogram — Baza cen harmonogram. Body jak saveRate + dniOdbiorow.
+ *   Ceny: klucz adres + podwykonawca + data (jak saveRate). Nazwy trasy i ceny trasy nie rusza.
+ *   Dni: przy istniejącym połączeniu sklep + podwykonawca aktualizuje tylko gdy się zmieniły (wszystkie wiersze pary).
+ *   Brak zakładki: zakłada z nagłówkami jak sync pipeline.
  * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
  *
  * Zakładki (ten sam plik; rejestr po nazwie, nie po kolejności kart):
  *   Arkusz1 — rejestr transportów
- *   Lista podwykonawców, Popraw adres, Baza stawek
+ *   Lista podwykonawców, Popraw adres, Baza stawek, Baza cen harmonogram
  *   (legacy odczyt: Przewoźnicy, Miejsca dostawy — scalane przy listReferenceData)
  */
 
@@ -102,6 +106,17 @@ var REF_PRZ_SHEET_NAME = 'Przewoźnicy';
 var REF_DOS_SHEET_NAME = 'Miejsca dostawy';
 var REF_POPRAW_SHEET_NAME = 'Popraw adres';
 var RATE_SHEET_NAME = 'Baza stawek';
+var HARMONOGRAM_RATE_SHEET_NAME = 'Baza cen harmonogram';
+var HARMONOGRAM_RATE_HEADERS = [
+  'Adres sklepu',
+  'Podwykonawca',
+  'Nazwa trasy',
+  'Cena za podjazd',
+  'Cena za worek',
+  'Cena za trasę',
+  'Od kiedy obowiązuje cena',
+  'Dni odbiorów',
+];
 
 var REF_PODWYKO_HEADER = ['Nazwa', 'Dane do Worda'];
 var REF_PRZ_HEADER = [
@@ -212,6 +227,9 @@ function doPost(e) {
     }
     if (mode === 'saveRate') {
       return handleSaveRatePost_(body);
+    }
+    if (mode === 'saveRateHarmonogram') {
+      return handleSaveRateHarmonogramPost_(body);
     }
     var numer = resolveTransportNumber_(body);
     appendTransportRow_(numer, body);
@@ -1611,6 +1629,111 @@ function handleSaveRatePost_(body) {
   sheet.getRange(next, 1, 1, 5).setValues([[shop, contractor, pickupCell, bagCell, validFrom]]);
   sheet.getRange(next, 5).setNumberFormat('@').setValue(String(validFrom));
   return jsonResponse({ ok: true, action: 'append' });
+}
+
+function getOrCreateHarmonogramRateSheet_() {
+  var sheet = getOrCreateRefSheet_(HARMONOGRAM_RATE_SHEET_NAME, HARMONOGRAM_RATE_HEADERS);
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var existing = sheet.getRange(1, 1, 1, Math.max(lastCol, HARMONOGRAM_RATE_HEADERS.length)).getValues()[0];
+  var hasHeader = false;
+  var i;
+  for (i = 0; i < existing.length; i++) {
+    if (String(existing[i] == null ? '' : existing[i]).trim()) {
+      hasHeader = true;
+      break;
+    }
+  }
+  if (!hasHeader) {
+    sheet.getRange(1, 1, 1, HARMONOGRAM_RATE_HEADERS.length).setValues([HARMONOGRAM_RATE_HEADERS]);
+  }
+  return sheet;
+}
+
+/** Wiersze Bazy cen: adres + podwykonawca + data z kolumny 7 + dni z kolumny 8. */
+function listHarmonogramRateRows_(sheet) {
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last < 2) {
+    return rows;
+  }
+  var values = sheet.getRange(2, 1, last - 1, 8).getValues();
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var dateKey = rateCellDateKey_(values[i][6]);
+    rows.push({
+      row: i + 2,
+      shop: cellStr_(values[i][0]),
+      contractor: cellStr_(values[i][1]),
+      validFrom: dateKey == null ? '\u0000' : dateKey,
+      days: cellStr_(values[i][7]),
+    });
+  }
+  return rows;
+}
+
+/**
+ * Przy istniejącym połączeniu sklep + podwykonawca aktualizuje „Dni odbiorów”
+ * tylko gdy się zmieniły — na każdym wierszu tej pary (cen nie rusza).
+ */
+function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days) {
+  var updated = 0;
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (row.shop !== shop || row.contractor !== contractor) {
+      continue;
+    }
+    if (row.days === days) {
+      continue;
+    }
+    sheet.getRange(row.row, 8).setValue(days);
+    updated += 1;
+  }
+  return updated;
+}
+
+/**
+ * Zapis cen i dni do Bazy cen harmonogram.
+ * Ceny: te same reguły klucza co saveRate (adres + podwykonawca + data).
+ * Dni: klucz sklep + podwykonawca — aktualizacja tylko gdy się zmieniły.
+ * Nazwy trasy i ceny trasy nie rusza.
+ */
+function handleSaveRateHarmonogramPost_(body) {
+  var shop = cellStr_(body && body.sklep);
+  var contractor = cellStr_(body && body.podwykonawca);
+  if (!shop || !contractor) {
+    return jsonResponse({ ok: false, error: 'shop' });
+  }
+  var validFrom = normalizeRateDate_(body && body.odKiedy);
+  if (validFrom === null) {
+    return jsonResponse({ ok: false, error: 'date' });
+  }
+  var pickup = parseRateAmount_(body && body.kwotaPodjazd);
+  var bag = parseRateAmount_(body && body.kwotaWorek);
+  if (!pickup || !bag) {
+    return jsonResponse({ ok: false, error: 'amount' });
+  }
+  var days = cellStr_(body && body.dniOdbiorow);
+  var sheet = getOrCreateHarmonogramRateSheet_();
+  var rows = listHarmonogramRateRows_(sheet);
+  var decision = decideSaveRate_(rows, shop, contractor, validFrom);
+  if (decision.action === 'refuse') {
+    return jsonResponse({ ok: false, error: 'tie' });
+  }
+  var pickupCell = rateAmountCell_(pickup);
+  var bagCell = rateAmountCell_(bag);
+  var daysUpdated = updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days);
+  if (decision.action === 'overwrite') {
+    sheet.getRange(decision.row, 4, 1, 2).setValues([[pickupCell, bagCell]]);
+    return jsonResponse({ ok: true, action: 'overwrite', daysUpdated: daysUpdated });
+  }
+  var next = Math.max(sheet.getLastRow(), 1) + 1;
+  sheet.getRange(next, 7).setNumberFormat('@');
+  sheet
+    .getRange(next, 1, 1, 8)
+    .setValues([[shop, contractor, '', pickupCell, bagCell, '', validFrom, days]]);
+  sheet.getRange(next, 7).setNumberFormat('@').setValue(String(validFrom));
+  return jsonResponse({ ok: true, action: 'append', daysUpdated: daysUpdated });
 }
 
 /**
