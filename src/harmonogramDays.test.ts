@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   easterSundayUtc,
+  formatHarmonogramDayTokens,
   hasPastScheduleDayAfterClosure,
   isCopyOdebraneZHarmonogramuEnabled,
   isPolishPublicHolidayUtc,
+  parseHarmonogramDayTokens,
   parseWeekdaysFromDniHarmonogramu,
   shouldCopyToOdebraneZHarmonogramu,
 } from './harmonogramDays.js';
@@ -21,6 +23,18 @@ describe('parseWeekdaysFromDniHarmonogramu', () => {
   it('test_parseWeekdaysFromDniHarmonogramu_when_empty_should_return_empty', () => {
     expect(parseWeekdaysFromDniHarmonogramu('')).toEqual([]);
     expect(parseWeekdaysFromDniHarmonogramu('  ')).toEqual([]);
+  });
+});
+
+describe('parseHarmonogramDayTokens', () => {
+  it('test_parseHarmonogramDayTokens_when_mixed_should_return_canonical_week_order', () => {
+    expect(parseHarmonogramDayTokens('cz, pn, środa')).toEqual(['pn', 'śr', 'cz']);
+    expect(formatHarmonogramDayTokens(['cz', 'pn'])).toBe('pn, cz');
+  });
+
+  it('test_parseHarmonogramDayTokens_when_empty_should_return_empty', () => {
+    expect(parseHarmonogramDayTokens('')).toEqual([]);
+    expect(formatHarmonogramDayTokens([])).toBe('');
   });
 });
 

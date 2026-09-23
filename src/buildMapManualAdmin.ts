@@ -4,6 +4,10 @@
 
 import { referenceFormatsBrowserScript } from './referenceFormats.js';
 import { POLISH_VOIVODESHIPS } from './polishVoivodeships.js';
+import {
+  harmonogramDaysPickerCss,
+  harmonogramDaysPickerHtml,
+} from './harmonogramDays.js';
 
 function wojewodztwoSelectOptionsHtml(): string {
   return (
@@ -70,6 +74,7 @@ export function manualAdminCss(): string {
     .manual-admin-submit:hover { background: var(--map-accent-deep); }
     .manual-admin-submit:disabled { opacity: 0.75; cursor: wait; }
     .manual-admin-hint { font-size: 11px; color: #64748b; margin: 8px 0 0; line-height: 1.4; }
+    ${harmonogramDaysPickerCss()}
     #manual-admin-modal .doc-combobox-wrap { position: relative; }
     #manual-admin-modal .doc-combobox-list {
       position: absolute; left: 0; right: 0; top: calc(100% + 2px); max-height: 220px; overflow-y: auto; z-index: 20;
@@ -173,11 +178,11 @@ export function manualAdminHtml(): string {
         <input type="text" id="manual-admin-harmonogram-podjazd" inputmode="decimal" autocomplete="off" />
         <label for="manual-admin-harmonogram-worek">Cena za worek</label>
         <input type="text" id="manual-admin-harmonogram-worek" inputmode="decimal" autocomplete="off" />
-        <label for="manual-admin-harmonogram-dni">Dni transportu</label>
-        <input type="text" id="manual-admin-harmonogram-dni" autocomplete="off" spellcheck="false" placeholder="np. pn, cz" />
+        <label for="manual-admin-harmonogram-dni-toggle">Dni transportu</label>
+        ${harmonogramDaysPickerHtml('manual-admin-harmonogram-dni')}
         <label for="manual-admin-harmonogram-od-kiedy">Od kiedy obowiązuje</label>
         <input type="date" id="manual-admin-harmonogram-od-kiedy" />
-        <p class="manual-admin-hint">Zapis do zakładki „Baza cen harmonogram”. Adres + podwykonawca + data. Dni to dni tygodnia z transportem (np. pn, cz).</p>
+        <p class="manual-admin-hint">Zapis do zakładki „Baza cen harmonogram”. Adres + podwykonawca + data. Dni wybierz z listy (można kilka).</p>
         <button type="button" id="manual-admin-harmonogram-submit" class="manual-admin-submit">Zapisz stawkę harmonogramu</button>
       </div>
       <p id="manual-admin-status" class="manual-admin-status" aria-live="polite"></p>
@@ -557,6 +562,7 @@ ${referenceFormatsBrowserScript()}
       var openBtn = document.getElementById('map-manual-admin-open');
       if (openBtn) openBtn.addEventListener('click', function() { openManualAdminModal('lista'); });
       setupRateComboboxes();
+      initDayMultiPickers(['manual-admin-harmonogram-dni']);
 
       var listaSubmit = document.getElementById('manual-admin-lista-submit');
       if (listaSubmit) {
@@ -708,7 +714,7 @@ ${referenceFormatsBrowserScript()}
             setManualAdminStatus('Zapisano stawkę harmonogramu.', 'ok');
             document.getElementById('manual-admin-harmonogram-podjazd').value = '';
             document.getElementById('manual-admin-harmonogram-worek').value = '';
-            document.getElementById('manual-admin-harmonogram-dni').value = '';
+            setDayMultiValue('manual-admin-harmonogram-dni', '');
             document.getElementById('manual-admin-harmonogram-od-kiedy').value = '';
           }).catch(function() {
             harmonogramSubmit.disabled = false;

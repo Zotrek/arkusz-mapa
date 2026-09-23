@@ -31,7 +31,12 @@ import {
 } from './buildMapManualAdmin.js';
 import { routeNameBrowserScript } from './routeName.js';
 import { routeProtocolBrowserScript } from './routeProtocol.js';
-import { shouldCopyToOdebraneZHarmonogramu } from './harmonogramDays.js';
+import {
+  harmonogramDaysPickerBrowserScript,
+  harmonogramDaysPickerCss,
+  harmonogramDaysPickerHtml,
+  shouldCopyToOdebraneZHarmonogramu,
+} from './harmonogramDays.js';
 import {
   classifyMapPointZbiorka,
   normalizeWgHarmonogramu,
@@ -793,8 +798,8 @@ export function buildMapHtml(
       <label for="bulk-rates-worek">Kwota za worek</label>
       <input type="text" id="bulk-rates-worek" inputmode="decimal" autocomplete="off" />
       <div id="bulk-rates-dni-wrap" hidden>
-        <label for="bulk-rates-dni">Dni transportu</label>
-        <input type="text" id="bulk-rates-dni" autocomplete="off" spellcheck="false" placeholder="np. pn, cz" />
+        <label for="bulk-rates-dni-toggle">Dni transportu</label>
+        ${harmonogramDaysPickerHtml('bulk-rates-dni')}
       </div>
       <label for="bulk-rates-od-kiedy">Od kiedy obowiązuje</label>
       <input type="date" id="bulk-rates-od-kiedy" />
@@ -879,6 +884,7 @@ export function buildMapHtml(
     #bulk-rates-btn-ok { background: #6f42c1; border-color: #5a32a3; color: #fff; box-shadow: 0 1px 3px rgba(111, 66, 193, 0.28); }
     #bulk-rates-btn-ok:hover { background: #5a32a3; color: #fff; }
     #bulk-rates-btn-ok:disabled { opacity: 0.75; cursor: wait; }
+${harmonogramDaysPickerCss()}
 `
     : '';
 
@@ -1113,7 +1119,7 @@ ${
     const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
     const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
     const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
-${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameMode = 'continue';\n    var routeRateBaseline = '';\n    var routeRateBaselineName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n    var routeNameProposeTicket = 0;\n" : ''}
+${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${(wordEnabled || referenceAdminEnabled) ? harmonogramDaysPickerBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameMode = 'continue';\n    var routeRateBaseline = '';\n    var routeRateBaselineName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n    var routeNameProposeTicket = 0;\n" : ''}
 
     const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -2546,11 +2552,10 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var podjazd = document.getElementById('bulk-rates-podjazd');
       var worek = document.getElementById('bulk-rates-worek');
       var odKiedy = document.getElementById('bulk-rates-od-kiedy');
-      var dni = document.getElementById('bulk-rates-dni');
       if (podjazd) podjazd.value = '';
       if (worek) worek.value = '';
       if (odKiedy) odKiedy.value = '';
-      if (dni) dni.value = commonBulkShopField(shops, 'dniHarmonogramu');
+      setDayMultiValue('bulk-rates-dni', commonBulkShopField(shops, 'dniHarmonogramu'));
       syncBulkRatesTargetUi();
       setBulkRatesStatus('');
       if (typeof fillRateContractorOptions === 'function') fillRateContractorOptions();
@@ -3395,6 +3400,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
 
     if (transportApiEnabled) {
+      initDayMultiPickers(['bulk-rates-dni']);
       var bulkRatesCancel = document.getElementById('bulk-rates-btn-cancel');
       var bulkRatesOk = document.getElementById('bulk-rates-btn-ok');
       var bulkRatesModalEl = document.getElementById('bulk-rates-modal');

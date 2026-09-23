@@ -54,6 +54,9 @@ describe('buildMapManualAdmin', () => {
     expect(panel).toContain('id="manual-admin-harmonogram-sklep"');
     expect(panel).toContain('id="manual-admin-harmonogram-podwykonawca"');
     expect(panel).toContain('id="manual-admin-harmonogram-dni"');
+    expect(panel).toContain('id="manual-admin-harmonogram-dni-toggle"');
+    expect(panel).toContain('data-day-multi="manual-admin-harmonogram-dni"');
+    expect(panel).toContain('value="pn"');
     expect(panel).toContain('Dni transportu');
     expect(panel).toContain('Cena za podjazd');
     expect(panel).toContain('Cena za worek');
@@ -64,6 +67,8 @@ describe('buildMapManualAdmin', () => {
     expect(script).toContain("mode: 'saveRate'");
     expect(script).toContain("mode: 'saveRateHarmonogram'");
     expect(script).toContain('dniOdbiorow:');
+    expect(script).toContain("setDayMultiValue('manual-admin-harmonogram-dni'");
+    expect(script).toContain("initDayMultiPickers(['manual-admin-harmonogram-dni'])");
     expect(script).toContain("headers: { 'Content-Type': 'text/plain;charset=utf-8' }");
     expect(script).toContain('point.adres');
     expect(script).toContain('point.sklep');

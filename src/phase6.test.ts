@@ -964,6 +964,10 @@ result = proposeRouteName(
       expect(html).toContain('name="bulk-rates-target"');
       expect(html).toContain('value="harmonogram"');
       expect(html).toContain('id="bulk-rates-dni"');
+      expect(html).toContain('id="bulk-rates-dni-toggle"');
+      expect(html).toContain('data-day-multi="bulk-rates-dni"');
+      expect(html).toContain('function setDayMultiValue');
+      expect(html).toContain("initDayMultiPickers(['bulk-rates-dni'])");
       expect(html).toContain("mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate'");
       expect(html).toContain('dniOdbiorow');
       expect(html).toContain("var lastRouteName = ''");

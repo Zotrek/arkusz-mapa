@@ -14,7 +14,8 @@
  * GET ?action=listStoreAddresses → { ok, data: [ { adres, sklep }, … ] }
  *   Unikalny adres z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta. Zapis stawki i tak idzie adresem. Bez zapisu.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
- *   dataOd opcjonalna. To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
+ *   dataOd opcjonalna. tryb=harmonogram → Baza cen + odebrane z harmonogramu (dni podjazdu).
+ *   To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
  * GET ?action=settlementStats&dataOd=dd.mm.yyyy&dataDo=dd.mm.yyyy&podwykonawca=…
  *   Oba krańce dat wymagane. podwykonawca opcjonalny (pusty = wszyscy). Nic nie zapisuje.
  *   Wiersze: rozliczone w zakresie + nierozliczone odbyte (backlog bez filtra dat).
@@ -111,6 +112,7 @@ var REF_DOS_SHEET_NAME = 'Miejsca dostawy';
 var REF_POPRAW_SHEET_NAME = 'Popraw adres';
 var RATE_SHEET_NAME = 'Baza stawek';
 var HARMONOGRAM_RATE_SHEET_NAME = 'Baza cen harmonogram';
+var ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME = 'odebrane z harmonogramu';
 var HARMONOGRAM_RATE_HEADERS = [
   'Adres sklepu',
   'Podwykonawca',
@@ -1799,15 +1801,70 @@ function uniqueStoreAddresses_(rows) {
 
 /**
  * Odczyt zestawienia. Nie bierze locka i nic nie zapisuje.
- * Brak zakładki Baza stawek to pusta lista stawek, nie nowa zakładka.
+ * tryb=harmonogram: Baza cen × dni + worki z „odebrane z harmonogramu”.
+ * Inaczej: Arkusz1 + Baza stawek (Na zgłoszenie).
  */
 function settlementSearch_(query) {
+  var tryb = settlementText_(query && query.tryb).toLowerCase();
+  if (tryb === 'harmonogram' || tryb === 'schedule') {
+    return settlementSearchHarmonogram_(query);
+  }
   var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
   return buildSettlementRead_(
     query,
     readSettlementCells_(getDataSheet_(), COL.transportOdbył),
     readSettlementCells_(rateSheet, 5),
   );
+}
+
+/**
+ * Harmonogram: sklepy/dni/stawki z Bazy cen; worki z odebranych (0 = sam podjazd).
+ */
+function settlementSearchHarmonogram_(query) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
+  return buildSettlementHarmonogramRead_(
+    query,
+    readSettlementCells_(baza, 8),
+    readOdebraneSheetRows_(odebrane),
+  );
+}
+
+/**
+ * Odczyt zakładki „odebrane z harmonogramu” z nagłówkami (mapowanie po nazwie).
+ * Brak zakładki = pusta lista.
+ */
+function readOdebraneSheetRows_(sheet) {
+  if (!sheet) {
+    return { headers: [], rows: [] };
+  }
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) {
+    return { headers: [], rows: [] };
+  }
+  var headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headers = [];
+  var h;
+  for (h = 0; h < headerValues.length; h++) {
+    headers.push(settlementText_(headerValues[h]));
+  }
+  if (lastRow < 2) {
+    return { headers: headers, rows: [] };
+  }
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var rows = [];
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var cells = [];
+    var c;
+    for (c = 0; c < lastCol; c++) {
+      cells.push(values[i][c] != null ? values[i][c] : '');
+    }
+    rows.push(cells);
+  }
+  return { headers: headers, rows: rows };
 }
 
 /**
