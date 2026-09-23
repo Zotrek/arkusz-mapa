@@ -15,6 +15,10 @@
  *   Unikalny adres z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta. Zapis stawki i tak idzie adresem. Bez zapisu.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
  *   dataOd opcjonalna. To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
+ * GET ?action=settlementStats&dataOd=dd.mm.yyyy&dataDo=dd.mm.yyyy&podwykonawca=…
+ *   Oba krańce dat wymagane. podwykonawca opcjonalny (pusty = wszyscy). Nic nie zapisuje.
+ *   Wiersze: rozliczone w zakresie + nierozliczone odbyte (backlog bez filtra dat).
+ *   Pola: P/Q/I, status, snapshoty L/M, adres, data, podwykonawca; rates do remisów.
  * POST { action: patchBags | patchRouteRate | detachRoute | attachRoute | resolveRateTie | approve }
  *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
  *   Rejestr: sheetRow + transportNumber. Odpada, gdy w tym wierszu kolumna 1 jest inna.
@@ -186,6 +190,9 @@ function doGet(e) {
     }
     if (action === 'settlementSearch') {
       return jsonResponse(settlementSearch_(e.parameter));
+    }
+    if (action === 'settlementStats') {
+      return jsonResponse(settlementStats_(e.parameter));
     }
     return jsonResponse({ ok: false, error: 'unknown action' }, 400);
   } catch (err) {
@@ -1803,6 +1810,19 @@ function settlementSearch_(query) {
   );
 }
 
+/**
+ * Odczyt Statystyk. Nie bierze locka i nic nie zapisuje.
+ * Brak zakładki Baza stawek to pusta lista stawek, nie nowa zakładka.
+ */
+function settlementStats_(query) {
+  var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
+  return buildSettlementStats_(
+    query,
+    readSettlementCells_(getDataSheet_(), COL.transportOdbył),
+    readSettlementCells_(rateSheet, 5),
+  );
+}
+
 /** Czyta istniejące kolumny i dopina puste. Nie woła setValue. Brak kolumny 18 = transport się odbył. */
 function readSettlementCells_(sheet, width) {
   if (!sheet) {
@@ -2045,6 +2065,8 @@ function mapSettlementRegisterRow_(sheetRow, cells) {
     bagRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
     settled: settlementFlag_(settlementCell_(cells, 13)) === 'tak',
     didNotHappen: settlementFlag_(settlementCell_(cells, 17)) === 'nie',
+    receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 15)),
+    costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 16)),
   };
 }
 
@@ -2084,6 +2106,26 @@ function settlementPublicRow_(mapped) {
   };
 }
 
+function settlementStatsPublicRow_(mapped) {
+  return {
+    sheetRow: mapped.sheetRow,
+    transportNumber: mapped.transportNumber,
+    address: mapped.address,
+    shopName: mapped.shopName,
+    pickupDate: mapped.pickupDate,
+    contractor: mapped.contractor,
+    bagCount: mapped.bagCount,
+    routeName: mapped.routeName,
+    routeRate: mapped.routeRate,
+    pickupRate: mapped.pickupRate,
+    bagRate: mapped.bagRate,
+    settled: mapped.settled,
+    happened: !mapped.didNotHappen,
+    receptionCost: mapped.receptionCost,
+    costPerBag: mapped.costPerBag,
+  };
+}
+
 function buildSettlementRead_(query, register, rates) {
   var error = settlementQueryError_(query);
   if (error) {
@@ -2114,6 +2156,86 @@ function buildSettlementRead_(query, register, rates) {
     var rateItem = sourceRates[j];
     var rate = mapSettlementRateRow_(rateItem.sheetRow, rateItem.cells);
     if (!rate || rate.contractor !== q.podwykonawca) {
+      continue;
+    }
+    rateRows.push(rate);
+  }
+  return { ok: true, rows: rows, rates: rateRows };
+}
+
+function settlementStatsNormalizeQuery_(query) {
+  var src = query || {};
+  return {
+    podwykonawca: settlementText_(src.podwykonawca),
+    dataOd: settlementText_(src.dataOd),
+    dataDo: settlementText_(src.dataDo),
+  };
+}
+
+function settlementStatsQueryError_(query) {
+  var q = settlementStatsNormalizeQuery_(query);
+  if (!q.dataDo) {
+    return 'dataDo required';
+  }
+  if (!q.dataOd) {
+    return 'dataOd required';
+  }
+  if (!settlementDateText_(q.dataDo)) {
+    return 'dataDo is not dd.mm.yyyy';
+  }
+  if (!settlementDateText_(q.dataOd)) {
+    return 'dataOd is not dd.mm.yyyy';
+  }
+  if (settlementCompareDate_(settlementDateText_(q.dataOd), settlementDateText_(q.dataDo)) > 0) {
+    return 'dataOd after dataDo';
+  }
+  return '';
+}
+
+/** Rozliczone w zakresie; nierozliczone odbyte bez filtra dat (backlog / luki). */
+function settlementStatsIncludeRow_(mapped, dataOd, dataDo) {
+  if (mapped.didNotHappen) {
+    return false;
+  }
+  if (!mapped.settled) {
+    return true;
+  }
+  return settlementDateInRange_(mapped.pickupDate, dataOd, dataDo);
+}
+
+function buildSettlementStats_(query, register, rates) {
+  var error = settlementStatsQueryError_(query);
+  if (error) {
+    return { ok: false, error: error };
+  }
+  var q = settlementStatsNormalizeQuery_(query);
+  var dataOd = settlementDateText_(q.dataOd);
+  var dataDo = settlementDateText_(q.dataDo);
+  var rows = [];
+  var sourceRows = register || [];
+  for (var i = 0; i < sourceRows.length; i++) {
+    var item = sourceRows[i];
+    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells);
+    if (!mapped) {
+      continue;
+    }
+    if (q.podwykonawca && mapped.contractor !== q.podwykonawca) {
+      continue;
+    }
+    if (!settlementStatsIncludeRow_(mapped, dataOd, dataDo)) {
+      continue;
+    }
+    rows.push(settlementStatsPublicRow_(mapped));
+  }
+  var rateRows = [];
+  var sourceRates = rates || [];
+  for (var j = 0; j < sourceRates.length; j++) {
+    var rateItem = sourceRates[j];
+    var rate = mapSettlementRateRow_(rateItem.sheetRow, rateItem.cells);
+    if (!rate) {
+      continue;
+    }
+    if (q.podwykonawca && rate.contractor !== q.podwykonawca) {
       continue;
     }
     rateRows.push(rate);

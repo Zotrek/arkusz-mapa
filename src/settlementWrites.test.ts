@@ -980,6 +980,11 @@ describe("zapis w transport-log.gs", () => {
     const lockAt = postFn.indexOf("waitLock");
     expect(postFn.indexOf("isSettlementWriteAction_")).toBeGreaterThan(lockAt);
     expect(postFn.indexOf("settlementSearch")).toBeLessThan(lockAt);
+    expect(postFn).not.toContain("settlementStats");
+    expect(functionSource("doGet")).toContain("action === 'settlementStats'");
+    expect(functionSource("settlementStats_")).not.toMatch(
+      /setValue|setValues|appendRow|insertSheet|deleteRow|deleteRows|getOrCreate|setFormula/,
+    );
     const gate = functionSource("isSettlementWriteAction_");
     const run = functionSource("runSettlementWrite_");
     for (const action of [
