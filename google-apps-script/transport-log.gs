@@ -2,6 +2,7 @@
  * Rejestr transportów + słowniki referencyjne — Web App dla mapy arkusz-mapa (GitHub Pages).
  * Wdrożenie: Extensions → Apps Script → wklej → Deploy → Web app
  *   Execute as: Me | Who has access: Anyone
+ *   + Script properties: GAS_SHARED_SECRET (wymagane). Publiczny front woła Cloudflare Worker.
  *
  * GET ?action=modalData&podmiot=…&adres=…  (zalecane — jeden request)
  * GET ?action=bulkLastTransportDates  (ostatnie daty + kto odbiera dla wszystkich sklepów — mapa)
@@ -49,6 +50,9 @@
  *   Dni: przy istniejącym połączeniu sklep + podwykonawca aktualizuje tylko gdy się zmieniły (wszystkie wiersze pary).
  *   Brak zakładki: zakłada z nagłówkami jak sync pipeline.
  * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
+ *
+ * Bezpieczeństwo: doGet/doPost wymagają Script property GAS_SHARED_SECRET
+ * (Cloudflare Worker dokleja secret= / body.secret). Bez property = błąd.
  *
  * Zakładki (ten sam plik; rejestr po nazwie, nie po kolejności kart):
  *   Arkusz1 — rejestr transportów
@@ -105,6 +109,8 @@ var TRANSPORT_HAPPENED_STRIKE_FORMULA = '=$R2="nie"';
 
 var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
 var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
+/** Tajny klucz Worker → GAS. Ustaw w Apps Script → Project settings → Script properties: GAS_SHARED_SECRET. Nie commituj. */
+var GAS_SHARED_SECRET_KEY = 'GAS_SHARED_SECRET';
 
 var REF_PODWYKO_SHEET_NAME = 'Lista podwykonawców';
 var REF_PRZ_SHEET_NAME = 'Przewoźnicy';
@@ -150,6 +156,8 @@ var REF_PRZ_BDO_COL = 5;
 
 function doGet(e) {
   try {
+    var secretGate = requireAppSecret_(e, null);
+    if (secretGate) return secretGate;
     var action = (e && e.parameter && e.parameter.action) || '';
     if (action === 'modalData') {
       var podmiot = (e.parameter.podmiot || '').toString();
@@ -210,6 +218,11 @@ function doPost(e) {
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) }, 500);
   }
+  var secretGate = requireAppSecret_(e, body);
+  if (secretGate) return secretGate;
+  if (body && body.secret != null) {
+    delete body.secret;
+  }
   if (body && String(body.action || '') === 'settlementSearch') {
     try {
       return jsonResponse(settlementSearch_(body));
@@ -266,6 +279,34 @@ function jsonResponse(obj, statusCode) {
     ContentService.MimeType.JSON,
   );
   return out;
+}
+
+/**
+ * Odrzuca wywołanie bez tajnego klucza (Worker dokleja secret= / body.secret).
+ * Brak właściwości skryptu = fail-closed (najpierw ustaw GAS_SHARED_SECRET, potem Deploy).
+ * @returns {GoogleAppsScript.Content.TextOutput|null} odpowiedź błędu albo null gdy OK
+ */
+function requireAppSecret_(e, body) {
+  var expected = String(
+    PropertiesService.getScriptProperties().getProperty(GAS_SHARED_SECRET_KEY) || '',
+  ).trim();
+  if (!expected) {
+    return jsonResponse(
+      { ok: false, error: 'GAS_SHARED_SECRET not configured in Script properties' },
+      503,
+    );
+  }
+  var got = '';
+  if (e && e.parameter && e.parameter.secret != null) {
+    got = String(e.parameter.secret);
+  }
+  if (!got && body && body.secret != null) {
+    got = String(body.secret);
+  }
+  if (got !== expected) {
+    return jsonResponse({ ok: false, error: 'unauthorized' }, 401);
+  }
+  return null;
 }
 
 function getDataSheet_() {

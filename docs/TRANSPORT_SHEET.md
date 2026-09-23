@@ -72,9 +72,12 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 5. Ustaw zmienną środowiskową / sekret GitHub:
 
-   - `TRANSPORT_WEBAPP_URL=https://script.google.com/macros/s/…/exec`
+   - `TRANSPORT_WEBAPP_URL=https://…workers.dev/api/transport`  
+     (Cloudflare Worker — **nie** bezpośredni `script.google.com/…/exec`)
 
-6. Opcjonalnie: `GOOGLE_TRANSPORT_SHEETS_ID` — ID arkusza (dokumentacja / przyszłe walidacje).
+6. Opcjonalnie: `GOOGLE_TRANSPORT_SHEETS_ID` — tylko lokalnie / sekrety CI (nie w publicznym HTML).
+
+**Hasło strony + proxy:** pełna instrukcja Cloudflare i `GAS_SHARED_SECRET` → [`cloudflare/SETUP.md`](../../cloudflare/SETUP.md) (monorepo).
 
 
 

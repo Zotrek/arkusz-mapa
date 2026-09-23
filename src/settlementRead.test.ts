@@ -123,8 +123,10 @@ const holder: { register: FakeSheet; rates: FakeSheet | null } = {
 
 let lastBody = '';
 let gas: GasFns;
+const TEST_GAS_SECRET = 'test-gas-secret';
 
 beforeAll(() => {
+  const props = new Map<string, string>([['GAS_SHARED_SECRET', TEST_GAS_SECRET]]);
   const context: Record<string, unknown> = {
     SpreadsheetApp: {
       getActiveSpreadsheet() {
@@ -140,6 +142,21 @@ beforeAll(() => {
               return holder.rates;
             }
             return null;
+          },
+        };
+      },
+    },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key: string) {
+            return props.has(key) ? props.get(key)! : null;
+          },
+          setProperty(key: string, value: string) {
+            props.set(key, String(value));
+          },
+          deleteProperty(key: string) {
+            props.delete(key);
           },
         };
       },
@@ -356,6 +373,7 @@ describe('settlementSearch_', () => {
         action: 'settlementSearch',
         podwykonawca: 'gpw',
         dataDo: '20.09.2026',
+        secret: TEST_GAS_SECRET,
       },
     });
     const body = getJson();
@@ -443,6 +461,7 @@ describe('settlementStats_', () => {
         dataOd: '01.09.2026',
         dataDo: '30.09.2026',
         podwykonawca: 'gpw',
+        secret: TEST_GAS_SECRET,
       },
     });
     const body = getJson();

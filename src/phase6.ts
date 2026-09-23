@@ -7,6 +7,7 @@ import { mkdir, writeFile, copyFile, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { getOptionalWordMapAssetPaths, getTransportWebAppUrl } from './config.js';
+import { SITE_PASSWORD_FETCH_SNIPPET } from './sitePasswordFetchSnippet.js';
 import type { GeocodedAddress } from './phase5.js';
 import type { SheetRow } from './sheets.js';
 import { POLISH_VOIVODESHIPS } from './polishVoivodeships.js';
@@ -1109,6 +1110,7 @@ ${
 `
     : ''
 }${wordModal}${bulkRatesModal}${referenceAdminEnabled ? manualAdminHtml() : ''}  <script>
+${SITE_PASSWORD_FETCH_SNIPPET}
     const adresy = ${JSON.stringify(points)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
     const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};

@@ -185,6 +185,17 @@ beforeAll(() => {
         };
       },
     },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key: string) {
+            return key === "GAS_SHARED_SECRET" ? "test-gas-secret" : null;
+          },
+          setProperty() {},
+          deleteProperty() {},
+        };
+      },
+    },
   };
   runInNewContext(gs, context);
   const doPost = context.doPost;
@@ -193,7 +204,9 @@ beforeAll(() => {
   }
   postToSheet = (body) => {
     maxLock = 0;
-    doPost({ postData: { contents: JSON.stringify(body) } });
+    doPost({
+      postData: { contents: JSON.stringify({ ...body, secret: "test-gas-secret" }) },
+    });
     expect(lockDepth).toBe(0);
     expect(maxLock).toBe(1);
     return JSON.parse(lastBody) as PostResult;

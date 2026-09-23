@@ -128,6 +128,7 @@ const gs = readFileSync(gsPath, 'utf8');
 
 const sheets = new Map<string, FakeSheet>();
 const props = new Map<string, string>();
+const TEST_GAS_SECRET = 'test-gas-secret';
 let lastBody = '';
 let lockDepth = 0;
 
@@ -234,6 +235,7 @@ beforeAll(() => {
 function reset(): void {
   sheets.clear();
   props.clear();
+  props.set('GAS_SHARED_SECRET', TEST_GAS_SECRET);
   lastBody = '';
   lockDepth = 0;
   ensureSheet('Arkusz1');
@@ -244,13 +246,15 @@ function body(): Json {
 }
 
 function get(action: string, params: Record<string, string> = {}): Json {
-  api.doGet({ parameter: { action, ...params } });
+  api.doGet({ parameter: { action, secret: TEST_GAS_SECRET, ...params } });
   return body();
 }
 
 function post(payload: Record<string, unknown>): Json {
   lockDepth = 0;
-  api.doPost({ postData: { contents: JSON.stringify(payload) } });
+  api.doPost({
+    postData: { contents: JSON.stringify({ ...payload, secret: TEST_GAS_SECRET }) },
+  });
   expect(lockDepth).toBe(0);
   return body();
 }
