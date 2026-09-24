@@ -11,12 +11,14 @@
  *   CFP_COOKIE_NAME (domyślnie zwrotka_auth)
  *   CFP_COOKIE_DAYS (domyślnie 30)
  *
- * Po zalogowaniu zapisuje też sessionStorage.zwrotka_site_password —
- * front może wysłać X-Site-Password do Workera (cookie Pages ≠ cookie workers.dev).
+ * Po zalogowaniu zapisuje sessionStorage + localStorage (klucz zwrotka_site_password).
+ * localStorage przeżywa zamknięcie przeglądarki — jak cookie Pages (~30 dni).
+ * Front dokleja X-Site-Password do Workera (cookie Pages ≠ cookie workers.dev).
  */
 
 const DEFAULT_COOKIE = 'zwrotka_auth';
 const DEFAULT_DAYS = 30;
+const PASS_KEY = 'zwrotka_site_password';
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -32,10 +34,10 @@ export async function onRequest(context) {
   const cookies = parseCookie(request.headers.get('Cookie') || '');
 
   if (url.pathname === '/logout') {
-    return new Response('Wylogowano.', {
+    return new Response(logoutHtml(), {
       status: 200,
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Type': 'text/html; charset=utf-8',
         'Set-Cookie': clearCookie(cookieName),
       },
     });
@@ -66,13 +68,40 @@ export async function onRequest(context) {
 function postLoginHtml(password, next) {
   const safeNext = String(next || '/').replace(/"/g, '');
   const safePass = JSON.stringify(password);
+  const safeKey = JSON.stringify(PASS_KEY);
   return `<!DOCTYPE html>
 <html lang="pl"><meta charset="utf-8"><title>OK</title>
 <body>
 <p>Zalogowano…</p>
 <script>
-sessionStorage.setItem('zwrotka_site_password', ${safePass});
-location.replace(${JSON.stringify(safeNext)});
+(function () {
+  var key = ${safeKey};
+  var pass = ${safePass};
+  try {
+    sessionStorage.setItem(key, pass);
+    localStorage.setItem(key, pass);
+  } catch (e) {}
+  location.replace(${JSON.stringify(safeNext)});
+})();
+</script>
+</body></html>`;
+}
+
+function logoutHtml() {
+  const safeKey = JSON.stringify(PASS_KEY);
+  return `<!DOCTYPE html>
+<html lang="pl"><meta charset="utf-8"><title>Wylogowano</title>
+<body>
+<p>Wylogowano…</p>
+<script>
+(function () {
+  var key = ${safeKey};
+  try {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  } catch (e) {}
+  location.replace('/');
+})();
 </script>
 </body></html>`;
 }

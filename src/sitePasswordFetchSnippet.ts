@@ -1,6 +1,31 @@
-/** IIFE: sessionStorage hasło → nagłówek X-Site-Password przy fetch do Workera. */
+/** IIFE: sessionStorage/localStorage hasło → nagłówek X-Site-Password przy fetch do Workera. */
 export const SITE_PASSWORD_FETCH_SNIPPET = `(function () {
   var KEY = 'zwrotka_site_password';
+  var reauthPending = false;
+  function readPass() {
+    try {
+      var s = sessionStorage.getItem(KEY) || '';
+      if (s) return s;
+      var l = localStorage.getItem(KEY) || '';
+      if (l) {
+        try { sessionStorage.setItem(KEY, l); } catch (e) {}
+        return l;
+      }
+    } catch (e) {}
+    return '';
+  }
+  function clearPass() {
+    try {
+      sessionStorage.removeItem(KEY);
+      localStorage.removeItem(KEY);
+    } catch (e) {}
+  }
+  function forceReauth() {
+    if (reauthPending) return;
+    reauthPending = true;
+    clearPass();
+    location.assign('/logout');
+  }
   var _fetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     init = init ? Object.assign({}, init) : {};
@@ -10,8 +35,7 @@ export const SITE_PASSWORD_FETCH_SNIPPET = `(function () {
       url.indexOf('/api/formatka') !== -1 ||
       url.indexOf('workers.dev') !== -1;
     if (isProxy) {
-      var pass = '';
-      try { pass = sessionStorage.getItem(KEY) || ''; } catch (e) {}
+      var pass = readPass();
       if (pass) {
         var h = init.headers;
         if (!h) {
@@ -24,7 +48,12 @@ export const SITE_PASSWORD_FETCH_SNIPPET = `(function () {
       }
       if (init.credentials == null) init.credentials = 'include';
     }
-    return _fetch(input, init);
+    return _fetch(input, init).then(function (res) {
+      if (isProxy && res.status === 401) {
+        forceReauth();
+      }
+      return res;
+    });
   };
 })();
 `;
