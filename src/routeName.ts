@@ -73,6 +73,26 @@ export function proposeRouteName(
 }
 
 /**
+ * Czy nazwa trasy należy do podanego podwykonawcy (`nazwa-dd.mm.rr-nn`).
+ * Inny kontrahent w sesji nie może „kontynuować” cudzej trasy.
+ */
+export function routeNameBelongsToContractor(
+  routeName: string,
+  contractorShortName: string,
+): boolean {
+  const name = String(routeName ?? '').trim();
+  const contractor = String(contractorShortName ?? '').trim();
+  if (!name || !contractor) {
+    return false;
+  }
+  const prefix = contractor + '-';
+  if (!name.startsWith(prefix)) {
+    return false;
+  }
+  return /^\d{2}\.\d{2}\.\d{2}-\d{2}$/.test(name.slice(prefix.length));
+}
+
+/**
  * Nazwy, które blokują nowy numer. Sesja wchodzi razem z kolumną Trasa,
  * żeby druga trasa nie dostała z powrotem nazwy pierwszej, zanim arkusz ją odda.
  */
@@ -170,6 +190,8 @@ export function routeNameBrowserScript(): string {
   return (
     '\n' +
     functionSourceForBrowser(namesBlockingNewRoute) +
+    '\n' +
+    functionSourceForBrowser(routeNameBelongsToContractor) +
     '\n' +
     functionSourceForBrowser(proposeRouteName) +
     '\n'

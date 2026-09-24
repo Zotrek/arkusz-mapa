@@ -1001,7 +1001,7 @@ result = proposeRouteName(
       );
       expect(refresh.indexOf('lastRouteName')).toBeGreaterThan(-1);
       expect(refresh.indexOf('lastRouteName')).toBeLessThan(refresh.indexOf('proposeRouteName'));
-      expect(refresh).toContain("routeNameMode !== 'new'");
+      expect(refresh).toContain('sessionContinuesSameContractor');
       expect(refresh).toContain('namesBlockingNewRoute');
       expect(refresh).toContain('routeNameMissingDepsHint');
       expect(html).toContain('Najpierw wybierz kto odbiera');
@@ -1016,6 +1016,13 @@ result = proposeRouteName(
       expect(html).toContain('Ładowanie nazwy trasy…');
       expect(html).toContain("action: 'routeRateByName'");
       expect(html).toContain('routeNameProposeTicket');
+      expect(html).toContain('function sessionContinuesSameContractor');
+      expect(html).toContain('function routeNameBelongsToContractor');
+      const sessionContinue = html.slice(
+        html.indexOf('function sessionContinuesSameContractor('),
+        html.indexOf('function refreshRouteNameField('),
+      );
+      expect(sessionContinue).toContain('routeNameBelongsToContractor');
       const routeNameLoading = html.slice(
         html.indexOf('function setRouteNameFieldLoading('),
         html.indexOf('function refreshRouteNameField('),
@@ -1219,6 +1226,8 @@ result = proposeRouteName(
       };
       setRouteNameTouched: (value: boolean) => void;
       setRouteNameMode: (mode: string) => void;
+      setLastRouteName: (name: string) => void;
+      setContractor: (name: string) => void;
       lookupRouteRateCalls: string[];
       pendingFetches: Array<(resp: { ok?: boolean; names?: string[] }) => void>;
     };
@@ -1317,11 +1326,12 @@ var routeRateTimer = 0;
 var routeNameProposeTicket = 0;
 var transportApiEnabled = true;
 var lookupRouteRateCalls = [];
+var harnessContractor = 'GPW';
 function lookupRouteRate(name) {
   lookupRouteRateCalls.push(String(name == null ? '' : name));
 }
 function updateRouteSessionUi() {}
-function contractorShortNameForRoute() { return 'GPW'; }
+function contractorShortNameForRoute() { return harnessContractor; }
 function pickupDateForRoute() { return '2026-09-23'; }
 function isRouteChecked() {
   var el = document.getElementById('doc-chk-odbior-z-trasy');
@@ -1335,7 +1345,8 @@ ${sliceHtml(html, 'function readRouteRateInput(', 'function contractorShortNameF
 ${sliceHtml(html, 'function routeNameMissingDepsHint(', 'function resetRouteFormForOpen(')}
 ${sliceHtml(html, 'function resetRouteFormForOpen(', 'function lookupRouteRate(')}
 ${sliceHtml(html, 'function applyShownRouteName(', 'function updateRouteSessionUi(')}
-${sliceHtml(html, 'function setRouteNameFieldLoading(', 'function refreshRouteNameField(')}
+${sliceHtml(html, 'function setRouteNameFieldLoading(', 'function sessionContinuesSameContractor(')}
+${sliceHtml(html, 'function sessionContinuesSameContractor(', 'function refreshRouteNameField(')}
 ${sliceHtml(html, 'function refreshRouteNameField(', 'function onNowaTrasaClick(')}
 __api = {
   syncMapLoaderUi: syncMapLoaderUi,
@@ -1355,6 +1366,8 @@ __api = {
   },
   setRouteNameTouched: function (value) { routeNameTouched = !!value; },
   setRouteNameMode: function (mode) { routeNameMode = String(mode); },
+  setLastRouteName: function (name) { lastRouteName = String(name == null ? '' : name); },
+  setContractor: function (name) { harnessContractor = String(name == null ? '' : name); },
   lookupRouteRateCalls: lookupRouteRateCalls
 };
 `;
@@ -1491,6 +1504,60 @@ __api = {
       api.pendingFetches[0]({ ok: true, names: [] });
       await flushFetch();
       expect(nameEl.value).toBe('');
+    });
+
+    it('test_refreshRouteNameField_when_same_contractor_continue_should_reuse_session_name', () => {
+      const { api, els } = loadOrchestration();
+      const nameEl = els['doc-inp-trasa'];
+      const rateEl = els['doc-inp-stawka-trasy'];
+      api.setLastRouteName('GPW-23.09.26-01');
+      api.setContractor('GPW');
+      api.setRouteNameMode('continue');
+      rateEl.value = '120';
+
+      api.refreshRouteNameField();
+
+      expect(api.pendingFetches).toHaveLength(0);
+      expect(nameEl.value).toBe('GPW-23.09.26-01');
+      expect(rateEl.value).toBe('120');
+    });
+
+    it('test_refreshRouteNameField_when_other_contractor_should_propose_new_name', async () => {
+      const { api, els } = loadOrchestration();
+      const nameEl = els['doc-inp-trasa'];
+      const rateEl = els['doc-inp-stawka-trasy'];
+      api.setLastRouteName('papitus-24.10.26-01');
+      api.setContractor('Geodis');
+      api.setRouteNameMode('continue');
+      rateEl.value = '120';
+
+      api.refreshRouteNameField();
+      expect(api.pendingFetches).toHaveLength(1);
+      expect(rateEl.value).toBe('');
+
+      api.pendingFetches[0]({ ok: true, names: [] });
+      await flushFetch();
+      expect(nameEl.value).toBe('Geodis-23.09.26-01');
+      expect(nameEl.value).not.toBe('papitus-24.10.26-01');
+    });
+
+    it('test_refreshRouteNameField_when_switch_back_to_session_contractor_should_reuse_again', async () => {
+      const { api, els } = loadOrchestration();
+      const nameEl = els['doc-inp-trasa'];
+      api.setLastRouteName('papitus-24.10.26-01');
+      api.setContractor('Geodis');
+      api.setRouteNameMode('continue');
+
+      api.refreshRouteNameField();
+      api.pendingFetches[0]({ ok: true, names: [] });
+      await flushFetch();
+      expect(nameEl.value).toBe('Geodis-23.09.26-01');
+
+      const fetchesBefore = api.pendingFetches.length;
+      api.setContractor('papitus');
+      api.refreshRouteNameField();
+      expect(api.pendingFetches).toHaveLength(fetchesBefore);
+      expect(nameEl.value).toBe('papitus-24.10.26-01');
     });
   });
 

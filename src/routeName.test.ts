@@ -4,6 +4,7 @@ import {
   functionSourceForBrowser,
   namesBlockingNewRoute,
   proposeRouteName,
+  routeNameBelongsToContractor,
   routeNameBrowserScript,
   stripEsbuildKeepNames,
 } from './routeName.js';
@@ -138,6 +139,24 @@ describe('proposeRouteName', () => {
     expect(namesBlockingNewRoute(null, '   ')).toEqual([]);
   });
 
+  it('test_routeNameBelongsToContractor_when_prefix_and_stamp_match_should_return_true', () => {
+    expect(routeNameBelongsToContractor('papitus-24.10.26-01', 'papitus')).toBe(true);
+    expect(routeNameBelongsToContractor('GPW-23.09.26-02', 'GPW')).toBe(true);
+  });
+
+  it('test_routeNameBelongsToContractor_when_other_contractor_should_return_false', () => {
+    expect(routeNameBelongsToContractor('papitus-24.10.26-01', 'Geodis')).toBe(false);
+    expect(routeNameBelongsToContractor('papitus-24.10.26-01', 'pap')).toBe(false);
+    expect(routeNameBelongsToContractor('papitus-extra-24.10.26-01', 'papitus')).toBe(false);
+  });
+
+  it('test_routeNameBelongsToContractor_when_empty_or_malformed_should_return_false', () => {
+    expect(routeNameBelongsToContractor('', 'GPW')).toBe(false);
+    expect(routeNameBelongsToContractor('GPW-23.09.26-01', '')).toBe(false);
+    expect(routeNameBelongsToContractor('GPW', 'GPW')).toBe(false);
+    expect(routeNameBelongsToContractor('GPW-23.09.2026-01', 'GPW')).toBe(false);
+  });
+
   it('test_proposeRouteName_when_session_holds_01_should_return_02_even_if_sheet_list_is_empty', () => {
     expect(
       proposeRouteName(namesBlockingNewRoute([], 'Papirus-21.09.26-01'), 'Papirus', '21.09.2026'),
@@ -147,6 +166,7 @@ describe('proposeRouteName', () => {
   it('test_routeNameBrowserScript_when_built_should_be_proposeRouteName_source', () => {
     const script = routeNameBrowserScript();
     expect(script).toContain('function namesBlockingNewRoute');
+    expect(script).toContain('function routeNameBelongsToContractor');
     expect(script).toContain('function proposeRouteName');
     expect(script).not.toContain('__name');
     expect(script).not.toContain('function proposeRouteNameJs');

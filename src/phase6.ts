@@ -2895,7 +2895,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var btn = document.getElementById('doc-btn-nowa-trasa');
       var hint = document.getElementById('doc-route-continue-hint');
       var remembered = String(lastRouteName || '').trim();
-      var continuing = routeNameMode !== 'new' && !!remembered;
+      var continuing = sessionContinuesSameContractor();
       if (btn) {
         btn.hidden = !remembered;
         btn.textContent = continuing ? 'Nowa trasa' : ('Dołącz do ' + remembered);
@@ -2923,6 +2923,18 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       // Pulsujące logo (ten sam overlay co transport), ale depth osobny od mapLoaderDepth.
       syncMapLoaderUi(null);
     }
+    /** Kontynuacja tylko gdy sesja i wybrany podwykonawca to ta sama trasa. */
+    function sessionContinuesSameContractor() {
+      if (routeNameMode === 'new') return false;
+      var remembered = String(lastRouteName || '').trim();
+      if (!remembered) return false;
+      var contractor = contractorShortNameForRoute();
+      if (!contractor) return true;
+      if (typeof routeNameBelongsToContractor === 'function') {
+        return routeNameBelongsToContractor(remembered, contractor);
+      }
+      return true;
+    }
     function refreshRouteNameField() {
       if (!isRouteChecked() || typeof routeNameToShow !== 'function' || typeof lastRouteName === 'undefined') return;
       updateRouteSessionUi();
@@ -2930,7 +2942,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         lookupRouteRate(readRouteNameInput());
         return;
       }
-      if (routeNameMode !== 'new' && String(lastRouteName || '').trim()) {
+      if (sessionContinuesSameContractor()) {
         applyShownRouteName(routeNameToShow({
           sessionLastName: lastRouteName,
           proposal: '',
@@ -2940,7 +2952,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         return;
       }
       function propose(names) {
-        if (!isRouteChecked() || routeNameTouched || (routeNameMode !== 'new' && String(lastRouteName || '').trim())) return;
+        if (!isRouteChecked() || routeNameTouched || sessionContinuesSameContractor()) return;
         // Odczyt w momencie apply — nie z domknięcia sprzed fetcha (kto odbiera mógł dojść w trakcie).
         var contractor = contractorShortNameForRoute();
         var date = pickupDateForRoute();
@@ -2974,6 +2986,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           currentInput: readRouteNameInput(),
           inputTouched: false
         }));
+      }
+      // Inny podwykonawca niż w sesji: nie ciągnij starej stawki do nowej nazwy.
+      if (String(lastRouteName || '').trim() && !routeRateTouched) {
+        var clearRate = document.getElementById('doc-inp-stawka-trasy');
+        if (clearRate) clearRate.value = '';
+        routeRateBaseline = '';
+        routeRateBaselineName = '';
       }
       var contractorNow = contractorShortNameForRoute();
       var dateNow = pickupDateForRoute();
