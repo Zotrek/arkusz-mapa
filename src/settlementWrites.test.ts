@@ -946,7 +946,7 @@ describe("approve", () => {
 
   it("test_approve_unreadable_pickup_date_is_skipped", () => {
     const { register } = fresh();
-    seedRegister(register, 2, { 5: "2026-09-18" });
+    seedRegister(register, 2, { 5: "nie-data" });
     seedRegister(register, 3, { 1: 16 });
 
     const result = postToSheet({
@@ -962,6 +962,21 @@ describe("approve", () => {
     expect(register.cell(2, 14)).toBe("");
     expect(register.cell(3, 14)).toBe("tak");
     expect(register.cell(3, 16)).toBe(10);
+  });
+
+  it("test_approve_iso_pickup_date_is_accepted", () => {
+    const { register } = fresh();
+    seedRegister(register, 2, { 5: "2026-09-18" });
+
+    const result = postToSheet({
+      action: "approve",
+      numerFaktury: "FV/8b",
+      wiersze: [{ sheetRow: 2, transportNumber: "15", koszt: 3000 }],
+    });
+
+    expect(result.pominiete).toEqual([]);
+    expect(register.cell(2, 14)).toBe("tak");
+    expect(register.cell(2, 16)).toBe(30);
   });
 
   it("test_approve_bad_cost_skips_row_and_missing_rate_sheet_still_writes", () => {
