@@ -7,13 +7,16 @@
 # Wymagane sekrety:
 #   GOOGLE_SHEETS_ID              — ID arkusza z URL Google Sheets
 #   GOOGLE_SERVICE_ACCOUNT_JSON   — cały plik JSON klucza Service Account
-#   TRANSPORT_WEBAPP_URL          — URL Cloudflare Workera …/api/transport
+#   TRANSPORT_WEBAPP_URL          — opcjonalnie; domyślnie /api/transport (same-origin Pages)
 #   CLOUDFLARE_API_TOKEN          — Pages Edit
 #   CLOUDFLARE_ACCOUNT_ID         — Account ID z dash CF
 #   CLOUDFLARE_PAGES_PROJECT      — nazwa projektu Pages (np. arkusz-mapa-xxxx)
 #
-# Generate w GH Actions → wrangler pages deploy → *.pages.dev (hasło CFP_PASSWORD w CF).
+# Generate w GH Actions → wrangler pages deploy → *.pages.dev
+# Na CF Pages env: CFP_PASSWORD + GAS_PROXY_BASE=https://….workers.dev
 # W CF: wyłącz auto-build z Gita, żeby nie dublować.
+#
+# github.io (gh-pages): NIE publikujemy mapy z API — tylko stub „przenieś na pages.dev”.
 #
 # W repo muszą być (domyślnie):
 #   docs/pusty.docx
@@ -22,7 +25,7 @@
 # Cache geokodowania: commituj data/phase5-cache.json po lokalnym `npm run generate`.
 # Na CI: merge data/ (priorytet) + Actions cache — patrz scripts/merge-phase5-cache.mjs
 #
-# Legacy: nadal push na gałąź gh-pages (github.io).
+# Legacy: gałąź gh-pages dostaje tylko stub (bez mapy / bez API).
 #
 # Każde uruchomienie zastępuje całą witrynę (tylko mapy z tego biegu).
 name: arkusz-mapa — Pages
@@ -102,12 +105,13 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.ci-credentials.json
           OUTPUT_DIR: ${{ github.workspace }}/site/maps
           PHASE5_CACHE_PATH: ${{ github.workspace }}/.cache/phase5-cache.json
-          TRANSPORT_WEBAPP_URL: ${{ secrets.TRANSPORT_WEBAPP_URL }}
         run: |
           if [ -z "$GOOGLE_SHEETS_ID" ]; then
             echo "::error::Brak sekretu GOOGLE_SHEETS_ID"
             exit 1
           fi
+          export TRANSPORT_WEBAPP_URL="/api/transport"
+          echo "TRANSPORT_WEBAPP_URL=$TRANSPORT_WEBAPP_URL"
           mkdir -p "$OUTPUT_DIR"
           npm run generate
 
@@ -130,10 +134,29 @@ jobs:
           fi
           npx --yes wrangler@4 pages deploy ./site --project-name="$PROJECT" --commit-dirty=true
 
-      - name: Publikacja na gałąź gh-pages (legacy github.io)
+      - name: Stub na gh-pages (bez API — wymusza pages.dev)
+        run: |
+          mkdir -p gh-stub
+          cat > gh-stub/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="pl">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Mapa przeniesiona</title>
+          </head>
+          <body style="font-family:system-ui;max-width:36rem;margin:3rem auto;padding:0 1rem;line-height:1.5">
+            <h1>Mapa jest na Cloudflare Pages</h1>
+            <p>Ten adres GitHub Pages nie obsługuje już rejestru transportów (hasło + API).</p>
+            <p>Użyj linku <strong>*.pages.dev</strong> od zespołu (po haśle).</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Publikacja stubu na gałąź gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
+          publish_dir: ./gh-stub
           force_orphan: true
-          commit_message: 'deploy: arkusz-mapa ${{ github.run_id }}'
+          commit_message: 'deploy: arkusz-mapa gh-stub ${{ github.run_id }}'

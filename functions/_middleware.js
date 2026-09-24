@@ -1,24 +1,23 @@
 /**
  * Cloudflare Pages Function — wspólne hasło zespołu + cookie (ta przeglądarka).
  *
- * Skopiuj ten plik do każdego projektu Pages jako:
- *   functions/_middleware.js
+ * Skopiuj katalog functions/ do każdego projektu Pages.
  *
- * Sekret w CF Pages → Settings → Environment variables:
- *   CFP_PASSWORD = (to samo co SITE_PASSWORD na Workerze)
+ * Sekrety w CF Pages → Settings → Environment variables (Production):
+ *   CFP_PASSWORD     = to samo co SITE_PASSWORD na Workerze
+ *   GAS_PROXY_BASE   = https://…workers.dev  (bez ścieżki /api/…)
  *
  * Opcjonalnie:
  *   CFP_COOKIE_NAME (domyślnie zwrotka_auth)
  *   CFP_COOKIE_DAYS (domyślnie 30)
  *
- * Po zalogowaniu zapisuje sessionStorage + localStorage (klucz zwrotka_site_password).
- * localStorage przeżywa zamknięcie przeglądarki — jak cookie Pages (~30 dni).
- * Front dokleja X-Site-Password do Workera (cookie Pages ≠ cookie workers.dev).
+ * Front woła same-origin /api/transport|formatka — cookie Pages wystarczy.
+ * Hasła NIE trzymamy w localStorage (XSS / TTL / storage zablokowany).
  */
 
 const DEFAULT_COOKIE = 'zwrotka_auth';
 const DEFAULT_DAYS = 30;
-const PASS_KEY = 'zwrotka_site_password';
+const LEGACY_PASS_KEY = 'zwrotka_site_password';
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -32,6 +31,8 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const token = await authToken(password);
   const cookies = parseCookie(request.headers.get('Cookie') || '');
+  const isApi = url.pathname === '/api/transport' || url.pathname === '/api/formatka'
+    || url.pathname.startsWith('/api/transport/') || url.pathname.startsWith('/api/formatka/');
 
   if (url.pathname === '/logout') {
     return new Response(logoutHtml(), {
@@ -47,9 +48,10 @@ export async function onRequest(context) {
     const form = await request.formData();
     const submitted = String(form.get('password') || '').trim();
     if (submitted !== password) {
-      return loginHtml(true);
+      return loginHtml(true, url.searchParams.get('next') || '/');
     }
-    return new Response(postLoginHtml(password, url.searchParams.get('next') || '/'), {
+    const nextPath = sanitizeNext(url.searchParams.get('next'));
+    return new Response(postLoginHtml(nextPath), {
       status: 200,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
@@ -62,13 +64,21 @@ export async function onRequest(context) {
     return next();
   }
 
-  return loginHtml(false);
+  if (isApi) {
+    return json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  return loginHtml(false, url.pathname + url.search);
 }
 
-function postLoginHtml(password, next) {
-  const safeNext = String(next || '/').replace(/"/g, '');
-  const safePass = JSON.stringify(password);
-  const safeKey = JSON.stringify(PASS_KEY);
+function sanitizeNext(next) {
+  const raw = String(next || '/');
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/';
+  return raw.replace(/"/g, '');
+}
+
+function postLoginHtml(next) {
+  const safeKey = JSON.stringify(LEGACY_PASS_KEY);
   return `<!DOCTYPE html>
 <html lang="pl"><meta charset="utf-8"><title>OK</title>
 <body>
@@ -76,19 +86,18 @@ function postLoginHtml(password, next) {
 <script>
 (function () {
   var key = ${safeKey};
-  var pass = ${safePass};
   try {
-    sessionStorage.setItem(key, pass);
-    localStorage.setItem(key, pass);
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
   } catch (e) {}
-  location.replace(${JSON.stringify(safeNext)});
+  location.replace(${JSON.stringify(next)});
 })();
 </script>
 </body></html>`;
 }
 
 function logoutHtml() {
-  const safeKey = JSON.stringify(PASS_KEY);
+  const safeKey = JSON.stringify(LEGACY_PASS_KEY);
   return `<!DOCTYPE html>
 <html lang="pl"><meta charset="utf-8"><title>Wylogowano</title>
 <body>
@@ -106,7 +115,9 @@ function logoutHtml() {
 </body></html>`;
 }
 
-function loginHtml(bad) {
+function loginHtml(bad, nextPath) {
+  const next = sanitizeNext(nextPath);
+  const action = next === '/' ? '/__login' : `/__login?next=${encodeURIComponent(next)}`;
   const html = `<!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -124,7 +135,7 @@ function loginHtml(bad) {
 <body>
   <h1>Hasło zespołu</h1>
   ${bad ? '<p class="err">Złe hasło.</p>' : ''}
-  <form method="post" action="/__login">
+  <form method="post" action="${action}">
     <label for="password">Hasło</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
     <button type="submit">Wejdź</button>
@@ -134,6 +145,13 @@ function loginHtml(bad) {
   return new Response(html, {
     status: bad ? 401 : 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
+function json(obj, status) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
   });
 }
 

@@ -6,8 +6,9 @@
 # Zwykły workflow „arkusz-mapa — Pages” NIE kopiuje plomb (bez COPY_ODEBRANE_Z_HARMONOGRAMU).
 #
 # Wymagane sekrety: jak w arkusz-mapa-pages.yml
-#   GOOGLE_SHEETS_ID, GOOGLE_SERVICE_ACCOUNT_JSON, TRANSPORT_WEBAPP_URL
-#   + GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID — arkusz „ewidencja odbiorów” (zapis „odebrane z harmonogramu”)
+#   GOOGLE_SHEETS_ID, GOOGLE_SERVICE_ACCOUNT_JSON
+#   + GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID — arkusz „ewidencja odbiorów”
+# Build: TRANSPORT_WEBAPP_URL=/api/transport. CF Pages: CFP_PASSWORD + GAS_PROXY_BASE.
 #
 # Odczyt plomb: trasówki (GOOGLE_SHEETS_ID). Zapis wyników: ewidencja (GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID).
 # Po kopiowaniu: uzupełnia zakładkę „Baza cen harmonogram” (adres, podwykonawca, dni). Cen nie nadpisuje.
@@ -89,7 +90,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.ci-credentials.json
           OUTPUT_DIR: ${{ github.workspace }}/site/maps
           PHASE5_CACHE_PATH: ${{ github.workspace }}/.cache/phase5-cache.json
-          TRANSPORT_WEBAPP_URL: ${{ secrets.TRANSPORT_WEBAPP_URL }}
+          TRANSPORT_WEBAPP_URL: /api/transport
           COPY_ODEBRANE_Z_HARMONOGRAMU: '1'
         run: |
           if [ -z "$GOOGLE_SHEETS_ID" ]; then
@@ -118,10 +119,29 @@ jobs:
           fi
           npx --yes wrangler@4 pages deploy ./site --project-name="$PROJECT" --commit-dirty=true
 
-      - name: Publikacja na gałąź gh-pages (legacy github.io)
+      - name: Stub na gh-pages (bez API — wymusza pages.dev)
+        run: |
+          mkdir -p gh-stub
+          cat > gh-stub/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="pl">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Mapa przeniesiona</title>
+          </head>
+          <body style="font-family:system-ui;max-width:36rem;margin:3rem auto;padding:0 1rem;line-height:1.5">
+            <h1>Mapa jest na Cloudflare Pages</h1>
+            <p>Ten adres GitHub Pages nie obsługuje już rejestru transportów (hasło + API).</p>
+            <p>Użyj linku <strong>*.pages.dev</strong> od zespołu (po haśle).</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Publikacja stubu na gałąź gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
+          publish_dir: ./gh-stub
           force_orphan: true
-          commit_message: 'deploy: arkusz-mapa odebrane ${{ github.run_id }}'
+          commit_message: 'deploy: arkusz-mapa odebrane gh-stub ${{ github.run_id }}'
