@@ -288,10 +288,25 @@ describe('settlementSearch_', () => {
 
   it('test_settlementSearch_bad_date_format_returns_error', () => {
     fresh();
-    expect(gas.settlementSearch_({ podwykonawca: 'gpw', dataDo: '2026-09-20' })).toEqual({
+    expect(gas.settlementSearch_({ podwykonawca: 'gpw', dataDo: 'nie-data' })).toEqual({
       ok: false,
       error: 'dataDo is not dd.mm.yyyy',
     });
+  });
+
+  it('test_settlementSearch_accepts_iso_dataDo', () => {
+    const { register } = fresh(false);
+    seedRegister(register, 2, { 5: '20.09.2026' });
+    const result = gas.settlementSearch_({
+      podwykonawca: 'gpw',
+      dataOd: '2026-09-01',
+      dataDo: '2026-09-30',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toHaveLength(1);
   });
 
   it('test_settlementSearch_dataOd_after_dataDo_returns_error', () => {

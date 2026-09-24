@@ -1983,7 +1983,7 @@ function settlementFormatDate_(year, month, day) {
   return settlementPad2_(day) + '.' + settlementPad2_(month) + '.' + String(year);
 }
 
-/** Tekst dd.mm.yyyy albo null. Puste i ISO nie przechodzą. Data z arkusza (obiekt) idzie składnikami lokalnymi. */
+/** Tekst dd.mm.yyyy albo null. Data z arkusza (obiekt) idzie składnikami lokalnymi. Akceptuje też ISO yyyy-mm-dd. */
 function settlementDateText_(value) {
   if (value instanceof Date) {
     if (isNaN(value.getTime())) {
@@ -2017,16 +2017,26 @@ function settlementDateText_(value) {
     return null;
   }
   var match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
-  if (!match) {
-    return null;
+  if (match) {
+    var d = parseInt(match[1], 10);
+    var m = parseInt(match[2], 10);
+    var y = parseInt(match[3], 10);
+    if (!settlementCalendarOk_(y, m, d)) {
+      return null;
+    }
+    return settlementFormatDate_(y, m, d);
   }
-  var d = parseInt(match[1], 10);
-  var m = parseInt(match[2], 10);
-  var y = parseInt(match[3], 10);
-  if (!settlementCalendarOk_(y, m, d)) {
-    return null;
+  var iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/.exec(s);
+  if (iso) {
+    var yi = parseInt(iso[1], 10);
+    var mi = parseInt(iso[2], 10);
+    var di = parseInt(iso[3], 10);
+    if (!settlementCalendarOk_(yi, mi, di)) {
+      return null;
+    }
+    return settlementFormatDate_(yi, mi, di);
   }
-  return settlementFormatDate_(y, m, d);
+  return null;
 }
 
 function settlementCompareDate_(a, b) {
