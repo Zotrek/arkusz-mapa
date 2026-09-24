@@ -102,6 +102,7 @@ type GasFns = {
     query: Record<string, unknown>,
     register: { sheetRow: number; cells: Cell[] }[],
     rates: { sheetRow: number; cells: Cell[] }[],
+    odebrane?: { headers: string[]; rows: Cell[][] },
   ) => SettlementResult;
   buildSettlementHarmonogramRead_: (
     query: Record<string, unknown>,
@@ -116,9 +117,10 @@ const gsPath = join(
 );
 const gs = readFileSync(gsPath, 'utf8');
 
-const holder: { register: FakeSheet; rates: FakeSheet | null } = {
+const holder: { register: FakeSheet; rates: FakeSheet | null; odebrane: FakeSheet | null } = {
   register: new FakeSheet(),
   rates: null,
+  odebrane: null,
 };
 
 let lastBody = '';
@@ -140,6 +142,9 @@ beforeAll(() => {
             }
             if (name === 'Baza stawek') {
               return holder.rates;
+            }
+            if (name === 'odebrane z harmonogramu') {
+              return holder.odebrane;
             }
             return null;
           },
@@ -200,12 +205,14 @@ beforeAll(() => {
   };
 });
 
-function fresh(withRates = true): { register: FakeSheet; rates: FakeSheet | null } {
+function fresh(withRates = true): { register: FakeSheet; rates: FakeSheet | null; odebrane: FakeSheet } {
   const register = new FakeSheet();
   const rates = withRates ? new FakeSheet() : null;
+  const odebrane = new FakeSheet();
   holder.register = register;
   holder.rates = rates;
-  return { register, rates };
+  holder.odebrane = odebrane;
+  return { register, rates, odebrane };
 }
 
 /** Kolumny 1–18 rejestru (indeksy jak w mapSettlementRegisterRow_). */
@@ -450,6 +457,63 @@ describe('settlementStats_', () => {
       return;
     }
     expect(result.rows.map((r) => r.contractor).sort()).toEqual(['gpw', 'inny']);
+  });
+
+  it('test_settlementStats_includes_odebrane_schedule_bags', () => {
+    const { register, odebrane } = fresh(false);
+    seedRegister(register, 2, { 1: 40, 6: 'gpw', 14: 'tak', 5: '15.09.2026', 9: 1 });
+    const headers = [
+      'NIP',
+      'Podmiot',
+      'Sklep',
+      'Wg',
+      'Dni',
+      'Firma transportowa',
+      'Kod pocztowy',
+      'Miasto',
+      'Ulica',
+      'Numer budynku',
+      'Gmina',
+      'Woj',
+      'Plomba',
+      'Stan',
+      'TMS',
+      'Data zamknięcia worka',
+    ];
+    headers.forEach((h, i) => odebrane.put(1, i + 1, h));
+    const putBag = (row: number, plomba: string) => {
+      odebrane.put(row, 3, 'Sklep H');
+      odebrane.put(row, 6, 'gpw');
+      odebrane.put(row, 7, '30-001');
+      odebrane.put(row, 8, 'Kraków');
+      odebrane.put(row, 9, 'Testowa');
+      odebrane.put(row, 10, '1');
+      odebrane.put(row, 13, plomba);
+      odebrane.put(row, 16, '16.09.2026');
+    };
+    putBag(2, 'p1');
+    putBag(3, 'p2');
+
+    const result = gas.settlementStats_({
+      podwykonawca: 'gpw',
+      dataOd: '01.09.2026',
+      dataDo: '30.09.2026',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const schedule = result.rows.filter((r) => r.mode === 'schedule');
+    expect(schedule).toHaveLength(1);
+    expect(schedule[0]).toMatchObject({
+      mode: 'schedule',
+      bagCount: 2,
+      contractor: 'gpw',
+      pickupDate: '16.09.2026',
+      happened: true,
+      settled: false,
+    });
+    expect(result.rows.some((r) => r.mode === 'report' && r.transportNumber === '40')).toBe(true);
   });
 
   it('test_settlementStats_via_doGet_returns_json', () => {
