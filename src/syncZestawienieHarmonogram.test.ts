@@ -75,6 +75,40 @@ describe('buildScheduleSyncExpected', () => {
       rodzajZbiorki: 'ręczna i automatyczna',
     });
   });
+
+  it('test_buildScheduleSyncExpected_joins_bags_when_baza_healed_odebrane_has_al', () => {
+    const rows = buildScheduleSyncExpected(
+      '15.09.2026',
+      '15.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['51-602 Wrocław Kochanowskiego 33', 'THOR', 'T1', '40', '5', '100', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({
+          'Kod pocztowy': '51-602',
+          Miasto: 'Wrocław',
+          Ulica: 'al. Kochanowskiego',
+          'Numer budynku': '33',
+          'Numer plomby': 'P1',
+        }),
+        odebraneRow({
+          'Kod pocztowy': '51-602',
+          Miasto: 'Wrocław',
+          Ulica: 'al. Kochanowskiego',
+          'Numer budynku': '33',
+          'Numer plomby': 'P2',
+        }),
+      ],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      address: '51-602 Wrocław Kochanowskiego 33',
+      bagCount: 2,
+      pickupRate: '40',
+      bagRate: '5',
+      routeName: 'T1',
+    });
+  });
 });
 
 describe('planScheduleSync', () => {

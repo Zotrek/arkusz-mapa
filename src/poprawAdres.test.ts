@@ -97,4 +97,10 @@ describe('poprawAdres', () => {
     const key = buildPoprawAdresLookupKey('  Adres   1  ', ' PH ', ' sklep ');
     expect(key).toContain('adres 1');
   });
+
+  it('test_buildPoprawAdresLookupKey_when_al_vs_map_form_should_match', () => {
+    expect(buildPoprawAdresLookupKey('51-602 Wrocław al. Kochanowskiego 33')).toBe(
+      buildPoprawAdresLookupKey('51-602 Wrocław Kochanowskiego 33'),
+    );
+  });
 });

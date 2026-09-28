@@ -13,7 +13,7 @@
  * GET ?action=routeRateByName&name=…  → { ok, stawka }  (stawka z nierozliczonego wiersza, pusta gdy nazwy nie było)
  * GET ?action=listContractors  → { ok, data: [ { nazwa, dane } ] }  (odczyt, bez zapisu)
  * GET ?action=listStoreAddresses → { ok, data: [ { adres, sklep }, … ] }
- *   Unikalny adres z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta. Zapis stawki i tak idzie adresem. Bez zapisu.
+ *   Unikalny adres (po normalizacji al./pl./Św.) z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
  *   dataOd opcjonalna. tryb=harmonogram → zakładka „zestawienie z harmonogramu” (+ rates z Bazy cen).
  *   To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
@@ -41,7 +41,7 @@
  *   Pusta `stawkaTrasy` zostaje pusta tylko na nowym wierszu i nie czyści stawki innych wierszy tej nazwy.
  *   Kwota, także 0, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 10.
  *   Kolumny 12–13 (Stawka za podjazd / Stawka za worek) zawsze ze snapshotu Bazy stawek
- *   (adres + kto odbiera + data odbioru). Remis albo brak pary → puste.
+ *   (adres po normalizacji al./pl./Św. + kto odbiera + data odbioru). Remis albo brak pary → puste.
  *   Komentarze 1–2 na kolumnach 19–20.
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate | saveRateHarmonogram
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
@@ -848,11 +848,12 @@ function resolveSnapshotFromRateList_(rates, shop, contractor, pickupDate) {
   if (!shop || !contractor || !pickupDate || !rates || !rates.length) {
     return empty;
   }
+  var shopKey = normalizeRateShopKey_(shop);
   var matching = [];
   var i;
   for (i = 0; i < rates.length; i++) {
     var rate = rates[i];
-    if (rate.shop !== shop || rate.contractor !== contractor) {
+    if (normalizeRateShopKey_(rate.shop) !== shopKey || rate.contractor !== contractor) {
       continue;
     }
     if (!approveRateApplies_(rate.validFrom, pickupDate)) {
@@ -1062,7 +1063,7 @@ function buildTransportShopKey_(podmiot, adres) {
 }
 
 function normalizeTransportKeyPart_(text) {
-  var s = String(text || '')
+  var s = normalizeRateShopKey_(text)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
   s = s
@@ -1993,7 +1994,7 @@ function listStoreAddresses_() {
 }
 
 function uniqueStoreAddresses_(rows) {
-  var byAddress = {};
+  var byKey = {};
   var order = [];
   var i;
   for (i = 0; i < rows.length; i++) {
@@ -2006,16 +2007,20 @@ function uniqueStoreAddresses_(rows) {
     if (!adres) {
       continue;
     }
-    if (!byAddress[adres]) {
-      byAddress[adres] = { adres: adres, sklep: sklep };
-      order.push(adres);
-    } else if (!byAddress[adres].sklep && sklep) {
-      byAddress[adres].sklep = sklep;
+    var key = normalizeRateShopKey_(adres);
+    if (!key) {
+      continue;
+    }
+    if (!byKey[key]) {
+      byKey[key] = { adres: adres, sklep: sklep };
+      order.push(key);
+    } else if (!byKey[key].sklep && sklep) {
+      byKey[key].sklep = sklep;
     }
   }
   var out = [];
   for (i = 0; i < order.length; i++) {
-    out.push(byAddress[order[i]]);
+    out.push(byKey[order[i]]);
   }
   out.sort(function (a, b) {
     return a.adres.localeCompare(b.adres, 'pl');
@@ -2652,9 +2657,9 @@ function buildSettlementStats_(query, register, rates, odebrane) {
   return { ok: true, rows: rows, rates: rateRows };
 }
 
+/** Fold klucza sync/statystyk: al./pl./Św. jak w stawkach, potem ASCII (ogonki). */
 function settlementFoldPl_(text) {
-  return settlementText_(text)
-    .toLowerCase()
+  return normalizeRateShopKey_(text)
     .replace(/ą/g, 'a')
     .replace(/ć/g, 'c')
     .replace(/ę/g, 'e')
@@ -3057,7 +3062,10 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
       var ri;
       for (ri = 0; ri < rateRows.length; ri++) {
         var rate = rateRows[ri];
-        if (rate.shop !== meta.address || settlementFoldPl_(rate.contractor) !== settlementFoldPl_(meta.contractor)) {
+        if (
+          settlementFoldPl_(rate.shop) !== settlementFoldPl_(meta.address) ||
+          settlementFoldPl_(rate.contractor) !== settlementFoldPl_(meta.contractor)
+        ) {
           continue;
         }
         if (rate.validFrom && settlementCompareDate_(rate.validFrom, day) > 0) {
@@ -3447,7 +3455,7 @@ function resolveRateTie_(body) {
       continue;
     }
     if (
-      other.shop === kept.shop &&
+      normalizeRateShopKey_(other.shop) === normalizeRateShopKey_(kept.shop) &&
       other.contractor === kept.contractor &&
       other.validFrom === kept.validFrom
     ) {

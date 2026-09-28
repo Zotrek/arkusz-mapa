@@ -866,6 +866,68 @@ describe('buildScheduleSyncExpected_', () => {
     });
   });
 
+  it('test_buildScheduleSyncExpected_joins_bags_when_baza_healed_odebrane_has_al', () => {
+    const rows = gas.buildScheduleSyncExpected_(
+      '15.09.2026',
+      '15.09.2026',
+      [
+        {
+          sheetRow: 2,
+          cells: ['51-602 Wrocław Kochanowskiego 33', 'THOR', 'T1', 40, 5, 100, '', 'wt'],
+        },
+      ],
+      {
+        headers: odebraneHeaders,
+        rows: [
+          [
+            '',
+            '',
+            'Kochanowskiego',
+            'Tak',
+            'wt',
+            'THOR',
+            '51-602',
+            'Wrocław',
+            'al. Kochanowskiego',
+            '33',
+            '',
+            '',
+            '1',
+            '',
+            '',
+            '15.09.2026',
+          ],
+          [
+            '',
+            '',
+            'Kochanowskiego',
+            'Tak',
+            'wt',
+            'THOR',
+            '51-602',
+            'Wrocław',
+            'al. Kochanowskiego',
+            '33',
+            '',
+            '',
+            '2',
+            '',
+            '',
+            '15.09.2026',
+          ],
+        ],
+      },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      address: '51-602 Wrocław Kochanowskiego 33',
+      bagCount: 2,
+      pickupRate: 40,
+      bagRate: 5,
+      routeName: 'T1',
+    });
+  });
+
   it('test_buildScheduleSyncExpected_includes_shops_only_in_odebrane', () => {
     const rows = gas.buildScheduleSyncExpected_(
       '15.09.2026',

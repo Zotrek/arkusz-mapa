@@ -654,6 +654,27 @@ describe("resolveRateTie", () => {
     expect(register.cell(2, 17)).toBe("111");
   });
 
+  it("test_resolveRateTie_deletes_al_prefix_variant_same_pair_and_date", () => {
+    const { rates } = fresh();
+    rates.put(1, 1, "Sklep");
+    rates.put(2, 1, "51-602 Wrocław Kochanowskiego 33");
+    rates.put(2, 2, "gpw");
+    rates.put(2, 3, 20);
+    rates.put(2, 4, 10);
+    rates.put(2, 5, "");
+    rates.put(3, 1, "51-602 Wrocław al. Kochanowskiego 33");
+    rates.put(3, 2, "gpw");
+    rates.put(3, 3, 30);
+    rates.put(3, 4, 12);
+    rates.put(3, 5, "");
+
+    const result = postToSheet({ action: "resolveRateTie", sheetRow: 2 });
+
+    expect(result).toEqual({ ok: true });
+    expect(rates.deletes).toEqual([3]);
+    expect(rates.cell(2, 1)).toBe("51-602 Wrocław Kochanowskiego 33");
+  });
+
   it("test_resolveRateTie_missing_row_or_sheet_deletes_nothing", () => {
     const { rates } = fresh();
     rates.put(2, 1, "Sklepowa 1");

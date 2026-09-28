@@ -12,6 +12,7 @@ import type { GeocodedAddress } from './phase5.js';
 import type { SheetRow } from './sheets.js';
 import { POLISH_VOIVODESHIPS } from './polishVoivodeships.js';
 import { polishAsciiLower } from './polishText.js';
+import { normalizeRateShopKey } from './saveRate.js';
 import {
   buildMapPointDocPayload,
   formatRodzajZbiorkiForDoc,
@@ -367,11 +368,11 @@ type MapPoint = {
 };
 
 /**
- * Normalizacja tekstu do porównań w wyszukiwarce mapy (małe litery, polskie znaki → ASCII, pozostałe diakrytyki przez NFD).
+ * Normalizacja tekstu do porównań w wyszukiwarce mapy (al./pl./Św., małe litery, polskie znaki → ASCII).
  * Wygenerowany skrypt HTML musi stosować tę samą logikę co `normalizeForAddressSearchMap` w szablonie.
  */
 export function normalizeForAddressSearch(text: string): string {
-  let s = text.normalize('NFD').replace(/\p{M}/gu, '');
+  let s = normalizeRateShopKey(text).normalize('NFD').replace(/\p{M}/gu, '');
   s = s
     .replace(/ł/g, 'l')
     .replace(/Ł/g, 'l')
@@ -1183,7 +1184,24 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
     }
     function normalizeForAddressSearchMap(text) {
-      var s = String(text).normalize('NFD').replace(/\\p{M}/gu, '');
+      var s = String(text == null ? '' : text).trim().replace(/\\s+/g, ' ');
+      if (s) {
+        s = s.replace(/(^|[\\s,])(ul\\.?|ulica|al\\.?|aleja|alei|pl\\.?|plac)\\s+/gi, '$1');
+        s = s.replace(/(^|[\\s,])(gen|ks|kard|sw|św)\\.(?=[\\p{L}])/giu, function (_m, lead, abbr) {
+          var lower = String(abbr).toLowerCase();
+          if (lower.indexOf('gen') === 0) return lead + 'Generała ';
+          if (lower.indexOf('ks') === 0) return lead + 'Księdza ';
+          if (lower.indexOf('kard') === 0) return lead + 'Kardynała ';
+          return lead + 'Świętego ';
+        });
+        s = s.replace(/(^|[\\s,])gen\\.\\s*/gi, '$1Generała ');
+        s = s.replace(/(^|[\\s,])ks\\.\\s*/gi, '$1Księdza ');
+        s = s.replace(/(^|[\\s,])kard\\.\\s*/gi, '$1Kardynała ');
+        s = s.replace(/(^|[\\s,])sw\\.\\s*/gi, '$1Świętego ');
+        s = s.replace(/(^|[\\s,])św\\.\\s*/gi, '$1Świętego ');
+        s = s.toLocaleLowerCase('pl').replace(/\\s+/g, ' ').trim();
+      }
+      s = s.normalize('NFD').replace(/\\p{M}/gu, '');
       s = s
         .replace(/ł/g, 'l')
         .replace(/Ł/g, 'l')

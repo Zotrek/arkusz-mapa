@@ -11,6 +11,7 @@ import {
 import { parseWeekdaysFromDniHarmonogramu } from './harmonogramDays.js';
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
+import { normalizeRateShopKey } from './saveRate.js';
 import { buildAddress } from './sheets.js';
 import { aggregateRodzajZbiorkiFromSealRows, parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 
@@ -92,10 +93,9 @@ export function formatDdMmYyyy(year: number, month: number, day: number): string
   return `${pad2(day)}.${pad2(month)}.${year}`;
 }
 
+/** Fold klucza sync: al./pl./Św. jak w stawkach, potem ASCII (ogonki). */
 export function foldScheduleKeyPart(text: string): string {
-  return String(text || '')
-    .trim()
-    .toLowerCase()
+  return normalizeRateShopKey(text)
     .replace(/ą/g, 'a')
     .replace(/ć/g, 'c')
     .replace(/ę/g, 'e')
@@ -403,7 +403,7 @@ export function buildScheduleSyncExpected(
       const row = ensure(meta.address, meta.contractor, day, '', '', 0, '');
       let best: BazaRate | null = null;
       for (const rate of rateRows) {
-        if (rate.shop !== meta.address) continue;
+        if (foldScheduleKeyPart(rate.shop) !== foldScheduleKeyPart(meta.address)) continue;
         if (foldScheduleKeyPart(rate.contractor) !== foldScheduleKeyPart(meta.contractor)) continue;
         if (rate.validFrom && compareDdMmYyyy(rate.validFrom, day) > 0) continue;
         if (

@@ -549,6 +549,19 @@ describe('appendTransportRow_', () => {
     expect(sheet.cell(2, 13)).toBe('1,5');
   });
 
+  it('test_appendTransportRow_snapshots_rate_when_shop_has_al_vs_map_form', () => {
+    const sheet = new FakeSheet();
+    const rates = new FakeSheet();
+    seedRate(rates, 2, '51-602 Wrocław al. Kochanowskiego 33', 'Janex', 25, 3, '');
+    loadGas(sheet, rates).appendTransportRow_(
+      '16e',
+      protocolBody({ adresSklepu: '51-602 Wrocław Kochanowskiego 33' }),
+    );
+
+    expect(sheet.cell(2, 12)).toBe(25);
+    expect(sheet.cell(2, 13)).toBe(3);
+  });
+
   it('test_appendTransportRow_when_rate_tie_leaves_snapshot_empty', () => {
     const sheet = new FakeSheet();
     const rates = new FakeSheet();

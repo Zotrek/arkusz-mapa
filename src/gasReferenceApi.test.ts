@@ -381,6 +381,18 @@ describe('doGet reference and list actions', () => {
     });
   });
 
+  it('test_listStoreAddresses_dedupes_al_prefix_variants', () => {
+    reset();
+    seedRegisterRow(2, { 2: '51-602 Wrocław al. Kochanowskiego 33', 4: 'Sklep A' });
+    seedRegisterRow(3, { 2: '51-602 Wrocław Kochanowskiego 33', 4: 'Sklep B' });
+
+    const result = get('listStoreAddresses');
+    expect(result).toEqual({
+      ok: true,
+      data: [{ adres: '51-602 Wrocław al. Kochanowskiego 33', sklep: 'Sklep A' }],
+    });
+  });
+
   it('test_routeNameProposal_lists_occupied_route_names', () => {
     reset();
     seedRegisterRow(2, { 10: 'trasa-z' });

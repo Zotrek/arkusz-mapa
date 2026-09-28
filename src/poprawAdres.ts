@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import type { AddressGroup } from './phase3.js';
 import { getPhase5AddressOverridesPath, SHEET_NAME_POPRAW_ADRES } from './config.js';
 import { polishAsciiFold } from './polishText.js';
+import { normalizeRateShopKey } from './saveRate.js';
 
 export interface PoprawAdresEntry {
   podmiotHandlowy: string;
@@ -34,7 +35,7 @@ export function buildPoprawAdresLookupKey(
   podmiotHandlowy = '',
   sklep = '',
 ): string {
-  return `${normalizeKeyPart(adres)}\0${normalizeKeyPart(podmiotHandlowy)}\0${normalizeKeyPart(sklep)}`;
+  return `${polishAsciiFold(normalizeRateShopKey(adres))}\0${normalizeKeyPart(podmiotHandlowy)}\0${normalizeKeyPart(sklep)}`;
 }
 
 /** PL locale Sheets: "50,39196" → 50.39196 (parseFloat stops at comma otherwise). */

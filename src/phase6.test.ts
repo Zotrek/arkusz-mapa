@@ -167,6 +167,15 @@ describe('phase6', () => {
       expect(normalizeForAddressSearch('  WaWa  ')).toBe('wawa');
     });
 
+    it('test_normalizeForAddressSearch_when_al_pl_sw_should_match_map_form', () => {
+      expect(normalizeForAddressSearch('51-602 Wrocław al. Kochanowskiego 33')).toBe(
+        normalizeForAddressSearch('51-602 Wrocław Kochanowskiego 33'),
+      );
+      expect(normalizeForAddressSearch('50-252 Wrocław Św. Wincentego 1')).toBe(
+        normalizeForAddressSearch('50-252 Wrocław Świętego Wincentego 1'),
+      );
+    });
+
     it('test_addressMatchesSearch_when_partial_city_should_match', () => {
       expect(addressMatchesSearch('62-320 Miłosław os. Władysława Łokietka 18', 'miloslaw')).toBe(true);
       expect(addressMatchesSearch('62-320 Miłosław os. Władysława Łokietka 18', 'lokietka')).toBe(true);
@@ -1073,9 +1082,12 @@ result = proposeRouteName(
 
     it('test_buildTransportShopKey_when_podmiot_and_adres_given_should_normalize_like_transport_sheet', () => {
       expect(buildTransportShopKey('Firma SA', '00-001 Warszawa ul. Testowa 1')).toBe(
-        'firma sa\u000000-001 warszawa ul. testowa 1',
+        'firma sa\u000000-001 warszawa testowa 1',
       );
       expect(buildTransportShopKey('Żabka', 'Kraków')).toBe('zabka\u0000krakow');
+      expect(buildTransportShopKey('PH', '51-602 Wrocław al. Kochanowskiego 33')).toBe(
+        buildTransportShopKey('PH', '51-602 Wrocław Kochanowskiego 33'),
+      );
     });
 
     it('test_resolveTransportCutoffMsForPoint_when_podmiot_mismatch_should_return_null', () => {
