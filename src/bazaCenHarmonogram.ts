@@ -10,7 +10,10 @@ import {
 } from './config.js';
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
-import { buildAddress } from './sheets.js';
+import { normalizeRateShopKey } from './saveRate.js';
+import { buildAddress, stripTrailingHouseNumberFromStreet } from './sheets.js';
+import { normalizeCityFromSheet } from './cityNormalize.js';
+import { normalizeStreetFromSheet } from './streetNormalize.js';
 
 export const BAZA_CEN_HEADERS = [
   'Adres sklepu',
@@ -39,6 +42,8 @@ export interface BazaCenExistingRow {
 export interface BazaCenSyncPlan {
   append: BazaCenShop[];
   dayUpdates: Array<{ sheetRow: number; dni: string }>;
+  /** Ujednolicenie adresu do formy z mapy (al./pl./Św. → kanoniczny). */
+  addressHeals: Array<{ sheetRow: number; adres: string }>;
 }
 
 type SheetsClient = {
@@ -63,7 +68,7 @@ function collapse(value: string): string {
 }
 
 export function bazaCenKey(adres: string, podwykonawca: string): string {
-  return `${collapse(adres)}\n${collapse(podwykonawca)}`;
+  return `${normalizeRateShopKey(adres)}\n${collapse(podwykonawca)}`;
 }
 
 function headerIndex(headers: string[], name: string): number {
@@ -105,6 +110,7 @@ function columnLetter(index: number): string {
 
 /**
  * Jedna pozycja na adres + firmę transportową.
+ * Adres jak na mapie: normalizacja miasta/ulicy (al./pl./Św.).
  * Przy różnych dniach zostaje pierwsza niepusta wartość.
  */
 export function shopsFromOdebraneRows(headers: string[], rows: string[][]): BazaCenShop[] {
@@ -117,11 +123,17 @@ export function shopsFromOdebraneRows(headers: string[], rows: string[][]): Baza
 
   const byKey = new Map<string, BazaCenShop>();
   for (const row of rows) {
+    const miastoNorm = normalizeCityFromSheet(collapse(cell(row, miasto)));
+    const numerBudynku = collapse(cell(row, numer));
+    const ulicaNorm = normalizeStreetFromSheet(
+      stripTrailingHouseNumberFromStreet(collapse(cell(row, ulica)), numerBudynku),
+      miastoNorm,
+    );
     const adres = buildAddress({
-      kodPocztowy: cell(row, kod),
-      miasto: cell(row, miasto),
-      ulica: cell(row, ulica),
-      numerBudynku: cell(row, numer),
+      kodPocztowy: collapse(cell(row, kod)),
+      miasto: miastoNorm,
+      ulica: ulicaNorm,
+      numerBudynku,
     });
     const podwykonawca = collapse(cell(row, firma));
     if (!adres || !podwykonawca) {
@@ -179,6 +191,7 @@ export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingR
 
   const append: BazaCenShop[] = [];
   const dayUpdates: Array<{ sheetRow: number; dni: string }> = [];
+  const addressHeals: Array<{ sheetRow: number; adres: string }> = [];
   for (const shop of shops) {
     const rows = rowsByKey.get(bazaCenKey(shop.adres, shop.podwykonawca));
     if (!rows) {
@@ -189,9 +202,12 @@ export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingR
       if (row.dni !== shop.dni) {
         dayUpdates.push({ sheetRow: row.sheetRow, dni: shop.dni });
       }
+      if (row.adres !== shop.adres) {
+        addressHeals.push({ sheetRow: row.sheetRow, adres: shop.adres });
+      }
     }
   }
-  return { append, dayUpdates };
+  return { append, dayUpdates, addressHeals };
 }
 
 export function bazaCenRowValues(shop: BazaCenShop, headers: string[]): string[] {
@@ -224,6 +240,7 @@ export interface SyncBazaCenHarmonogramResult {
   shopCount: number;
   appendedCount: number;
   daysUpdatedCount: number;
+  addressHealedCount: number;
   sheetCreated: boolean;
 }
 
@@ -240,7 +257,7 @@ export async function syncBazaCenHarmonogram(
   const sourceExists = await sheetExists(api, spreadsheetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
   if (!sourceExists) {
     logger?.info('Baza cen harmonogram: brak zakładki „odebrane z harmonogramu”');
-    return { shopCount: 0, appendedCount: 0, daysUpdatedCount: 0, sheetCreated: false };
+    return { shopCount: 0, appendedCount: 0, daysUpdatedCount: 0, addressHealedCount: 0, sheetCreated: false };
   }
 
   const sourceValues = await readValues(api, spreadsheetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
@@ -282,6 +299,7 @@ export async function syncBazaCenHarmonogram(
   );
   const plan = planBazaCenSync(shops, existing);
   const dniColumn = requireHeader(headers, 'Dni odbiorów', sheetName);
+  const adresColumn = requireHeader(headers, 'Adres sklepu', sheetName);
 
   if (plan.append.length > 0) {
     await api.spreadsheets.values.append({
@@ -295,25 +313,41 @@ export async function syncBazaCenHarmonogram(
     });
   }
 
+  const batchData: Array<{ range: string; values: string[][] }> = [];
   if (plan.dayUpdates.length > 0) {
     const letter = columnLetter(dniColumn);
+    for (const update of plan.dayUpdates) {
+      batchData.push({
+        range: `${quoteSheet(sheetName)}!${letter}${update.sheetRow}`,
+        values: [[update.dni]],
+      });
+    }
+  }
+  if (plan.addressHeals.length > 0) {
+    const letter = columnLetter(adresColumn);
+    for (const heal of plan.addressHeals) {
+      batchData.push({
+        range: `${quoteSheet(sheetName)}!${letter}${heal.sheetRow}`,
+        values: [[heal.adres]],
+      });
+    }
+  }
+  if (batchData.length > 0) {
     await api.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: {
         valueInputOption: 'RAW',
-        data: plan.dayUpdates.map((update) => ({
-          range: `${quoteSheet(sheetName)}!${letter}${update.sheetRow}`,
-          values: [[update.dni]],
-        })),
+        data: batchData,
       },
     });
   }
 
   logger?.info(
-    'Baza cen harmonogram: sklepy %d, dopisane %d, dni zaktualizowane %d, nowa zakładka=%s',
+    'Baza cen harmonogram: sklepy %d, dopisane %d, dni zaktualizowane %d, adresy ujednolicone %d, nowa zakładka=%s',
     shops.length,
     plan.append.length,
     plan.dayUpdates.length,
+    plan.addressHeals.length,
     sheetCreated,
   );
 
@@ -321,6 +355,7 @@ export async function syncBazaCenHarmonogram(
     shopCount: shops.length,
     appendedCount: plan.append.length,
     daysUpdatedCount: plan.dayUpdates.length,
+    addressHealedCount: plan.addressHeals.length,
     sheetCreated,
   };
 }

@@ -46,11 +46,12 @@
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate | saveRateHarmonogram
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
  *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
- *   Jeden wiersz klucza nadpisuje kwoty. Dwa i więcej: { ok:false, error:'tie' }. Inna data: nowy wiersz.
+ *   Klucz: adres (po normalizacji al./pl./Św.) + podwykonawca + data. Trafione wiersze nadpisuje
+ *   (także kilka wariantów tego samego adresu); adres w arkuszu ustawia na kanoniczny z mapy.
  *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 14–17) nie rusza.
  *   Brak zakładki Baza stawek: ten zapis ją zakłada, z nagłówkami w wierszu 1.
  *   saveRateHarmonogram — Baza cen harmonogram. Body jak saveRate + dniOdbiorow + opcjonalnie nazwaTrasy, kwotaTrasy.
- *   Ceny: klucz adres + podwykonawca + data (jak saveRate). Nazwa+cena trasy razem albo obie puste (pusta para przy overwrite nie czyści).
+ *   Ceny: ten sam klucz co saveRate. Nazwa+cena trasy razem albo obie puste (pusta para przy overwrite nie czyści).
  *   Dni: przy istniejącym połączeniu sklep + podwykonawca aktualizuje tylko gdy się zmieniły (wszystkie wiersze pary).
  *   Brak zakładki: zakłada z nagłówkami jak sync pipeline.
  * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
@@ -1680,20 +1681,49 @@ function rateAmountCell_(amount) {
   return amount.value;
 }
 
+function normalizeRateShopKey_(text) {
+  var s = String(text == null ? '' : text).trim().replace(/\s+/g, ' ');
+  if (!s) {
+    return '';
+  }
+  s = s.replace(/(^|[\s,])(ul\.?|ulica|al\.?|aleja|alei|pl\.?|plac)\s+/gi, '$1');
+  s = s.replace(/(^|[\s,])(gen|ks|kard|sw|św)\.(?=[\p{L}])/giu, function (_m, lead, abbr) {
+    var lower = String(abbr).toLowerCase();
+    if (lower.indexOf('gen') === 0) {
+      return lead + 'Generała ';
+    }
+    if (lower.indexOf('ks') === 0) {
+      return lead + 'Księdza ';
+    }
+    if (lower.indexOf('kard') === 0) {
+      return lead + 'Kardynała ';
+    }
+    return lead + 'Świętego ';
+  });
+  s = s.replace(/(^|[\s,])gen\.\s*/gi, '$1Generała ');
+  s = s.replace(/(^|[\s,])ks\.\s*/gi, '$1Księdza ');
+  s = s.replace(/(^|[\s,])kard\.\s*/gi, '$1Kardynała ');
+  s = s.replace(/(^|[\s,])sw\.\s*/gi, '$1Świętego ');
+  s = s.replace(/(^|[\s,])św\.\s*/gi, '$1Świętego ');
+  return s.toLocaleLowerCase('pl').replace(/\s+/g, ' ').trim();
+}
+
 function decideSaveRate_(rows, shop, contractor, validFrom) {
+  var shopKey = normalizeRateShopKey_(shop);
   var matches = [];
   var i;
   for (i = 0; i < rows.length; i++) {
     var row = rows[i];
-    if (row.shop === shop && row.contractor === contractor && row.validFrom === validFrom) {
+    if (
+      normalizeRateShopKey_(row.shop) === shopKey &&
+      row.contractor === contractor &&
+      row.validFrom === validFrom
+    ) {
       matches.push(row.row);
     }
   }
-  if (matches.length > 1) {
-    return { action: 'refuse' };
-  }
-  if (matches.length === 1) {
-    return { action: 'overwrite', row: matches[0] };
+  if (matches.length >= 1) {
+    return { action: 'overwrite', row: matches[0], rows: matches };
   }
   return { action: 'append' };
 }
@@ -1703,6 +1733,14 @@ function rateCellDateKey_(value) {
     return normalizeRateDate_(value.getDate() + '.' + (value.getMonth() + 1) + '.' + value.getFullYear());
   }
   return normalizeRateDate_(value);
+}
+
+/** Wiersze decyzji overwrite (jeden lub kilka wariantów tego samego adresu). */
+function saveRateTargetRows_(decision) {
+  if (decision.rows && decision.rows.length) {
+    return decision.rows;
+  }
+  return [decision.row];
 }
 
 function listRateRows_(sheet) {
@@ -1777,14 +1815,17 @@ function handleSaveRatePost_(body) {
   }
   var sheet = getOrCreateRateSheet_();
   var decision = decideSaveRate_(listRateRows_(sheet), shop, contractor, validFrom);
-  if (decision.action === 'refuse') {
-    return jsonResponse({ ok: false, error: 'tie' });
-  }
   var pickupCell = rateAmountCell_(pickup);
   var bagCell = rateAmountCell_(bag);
   if (decision.action === 'overwrite') {
-    sheet.getRange(decision.row, 3, 1, 2).setValues([[pickupCell, bagCell]]);
-    return jsonResponse({ ok: true, action: 'overwrite' });
+    var targetRows = saveRateTargetRows_(decision);
+    var ti;
+    for (ti = 0; ti < targetRows.length; ti++) {
+      var rowNum = targetRows[ti];
+      sheet.getRange(rowNum, 1).setValue(shop);
+      sheet.getRange(rowNum, 3, 1, 2).setValues([[pickupCell, bagCell]]);
+    }
+    return jsonResponse({ ok: true, action: 'overwrite', rows: targetRows.length });
   }
   var next = Math.max(sheet.getLastRow(), 1) + 1;
   sheet.getRange(next, 5).setNumberFormat('@');
@@ -1836,14 +1877,19 @@ function listHarmonogramRateRows_(sheet) {
 /**
  * Przy istniejącym połączeniu sklep + podwykonawca aktualizuje „Dni odbiorów”
  * tylko gdy się zmieniły — na każdym wierszu tej pary (cen nie rusza).
+ * Adres porównuje po normalizacji (al./pl./Św.); przy różnicy ustawia kanoniczny z mapy.
  */
 function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days) {
+  var shopKey = normalizeRateShopKey_(shop);
   var updated = 0;
   var i;
   for (i = 0; i < rows.length; i++) {
     var row = rows[i];
-    if (row.shop !== shop || row.contractor !== contractor) {
+    if (normalizeRateShopKey_(row.shop) !== shopKey || row.contractor !== contractor) {
       continue;
+    }
+    if (row.shop !== shop) {
+      sheet.getRange(row.row, 1).setValue(shop);
     }
     if (row.days === days) {
       continue;
@@ -1888,23 +1934,31 @@ function handleSaveRateHarmonogramPost_(body) {
   var sheet = getOrCreateHarmonogramRateSheet_();
   var rows = listHarmonogramRateRows_(sheet);
   var decision = decideSaveRate_(rows, shop, contractor, validFrom);
-  if (decision.action === 'refuse') {
-    return jsonResponse({ ok: false, error: 'tie' });
-  }
   var pickupCell = rateAmountCell_(pickup);
   var bagCell = rateAmountCell_(bag);
   var routeRateCell = rateAmountCell_(routeRate);
   var writeRoute = !!(routeName || !routeRate.empty);
   var daysUpdated = updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days);
   if (decision.action === 'overwrite') {
-    if (writeRoute) {
-      sheet
-        .getRange(decision.row, 3, 1, 4)
-        .setValues([[routeName, pickupCell, bagCell, routeRateCell]]);
-    } else {
-      sheet.getRange(decision.row, 4, 1, 2).setValues([[pickupCell, bagCell]]);
+    var targetRows = saveRateTargetRows_(decision);
+    var ti;
+    for (ti = 0; ti < targetRows.length; ti++) {
+      var rowNum = targetRows[ti];
+      sheet.getRange(rowNum, 1).setValue(shop);
+      if (writeRoute) {
+        sheet
+          .getRange(rowNum, 3, 1, 4)
+          .setValues([[routeName, pickupCell, bagCell, routeRateCell]]);
+      } else {
+        sheet.getRange(rowNum, 4, 1, 2).setValues([[pickupCell, bagCell]]);
+      }
     }
-    return jsonResponse({ ok: true, action: 'overwrite', daysUpdated: daysUpdated });
+    return jsonResponse({
+      ok: true,
+      action: 'overwrite',
+      daysUpdated: daysUpdated,
+      rows: targetRows.length,
+    });
   }
   var next = Math.max(sheet.getLastRow(), 1) + 1;
   sheet.getRange(next, 7).setNumberFormat('@');

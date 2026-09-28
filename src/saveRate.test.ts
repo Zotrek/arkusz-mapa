@@ -3,21 +3,26 @@ import { runInNewContext } from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { RATE_HEADERS, RATE_SHEET_NAME, saveRateRulesSource } from './saveRate.js';
+import {
+  normalizeRateShopKey,
+  RATE_HEADERS,
+  RATE_SHEET_NAME,
+  saveRateRulesSource,
+} from './saveRate.js';
 
 const gasPath = join(dirname(fileURLToPath(import.meta.url)), '../google-apps-script/transport-log.gs');
 
 type RateAmount = { empty: true } | { empty: false; value: number };
 type RateKeyRow = { row: number; shop: string; contractor: string; validFrom: string };
 type SaveRateDecision =
-  | { action: 'overwrite'; row: number }
-  | { action: 'append' }
-  | { action: 'refuse' };
+  | { action: 'overwrite'; row: number; rows: number[] }
+  | { action: 'append' };
 
 type SaveRateRules = {
   normalizeRateDate_: (text: unknown) => string | null;
   parseRateAmount_: (text: unknown) => RateAmount | null;
   rateAmountCell_: (amount: RateAmount) => '' | number;
+  normalizeRateShopKey_: (text: unknown) => string;
   decideSaveRate_: (
     rows: readonly RateKeyRow[],
     shop: string,
@@ -30,7 +35,7 @@ type SaveRateRules = {
 function loadRules(): SaveRateRules {
   const context: { rules?: SaveRateRules } = {};
   runInNewContext(
-    `${saveRateRulesSource}\nrules = { normalizeRateDate_, parseRateAmount_, rateAmountCell_, decideSaveRate_, rateCellDateKey_ };`,
+    `${saveRateRulesSource}\nrules = { normalizeRateDate_, parseRateAmount_, rateAmountCell_, normalizeRateShopKey_, decideSaveRate_, rateCellDateKey_ };`,
     context,
   );
   if (!context.rules) {
@@ -101,6 +106,21 @@ describe('saveRate', () => {
     expect(rules.parseRateAmount_('20.')).toBeNull();
   });
 
+  it('test_normalizeRateShopKey_when_al_pl_sw_should_match_map_form', () => {
+    expect(rules.normalizeRateShopKey_('51-602 Wrocław al. Kochanowskiego 33')).toBe(
+      rules.normalizeRateShopKey_('51-602 Wrocław Kochanowskiego 33'),
+    );
+    expect(rules.normalizeRateShopKey_('50-363 Wrocław pl. Grunwaldzki 22')).toBe(
+      rules.normalizeRateShopKey_('50-363 Wrocław Grunwaldzki 22'),
+    );
+    expect(rules.normalizeRateShopKey_('50-252 Wrocław Św. Wincentego 1')).toBe(
+      rules.normalizeRateShopKey_('50-252 Wrocław Świętego Wincentego 1'),
+    );
+    expect(normalizeRateShopKey('51-146 Wrocław al. Kasprowicza 85')).toBe(
+      rules.normalizeRateShopKey_('51-146 Wrocław Kasprowicza 85'),
+    );
+  });
+
   it('test_decideSaveRate_when_one_row_should_overwrite', () => {
     const rows: RateKeyRow[] = [
       { row: 4, shop: 'Sklepowa 1', contractor: 'gpw', validFrom: '10.09.2026' },
@@ -108,15 +128,31 @@ describe('saveRate', () => {
     expect(rules.decideSaveRate_(rows, 'Sklepowa 1', 'gpw', '10.09.2026')).toEqual({
       action: 'overwrite',
       row: 4,
+      rows: [4],
     });
   });
 
-  it('test_decideSaveRate_when_two_rows_should_refuse', () => {
+  it('test_decideSaveRate_when_al_variant_should_overwrite_existing', () => {
     const rows: RateKeyRow[] = [
-      { row: 2, shop: 'Sklepowa 1', contractor: 'gpw', validFrom: '' },
-      { row: 5, shop: 'Sklepowa 1', contractor: 'gpw', validFrom: '' },
+      { row: 3, shop: '51-602 Wrocław al. Kochanowskiego 33', contractor: 'GPW', validFrom: '' },
     ];
-    expect(rules.decideSaveRate_(rows, 'Sklepowa 1', 'gpw', '')).toEqual({ action: 'refuse' });
+    expect(rules.decideSaveRate_(rows, '51-602 Wrocław Kochanowskiego 33', 'GPW', '')).toEqual({
+      action: 'overwrite',
+      row: 3,
+      rows: [3],
+    });
+  });
+
+  it('test_decideSaveRate_when_two_normalized_rows_should_overwrite_all', () => {
+    const rows: RateKeyRow[] = [
+      { row: 2, shop: '51-602 Wrocław al. Kochanowskiego 33', contractor: 'GPW', validFrom: '' },
+      { row: 5, shop: '51-602 Wrocław Kochanowskiego 33', contractor: 'GPW', validFrom: '' },
+    ];
+    expect(rules.decideSaveRate_(rows, '51-602 Wrocław Kochanowskiego 33', 'GPW', '')).toEqual({
+      action: 'overwrite',
+      row: 2,
+      rows: [2, 5],
+    });
   });
 
   it('test_decideSaveRate_when_other_date_should_append', () => {
@@ -149,8 +185,10 @@ describe('saveRate', () => {
     expect(saveIdx).toBeLessThan(appendIdx);
 
     const handler = functionBody(gas, 'handleSaveRatePost_');
-    expect(handler).toContain("error: 'tie'");
-    expect(handler).toContain('getRange(decision.row, 3, 1, 2)');
+    expect(handler).toContain('saveRateTargetRows_');
+    expect(handler).toContain('getRange(rowNum, 1).setValue(shop)');
+    expect(handler).toContain('getRange(rowNum, 3, 1, 2)');
+    expect(handler).not.toContain("error: 'tie'");
     expect(handler).not.toContain('getDataSheet_');
     expect(handler).not.toContain('deleteRow');
     expect(handler).not.toContain('COL.');
@@ -171,15 +209,18 @@ describe('saveRate', () => {
 
     const handler = functionBody(gas, 'handleSaveRateHarmonogramPost_');
     expect(handler).toContain('updateHarmonogramDaysIfChanged_');
-    expect(handler).toContain('getRange(decision.row, 3, 1, 4)');
-    expect(handler).toContain('getRange(decision.row, 4, 1, 2)');
+    expect(handler).toContain('saveRateTargetRows_');
+    expect(handler).toContain('getRange(rowNum, 3, 1, 4)');
+    expect(handler).toContain('getRange(rowNum, 4, 1, 2)');
     expect(handler).toContain('body.nazwaTrasy');
     expect(handler).toContain('body.kwotaTrasy');
     expect(handler).toContain("error: 'route'");
     expect(handler).toContain('writeRoute');
+    expect(handler).not.toContain("error: 'tie'");
     expect(handler).not.toContain('getRange(decision.row, 8)');
 
     const daysUpdate = functionBody(gas, 'updateHarmonogramDaysIfChanged_');
+    expect(daysUpdate).toContain('normalizeRateShopKey_');
     expect(daysUpdate).toContain('row.days === days');
     expect(daysUpdate).toContain('getRange(row.row, 8)');
   });

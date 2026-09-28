@@ -311,7 +311,7 @@ describe('phase7 pipeline', () => {
       }),
       syncBazaCenHarmonogram: vi.fn(async () => {
         order.push('syncBazaCenHarmonogram');
-        return { shopCount: 1, appendedCount: 1, daysUpdatedCount: 0, sheetCreated: true };
+        return { shopCount: 1, appendedCount: 1, daysUpdatedCount: 0, addressHealedCount: 0, sheetCreated: true };
       }),
       syncZestawienieHarmonogram: vi.fn(async () => {
         order.push('syncZestawienieHarmonogram');

@@ -74,6 +74,38 @@ describe('shopsFromOdebraneRows', () => {
       },
     ]);
   });
+
+  it('test_shopsFromOdebraneRows_when_al_pl_sw_should_match_map_normalization', () => {
+    const shops = shopsFromOdebraneRows(ODEBRANE_HEADERS, [
+      odebraneRow({
+        'Kod pocztowy': '51-602',
+        Miasto: 'Wrocław',
+        Ulica: 'al. Kochanowskiego',
+        'Numer budynku': '33',
+        'Firma transportowa': 'GPW',
+      }),
+      odebraneRow({
+        'Kod pocztowy': '50-252',
+        Miasto: 'Wrocław',
+        Ulica: 'Św. Wincentego',
+        'Numer budynku': '1',
+        'Firma transportowa': 'GPW',
+        'Dni harmonogramu': 'śr, sb',
+      }),
+      odebraneRow({
+        'Kod pocztowy': '50-363',
+        Miasto: 'Wrocław',
+        Ulica: 'pl. Grunwaldzki',
+        'Numer budynku': '22',
+        'Firma transportowa': 'GPW',
+      }),
+    ]);
+    expect(shops.map((s) => s.adres).sort()).toEqual([
+      '50-252 Wrocław Świętego Wincentego 1',
+      '50-363 Wrocław Grunwaldzki 22',
+      '51-602 Wrocław Kochanowskiego 33',
+    ]);
+  });
 });
 
 describe('planBazaCenSync', () => {
@@ -86,6 +118,7 @@ describe('planBazaCenSync', () => {
   it('test_planBazaCenSync_when_shop_missing_should_append_without_touching_prices', () => {
     const plan = planBazaCenSync([shop], []);
     expect(plan.dayUpdates).toEqual([]);
+    expect(plan.addressHeals).toEqual([]);
     expect(plan.append).toEqual([shop]);
     expect(bazaCenRowValues(shop, [...BAZA_CEN_HEADERS])).toEqual([
       shop.adres,
@@ -109,6 +142,29 @@ describe('planBazaCenSync', () => {
     );
     expect(plan.append).toEqual([]);
     expect(plan.dayUpdates).toEqual([{ sheetRow: 2, dni: 'pn' }]);
+    expect(plan.addressHeals).toEqual([]);
+  });
+
+  it('test_planBazaCenSync_when_raw_al_address_should_heal_not_append', () => {
+    const canonical = {
+      adres: '51-602 Wrocław Kochanowskiego 33',
+      podwykonawca: 'GPW',
+      dni: 'śr, sb',
+    };
+    const plan = planBazaCenSync(
+      [canonical],
+      [
+        {
+          sheetRow: 3,
+          adres: '51-602 Wrocław al. Kochanowskiego 33',
+          podwykonawca: 'GPW',
+          dni: 'śr, sb',
+        },
+      ],
+    );
+    expect(plan.append).toEqual([]);
+    expect(plan.dayUpdates).toEqual([]);
+    expect(plan.addressHeals).toEqual([{ sheetRow: 3, adres: canonical.adres }]);
   });
 
   it('test_parseBazaCenRows_when_header_and_blank_row_should_keep_sheet_row_numbers', () => {
@@ -168,6 +224,7 @@ describe('syncBazaCenHarmonogram', () => {
       shopCount: 1,
       appendedCount: 1,
       daysUpdatedCount: 0,
+      addressHealedCount: 0,
       sheetCreated: true,
     });
     expect(values.get(SHEET_NAME_BAZA_CEN_HARMONOGRAM)).toEqual([
@@ -220,6 +277,7 @@ describe('syncBazaCenHarmonogram', () => {
 
     expect(result.appendedCount).toBe(0);
     expect(result.daysUpdatedCount).toBe(1);
+    expect(result.addressHealedCount).toBe(0);
     expect(api.spreadsheets.values.append).not.toHaveBeenCalled();
     expect(api.spreadsheets.batchUpdate).not.toHaveBeenCalled();
     expect(values.get(SHEET_NAME_BAZA_CEN_HARMONOGRAM)?.[1]?.slice(2, 7)).toEqual(priced.slice(2, 7));

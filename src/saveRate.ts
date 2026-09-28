@@ -2,9 +2,37 @@
  * Reguły `saveRate`. Jedna treść. `transport-log.gs` ma ten sam blok.
  * Test pada, gdy skrypt Apps Script się rozjedzie.
  *
- * Klucz: adres + nazwa krótka + data `dd.mm.yyyy`. Pusta data = od zawsze.
- * Jeden wiersz klucza nadpisuje kwoty. Dwa i więcej odmawia. Inna data dopisuje wiersz.
+ * Klucz: adres (po normalizacji al./pl./Św.) + nazwa krótka + data `dd.mm.yyyy`.
+ * Pusta data = od zawsze. Trafione wiersze nadpisują kwoty (także gdy kilka wariantów
+ * tego samego adresu). Inna data dopisuje wiersz.
  */
+
+/**
+ * Klucz porównania adresu sklepu w stawkach (Baza stawek + Baza cen).
+ * Zjada prefiksy ul./al./pl. i rozwija św./gen./ks./kard. — jak mapa vs surowy sync.
+ */
+export function normalizeRateShopKey(text: unknown): string {
+  let s = String(text == null ? '' : text)
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!s) {
+    return '';
+  }
+  s = s.replace(/(^|[\s,])(ul\.?|ulica|al\.?|aleja|alei|pl\.?|plac)\s+/gi, '$1');
+  s = s.replace(/(^|[\s,])(gen|ks|kard|sw|św)\.(?=[\p{L}])/giu, (_, lead: string, abbr: string) => {
+    const lower = abbr.toLowerCase();
+    if (lower.startsWith('gen')) return `${lead}Generała `;
+    if (lower.startsWith('ks')) return `${lead}Księdza `;
+    if (lower.startsWith('kard')) return `${lead}Kardynała `;
+    return `${lead}Świętego `;
+  });
+  s = s.replace(/(^|[\s,])gen\.\s*/gi, '$1Generała ');
+  s = s.replace(/(^|[\s,])ks\.\s*/gi, '$1Księdza ');
+  s = s.replace(/(^|[\s,])kard\.\s*/gi, '$1Kardynała ');
+  s = s.replace(/(^|[\s,])sw\.\s*/gi, '$1Świętego ');
+  s = s.replace(/(^|[\s,])św\.\s*/gi, '$1Świętego ');
+  return s.toLocaleLowerCase('pl').replace(/\s+/g, ' ').trim();
+}
 
 export const saveRateRulesSource = `function isAllDigits_(text) {
   var i;
@@ -94,20 +122,49 @@ function rateAmountCell_(amount) {
   return amount.value;
 }
 
+function normalizeRateShopKey_(text) {
+  var s = String(text == null ? '' : text).trim().replace(/\\s+/g, ' ');
+  if (!s) {
+    return '';
+  }
+  s = s.replace(/(^|[\\s,])(ul\\.?|ulica|al\\.?|aleja|alei|pl\\.?|plac)\\s+/gi, '$1');
+  s = s.replace(/(^|[\\s,])(gen|ks|kard|sw|św)\\.(?=[\\p{L}])/giu, function (_m, lead, abbr) {
+    var lower = String(abbr).toLowerCase();
+    if (lower.indexOf('gen') === 0) {
+      return lead + 'Generała ';
+    }
+    if (lower.indexOf('ks') === 0) {
+      return lead + 'Księdza ';
+    }
+    if (lower.indexOf('kard') === 0) {
+      return lead + 'Kardynała ';
+    }
+    return lead + 'Świętego ';
+  });
+  s = s.replace(/(^|[\\s,])gen\\.\\s*/gi, '$1Generała ');
+  s = s.replace(/(^|[\\s,])ks\\.\\s*/gi, '$1Księdza ');
+  s = s.replace(/(^|[\\s,])kard\\.\\s*/gi, '$1Kardynała ');
+  s = s.replace(/(^|[\\s,])sw\\.\\s*/gi, '$1Świętego ');
+  s = s.replace(/(^|[\\s,])św\\.\\s*/gi, '$1Świętego ');
+  return s.toLocaleLowerCase('pl').replace(/\\s+/g, ' ').trim();
+}
+
 function decideSaveRate_(rows, shop, contractor, validFrom) {
+  var shopKey = normalizeRateShopKey_(shop);
   var matches = [];
   var i;
   for (i = 0; i < rows.length; i++) {
     var row = rows[i];
-    if (row.shop === shop && row.contractor === contractor && row.validFrom === validFrom) {
+    if (
+      normalizeRateShopKey_(row.shop) === shopKey &&
+      row.contractor === contractor &&
+      row.validFrom === validFrom
+    ) {
       matches.push(row.row);
     }
   }
-  if (matches.length > 1) {
-    return { action: 'refuse' };
-  }
-  if (matches.length === 1) {
-    return { action: 'overwrite', row: matches[0] };
+  if (matches.length >= 1) {
+    return { action: 'overwrite', row: matches[0], rows: matches };
   }
   return { action: 'append' };
 }
