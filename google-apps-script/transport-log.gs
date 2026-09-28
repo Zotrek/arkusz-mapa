@@ -53,6 +53,7 @@
  *   saveRateHarmonogram — Baza cen harmonogram. Body jak saveRate + dniOdbiorow + opcjonalnie nazwaTrasy, kwotaTrasy.
  *   Ceny: ten sam klucz co saveRate. Nazwa+cena trasy razem albo obie puste (pusta para przy overwrite nie czyści).
  *   Dni: przy istniejącym połączeniu sklep + podwykonawca aktualizuje tylko gdy się zmieniły (wszystkie wiersze pary).
+ *   Po zapisie: stawki/trasa na nierozliczonych wierszach „zestawienie z harmonogramu” tej pary (jak sync).
  *   Brak zakładki: zakłada z nagłówkami jak sync pipeline.
  * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
  *
@@ -1902,11 +1903,127 @@ function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days) {
 }
 
 /**
+ * Jak listHarmonogramRateRows_, plus kwoty i nazwa trasy (do snapshotu zestawienia).
+ */
+function listHarmonogramRateAmountRows_(sheet) {
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last < 2) {
+    return rows;
+  }
+  var values = sheet.getRange(2, 1, last - 1, 8).getValues();
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var dateKey = rateCellDateKey_(values[i][6]);
+    rows.push({
+      row: i + 2,
+      shop: cellStr_(values[i][0]),
+      contractor: cellStr_(values[i][1]),
+      routeName: cellStr_(values[i][2]),
+      pickup: values[i][3],
+      bag: values[i][4],
+      routeAmount: values[i][5],
+      validFrom: dateKey == null ? '\u0000' : dateKey,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Najnowsza stawka z Bazy cen obowiązująca na dzień odbioru (jak sync zestawienia).
+ * Remis tej samej daty → pierwsza trafiona. Brak pary → puste.
+ */
+function resolveHarmonogramSnapshot_(rates, shop, contractor, pickupDate) {
+  var empty = { routeName: '', route: '', pickup: '', bag: '' };
+  if (!shop || !contractor || !pickupDate || !rates || !rates.length) {
+    return empty;
+  }
+  var shopFold = settlementFoldPl_(shop);
+  var whoFold = settlementFoldPl_(contractor);
+  var best = null;
+  var i;
+  for (i = 0; i < rates.length; i++) {
+    var rate = rates[i];
+    if (settlementFoldPl_(rate.shop) !== shopFold || settlementFoldPl_(rate.contractor) !== whoFold) {
+      continue;
+    }
+    if (rate.validFrom === '\u0000') {
+      continue;
+    }
+    if (rate.validFrom && settlementCompareDate_(rate.validFrom, pickupDate) > 0) {
+      continue;
+    }
+    if (
+      !best ||
+      settlementCompareDate_(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
+    ) {
+      best = rate;
+    }
+  }
+  if (!best) {
+    return empty;
+  }
+  return {
+    routeName: best.routeName || '',
+    route: best.routeAmount == null || best.routeAmount === '' ? '' : best.routeAmount,
+    pickup: best.pickup == null || best.pickup === '' ? '' : best.pickup,
+    bag: best.bag == null || best.bag === '' ? '' : best.bag,
+  };
+}
+
+/**
+ * Po zapisie Bazy cen: uzupełnia Trasa + stawki na nierozliczonych wierszach
+ * „zestawienie z harmonogramu” dla tej pary sklep+podwykonawca.
+ * Zakładki nie zakłada. Rozliczonych nie rusza.
+ */
+function applyHarmonogramRatesToScheduleRegister_(shop, contractor) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var register = ss.getSheetByName(SCHEDULE_REGISTER_SHEET_NAME);
+  var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  if (!register || !baza || !shop || !contractor) {
+    return 0;
+  }
+  var lastRow = register.getLastRow();
+  if (lastRow < 2) {
+    return 0;
+  }
+  var rates = listHarmonogramRateAmountRows_(baza);
+  if (!rates.length) {
+    return 0;
+  }
+  var shopFold = settlementFoldPl_(shop);
+  var whoFold = settlementFoldPl_(contractor);
+  var width = Math.max(register.getLastColumn(), SCHEDULE_COL.stawkaWorka);
+  var values = register.getRange(2, 1, lastRow - 1, width).getValues();
+  var updated = 0;
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var mapped = mapSettlementScheduleRegisterRow_(i + 2, values[i]);
+    if (!mapped || mapped.settled) {
+      continue;
+    }
+    if (
+      settlementFoldPl_(mapped.address) !== shopFold ||
+      settlementFoldPl_(mapped.contractor) !== whoFold
+    ) {
+      continue;
+    }
+    var snap = resolveHarmonogramSnapshot_(rates, mapped.address, mapped.contractor, mapped.pickupDate);
+    register.getRange(i + 2, SCHEDULE_COL.trasa, 1, 4).setValues([
+      [snap.routeName, snap.route, snap.pickup, snap.bag],
+    ]);
+    updated += 1;
+  }
+  return updated;
+}
+
+/**
  * Zapis cen i dni do Bazy cen harmonogram.
  * Ceny: te same reguły klucza co saveRate (adres + podwykonawca + data).
  * Dni: klucz sklep + podwykonawca — aktualizacja tylko gdy się zmieniły.
  * Nazwa trasy + cena za trasę: razem albo obie puste.
  * Pusta para przy overwrite nie czyści istniejących kolumn 3 i 6.
+ * Po sukcesie: stawki na nierozliczonych wierszach zestawienia tej pary.
  */
 function handleSaveRateHarmonogramPost_(body) {
   var shop = cellStr_(body && body.sklep);
@@ -1954,11 +2071,13 @@ function handleSaveRateHarmonogramPost_(body) {
         sheet.getRange(rowNum, 4, 1, 2).setValues([[pickupCell, bagCell]]);
       }
     }
+    var overwrittenSchedule = applyHarmonogramRatesToScheduleRegister_(shop, contractor);
     return jsonResponse({
       ok: true,
       action: 'overwrite',
       daysUpdated: daysUpdated,
       rows: targetRows.length,
+      scheduleUpdated: overwrittenSchedule,
     });
   }
   var next = Math.max(sheet.getLastRow(), 1) + 1;
@@ -1967,7 +2086,13 @@ function handleSaveRateHarmonogramPost_(body) {
     .getRange(next, 1, 1, 8)
     .setValues([[shop, contractor, routeName, pickupCell, bagCell, routeRateCell, validFrom, days]]);
   sheet.getRange(next, 7).setNumberFormat('@').setValue(String(validFrom));
-  return jsonResponse({ ok: true, action: 'append', daysUpdated: daysUpdated });
+  var appendedSchedule = applyHarmonogramRatesToScheduleRegister_(shop, contractor);
+  return jsonResponse({
+    ok: true,
+    action: 'append',
+    daysUpdated: daysUpdated,
+    scheduleUpdated: appendedSchedule,
+  });
 }
 
 /**

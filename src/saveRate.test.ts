@@ -216,6 +216,8 @@ describe('saveRate', () => {
     expect(handler).toContain('body.kwotaTrasy');
     expect(handler).toContain("error: 'route'");
     expect(handler).toContain('writeRoute');
+    expect(handler).toContain('applyHarmonogramRatesToScheduleRegister_');
+    expect(handler).toContain('scheduleUpdated');
     expect(handler).not.toContain("error: 'tie'");
     expect(handler).not.toContain('getRange(decision.row, 8)');
 
@@ -223,5 +225,13 @@ describe('saveRate', () => {
     expect(daysUpdate).toContain('normalizeRateShopKey_');
     expect(daysUpdate).toContain('row.days === days');
     expect(daysUpdate).toContain('getRange(row.row, 8)');
+
+    const apply = functionBody(gas, 'applyHarmonogramRatesToScheduleRegister_');
+    expect(apply).toContain('SCHEDULE_REGISTER_SHEET_NAME');
+    expect(apply).toContain('listHarmonogramRateAmountRows_');
+    expect(apply).toContain('resolveHarmonogramSnapshot_');
+    expect(apply).toContain('mapped.settled');
+    expect(apply).toContain('SCHEDULE_COL.trasa');
+    expect(apply).not.toContain('getOrCreateScheduleRegisterSheet_');
   });
 });

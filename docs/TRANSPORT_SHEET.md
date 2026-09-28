@@ -56,7 +56,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   20. Komentarz 2
 
-- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” ma listę tak/nie. Sync nigdy nie czyści zakładki.
+- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” ma listę tak/nie. Sync nigdy nie czyści zakładki. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (bez czekania na pipeline).
 
 
 
