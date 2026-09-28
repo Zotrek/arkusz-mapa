@@ -842,6 +842,7 @@ export function buildMapHtml(
     #doc-btn-nowa-trasa[hidden] { display: none !important; }
     .doc-modal-panel input[type="date"], .doc-modal-panel input[type="text"], .doc-modal-panel .doc-combobox-input, .doc-modal-panel select, .doc-modal-panel textarea { width: 100%; padding: 9px 11px; font-size: 13px; color: var(--map-ink); border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.55); background: rgba(255,255,255,0.92); box-sizing: border-box; outline: none; }
     .doc-modal-panel input:focus, .doc-modal-panel select:focus, .doc-modal-panel textarea:focus, .doc-modal-panel .doc-combobox-input:focus { border-color: var(--map-accent); box-shadow: 0 0 0 3px var(--map-accent-soft); }
+    .doc-modal-panel input.is-invalid, .doc-modal-panel input.is-invalid:focus { border-color: #b02a37; box-shadow: 0 0 0 3px rgba(176, 42, 55, 0.18); background: rgba(176, 42, 55, 0.06); }
     .doc-combobox-wrap { position: relative; }
     .doc-combobox-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); max-height: 220px; overflow-y: auto; z-index: 10; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 10px; box-shadow: var(--map-shadow); }
     .doc-combobox-list li { padding: 8px 10px; cursor: pointer; font-size: 13px; }
@@ -2512,6 +2513,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           ? 'Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone. Nazwa trasy i cena za trasę razem albo obie puste.'
           : 'Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone.';
       }
+      validateBulkRatesFields();
     }
     /** Kwota: puste OK; inaczej tylko cyfry, opcjonalnie przecinek/kropka i do 2 miejsc (jak parseRateAmount_). */
     function isValidBulkRateAmount(text) {
@@ -2526,6 +2528,56 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (frac && (!/^[0-9]+$/.test(frac) || frac.length > 2)) return false;
       var value = Number(raw);
       return value === value && value !== Infinity;
+    }
+    function setBulkRateFieldInvalid(el, invalid) {
+      if (!el) return;
+      if (invalid) {
+        el.classList.add('is-invalid');
+        el.setAttribute('aria-invalid', 'true');
+      } else {
+        el.classList.remove('is-invalid');
+        el.removeAttribute('aria-invalid');
+      }
+    }
+    /** Podświetla błędne pola i pokazuje komunikat od razu (input/change). Zwraca true gdy OK. */
+    function validateBulkRatesFields() {
+      var podjazdEl = document.getElementById('bulk-rates-podjazd');
+      var worekEl = document.getElementById('bulk-rates-worek');
+      var trasaEl = document.getElementById('bulk-rates-trasa');
+      var kwotaTrasyEl = document.getElementById('bulk-rates-kwota-trasy');
+      var kwotaPodjazd = String((podjazdEl || {}).value || '');
+      var kwotaWorek = String((worekEl || {}).value || '');
+      var podjazdOk = isValidBulkRateAmount(kwotaPodjazd);
+      var worekOk = isValidBulkRateAmount(kwotaWorek);
+      setBulkRateFieldInvalid(podjazdEl, !podjazdOk);
+      setBulkRateFieldInvalid(worekEl, !worekOk);
+      var routePairOk = true;
+      var routePriceOk = true;
+      var isHarm = getBulkRatesTarget() === 'harmonogram';
+      if (isHarm) {
+        var nazwaTrasy = String((trasaEl || {}).value || '').trim();
+        var kwotaTrasy = String((kwotaTrasyEl || {}).value || '');
+        var kwotaTrasyTrim = kwotaTrasy.trim();
+        routePairOk = !((nazwaTrasy && !kwotaTrasyTrim) || (!nazwaTrasy && kwotaTrasyTrim));
+        routePriceOk = isValidBulkRateAmount(kwotaTrasy);
+        setBulkRateFieldInvalid(trasaEl, !routePairOk);
+        setBulkRateFieldInvalid(kwotaTrasyEl, !routePairOk || !routePriceOk);
+      } else {
+        setBulkRateFieldInvalid(trasaEl, false);
+        setBulkRateFieldInvalid(kwotaTrasyEl, false);
+      }
+      var ok = podjazdOk && worekOk && routePairOk && routePriceOk;
+      if (!ok) {
+        if (!podjazdOk || !worekOk || (isHarm && !routePriceOk && routePairOk)) {
+          setBulkRatesStatus('Kwoty mogą zawierać tylko liczby (opcjonalnie z przecinkiem/kropką).', 'error');
+        } else {
+          setBulkRatesStatus('Nazwa trasy i cena za trasę muszą być razem albo obie puste.', 'error');
+        }
+      } else {
+        var statusEl = document.getElementById('bulk-rates-status');
+        if (statusEl && statusEl.style.color) setBulkRatesStatus('');
+      }
+      return ok;
     }
     function commonBulkShopField(shops, field) {
       var value = null;
@@ -2591,6 +2643,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (odKiedy) odKiedy.value = '';
       setDayMultiValue('bulk-rates-dni', commonBulkShopField(shops, 'dniHarmonogramu'));
       syncBulkRatesTargetUi();
+      validateBulkRatesFields();
       setBulkRatesStatus('');
       if (typeof fillRateContractorOptions === 'function') fillRateContractorOptions();
       var m = document.getElementById('bulk-rates-modal');
@@ -2637,44 +2690,40 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         setBulkRatesStatus('Wybierz podwykonawcę z listy.', 'error');
         return;
       }
+      if (!validateBulkRatesFields()) return;
       var kwotaPodjazd = String((document.getElementById('bulk-rates-podjazd') || {}).value || '');
       var kwotaWorek = String((document.getElementById('bulk-rates-worek') || {}).value || '');
-      if (!isValidBulkRateAmount(kwotaPodjazd) || !isValidBulkRateAmount(kwotaWorek)) {
-        setBulkRatesStatus('Kwoty mogą zawierać tylko liczby (opcjonalnie z przecinkiem/kropką).', 'error');
-        return;
-      }
       var nazwaTrasy = '';
       var kwotaTrasy = '';
       if (target === 'harmonogram') {
         nazwaTrasy = String((document.getElementById('bulk-rates-trasa') || {}).value || '').trim();
         kwotaTrasy = String((document.getElementById('bulk-rates-kwota-trasy') || {}).value || '');
-        var kwotaTrasyTrim = kwotaTrasy.trim();
-        if ((nazwaTrasy && !kwotaTrasyTrim) || (!nazwaTrasy && kwotaTrasyTrim)) {
-          setBulkRatesStatus('Nazwa trasy i cena za trasę muszą być razem albo obie puste.', 'error');
-          return;
-        }
-        if (!isValidBulkRateAmount(kwotaTrasy)) {
-          setBulkRatesStatus('Cena za trasę może zawierać tylko liczby (opcjonalnie z przecinkiem/kropką).', 'error');
-          return;
-        }
       }
       var odKiedy = rateValidFromFromPicker((document.getElementById('bulk-rates-od-kiedy') || {}).value);
       var dniOdbiorow = String((document.getElementById('bulk-rates-dni') || {}).value || '').trim();
       var okBtn = document.getElementById('bulk-rates-btn-ok');
       if (okBtn) okBtn.disabled = true;
       setBulkRatesStatus('Zapisuję 0/' + shops.length + '…');
+      setTransportDatesLoading(true, 'Zapisuję stawki…');
       var done = 0;
+      function finishBulkRatesSave(ok) {
+        setTransportDatesLoading(false);
+        if (okBtn) okBtn.disabled = false;
+        if (!ok) return;
+        var savedCount = shops.length;
+        closeBulkRatesModal();
+        clearBulkSelection();
+        alert('Zapisano stawki dla ' + savedCount + ' sklepów.');
+      }
       function saveNext() {
         if (done >= shops.length) {
-          if (okBtn) okBtn.disabled = false;
-          var savedCount = shops.length;
-          closeBulkRatesModal();
-          clearBulkSelection();
-          alert('Zapisano stawki dla ' + savedCount + ' sklepów.');
+          finishBulkRatesSave(true);
           return;
         }
         var shop = shops[done];
-        setBulkRatesStatus('Zapisuję ' + (done + 1) + '/' + shops.length + '…');
+        var progress = 'Zapisuję ' + (done + 1) + '/' + shops.length + '…';
+        setBulkRatesStatus(progress);
+        syncMapLoaderUi(progress);
         var payload = {
           mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate',
           sklep: shop.adres,
@@ -2690,7 +2739,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         }
         postReferencePayload(payload).then(function (resp) {
           if (!resp || !resp.ok) {
-            if (okBtn) okBtn.disabled = false;
+            finishBulkRatesSave(false);
             setBulkRatesStatus(
               'Błąd przy sklepie ' + (done + 1) + '/' + shops.length + ': ' + saveRateErrorMessage(resp && resp.error),
               'error'
@@ -2700,7 +2749,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           done += 1;
           saveNext();
         }).catch(function () {
-          if (okBtn) okBtn.disabled = false;
+          finishBulkRatesSave(false);
           setBulkRatesStatus('Błąd sieci przy sklepie ' + (done + 1) + '/' + shops.length + '.', 'error');
         });
       }
@@ -3492,6 +3541,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var bri;
       for (bri = 0; bri < bulkTargetRadios.length; bri++) {
         bulkTargetRadios[bri].addEventListener('change', syncBulkRatesTargetUi);
+      }
+      var bulkValidateIds = ['bulk-rates-podjazd', 'bulk-rates-worek', 'bulk-rates-trasa', 'bulk-rates-kwota-trasy'];
+      var bvi;
+      for (bvi = 0; bvi < bulkValidateIds.length; bvi++) {
+        var bulkField = document.getElementById(bulkValidateIds[bvi]);
+        if (!bulkField) continue;
+        bulkField.addEventListener('input', validateBulkRatesFields);
+        bulkField.addEventListener('change', validateBulkRatesFields);
       }
     }
 

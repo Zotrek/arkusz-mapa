@@ -836,6 +836,8 @@ describe('phase6', () => {
       expect(html).toContain('openBulkRatesModal');
       expect(html).toContain('runBulkRatesSave');
       expect(html).toContain('closeBulkRatesModal');
+      expect(html).toContain("setTransportDatesLoading(true, 'Zapisuję stawki…')");
+      expect(html).toContain('finishBulkRatesSave');
       expect(html).toContain("alert('Zapisano stawki dla ' + savedCount + ' sklepów.')");
       expect(html).toContain("mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate'");
       expect(html).toContain('appendTransportRow');
@@ -967,8 +969,13 @@ result = proposeRouteName(
       expect(html).toContain('name="bulk-rates-target"');
       expect(html).toContain('value="harmonogram"');
       expect(html).toContain('isValidBulkRateAmount');
+      expect(html).toContain('validateBulkRatesFields');
+      expect(html).toContain('setBulkRateFieldInvalid');
+      expect(html).toContain('input.is-invalid');
+      expect(html).toContain("bulkField.addEventListener('input', validateBulkRatesFields)");
       expect(html).toContain('payload.nazwaTrasy');
       expect(html).toContain('payload.kwotaTrasy');
+      expect(html).toContain('if (!validateBulkRatesFields()) return');
       expect(html).toContain('id="bulk-rates-dni"');
       expect(html).toContain('id="bulk-rates-dni-toggle"');
       expect(html).toContain('data-day-multi="bulk-rates-dni"');
