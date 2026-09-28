@@ -171,7 +171,12 @@ describe('saveRate', () => {
 
     const handler = functionBody(gas, 'handleSaveRateHarmonogramPost_');
     expect(handler).toContain('updateHarmonogramDaysIfChanged_');
+    expect(handler).toContain('getRange(decision.row, 3, 1, 4)');
     expect(handler).toContain('getRange(decision.row, 4, 1, 2)');
+    expect(handler).toContain('body.nazwaTrasy');
+    expect(handler).toContain('body.kwotaTrasy');
+    expect(handler).toContain("error: 'route'");
+    expect(handler).toContain('writeRoute');
     expect(handler).not.toContain('getRange(decision.row, 8)');
 
     const daysUpdate = functionBody(gas, 'updateHarmonogramDaysIfChanged_');

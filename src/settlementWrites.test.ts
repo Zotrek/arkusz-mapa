@@ -58,6 +58,12 @@ class FakeRange {
       }
     }
   }
+
+  getDataValidation(): null {
+    return null;
+  }
+
+  setDataValidation(_rule: unknown): void {}
 }
 
 class FakeSheet {
@@ -87,6 +93,16 @@ class FakeSheet {
     }
     return max;
   }
+
+  getMaxRows(): number {
+    return Math.max(this.getLastRow(), 1000);
+  }
+
+  getConditionalFormatRules(): unknown[] {
+    return [];
+  }
+
+  setConditionalFormatRules(_rules: unknown[]): void {}
 
   getLastColumn(): number {
     let max = 0;
@@ -186,6 +202,21 @@ beforeAll(() => {
             throw new Error(`unexpected insertSheet ${name}`);
           },
         };
+      },
+      newDataValidation() {
+        const builder: Record<string, unknown> = {};
+        builder.requireValueInList = () => builder;
+        builder.setAllowInvalid = () => builder;
+        builder.build = () => ({});
+        return builder;
+      },
+      newConditionalFormatRule() {
+        const builder: Record<string, unknown> = {};
+        builder.whenFormulaSatisfied = () => builder;
+        builder.setStrikethrough = () => builder;
+        builder.setRanges = () => builder;
+        builder.build = () => ({});
+        return builder;
       },
     },
     LockService: {
@@ -1035,41 +1066,49 @@ describe("approve", () => {
   it("test_approve_schedule_tryb_writes_zestawienie_not_arkusz1", () => {
     const { register, schedule } = fresh();
     seedRegister(register, 2);
-    seedRegister(schedule, 2, { 1: 50, 5: "20.09.2026", 9: 3 });
+    // układ bez nr zlecenia: adres, …, data, kto, …, worki=3, …, rozliczony
+    schedule.put(1, 1, "Adres odbioru");
+    schedule.put(2, 1, "Sklepowa 1");
+    schedule.put(2, 4, "20.09.2026");
+    schedule.put(2, 5, "gpw");
+    schedule.put(2, 8, 3);
 
     const result = postToSheet({
       action: "approve",
       tryb: "harmonogram",
       numerFaktury: "FV/H1",
-      wiersze: [{ sheetRow: 2, transportNumber: "50", koszt: 3000 }],
+      wiersze: [{ sheetRow: 2, transportNumber: "", koszt: 3000 }],
     });
 
     expect(result).toEqual({
       ok: true,
-      zapisane: [{ sheetRow: 2, transportNumber: "50" }],
+      zapisane: [{ sheetRow: 2, transportNumber: "" }],
       pominiete: [],
     });
-    expect(schedule.cell(2, 14)).toBe("tak");
-    expect(schedule.cell(2, 15)).toBe("FV/H1");
-    expect(schedule.cell(2, 16)).toBe(30);
+    expect(schedule.cell(2, 13)).toBe("tak");
+    expect(schedule.cell(2, 14)).toBe("FV/H1");
+    expect(schedule.cell(2, 15)).toBe(30);
     expect(register.cell(2, 14)).toBe("");
   });
 
   it("test_patchBags_schedule_tryb_writes_zestawienie", () => {
     const { register, schedule } = fresh();
     seedRegister(register, 2);
-    seedRegister(schedule, 2, { 1: 50, 9: 1 });
+    schedule.put(2, 1, "Adres");
+    schedule.put(2, 4, "20.09.2026");
+    schedule.put(2, 5, "gpw");
+    schedule.put(2, 8, 1);
 
     const result = postToSheet({
       action: "patchBags",
       tryb: "harmonogram",
       sheetRow: 2,
-      transportNumber: "50",
+      transportNumber: "",
       iloscWorkow: 7,
     });
 
     expect(result).toEqual({ ok: true });
-    expect(schedule.cell(2, 9)).toBe(7);
+    expect(schedule.cell(2, 8)).toBe(7);
     expect(register.cell(2, 9)).toBe(2);
   });
 });

@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  BAZA_CEN_HEADERS,
-} from './bazaCenHarmonogram.js';
+import { BAZA_CEN_HEADERS } from './bazaCenHarmonogram.js';
 import { SHEET_NAME_ZESTAWIENIE_HARMONOGRAM } from './config.js';
 import {
   buildScheduleSyncExpected,
@@ -20,6 +18,8 @@ const ODEBRANE_HEADERS = [
   'Ulica',
   'Numer budynku',
   'Data zamknięcia worka',
+  'Tryb zbiórki',
+  'Numer plomby',
 ];
 
 function odebraneRow(overrides: Record<string, string> = {}): string[] {
@@ -32,6 +32,8 @@ function odebraneRow(overrides: Record<string, string> = {}): string[] {
     Ulica: 'Radzikowskiego',
     'Numer budynku': '138',
     'Data zamknięcia worka': '15.09.2026',
+    'Tryb zbiórki': 'Ręczna',
+    'Numer plomby': 'P1',
     ...overrides,
   };
   return ODEBRANE_HEADERS.map((h) => byHeader[h] ?? '');
@@ -52,56 +54,42 @@ describe('buildScheduleSyncExpected', () => {
     );
     expect(rows).toHaveLength(4);
     expect(rows.every((r) => r.bagCount === 0)).toBe(true);
-    expect(rows.filter((r) => r.pickupDate === '15.09.2026')).toHaveLength(2);
+    expect(rows.every((r) => r.rodzajZbiorki === '')).toBe(true);
   });
 
-  it('test_buildScheduleSyncExpected_counts_bags_and_includes_odebrane_only_shops', () => {
-    const withBags = buildScheduleSyncExpected(
+  it('test_buildScheduleSyncExpected_aggregates_rodzaj_from_tryb_zbiorki', () => {
+    const rows = buildScheduleSyncExpected(
       '15.09.2026',
       '15.09.2026',
       [...BAZA_CEN_HEADERS],
       [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
       ODEBRANE_HEADERS,
-      [odebraneRow(), odebraneRow()],
+      [
+        odebraneRow({ 'Numer plomby': 'P1', 'Tryb zbiórki': 'Ręczna' }),
+        odebraneRow({ 'Numer plomby': 'P2', 'Tryb zbiórki': 'Maszyna' }),
+      ],
     );
-    expect(withBags).toHaveLength(1);
-    expect(withBags[0]).toMatchObject({ bagCount: 2, contractor: 'THOR', shopName: 'Sklep A' });
-
-    const onlyOdebrane = buildScheduleSyncExpected(
-      '15.09.2026',
-      '15.09.2026',
-      [...BAZA_CEN_HEADERS],
-      [],
-      ODEBRANE_HEADERS,
-      [odebraneRow()],
-    );
-    expect(onlyOdebrane).toHaveLength(1);
-    expect(onlyOdebrane[0].bagCount).toBe(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      bagCount: 2,
+      rodzajZbiorki: 'ręczna i automatyczna',
+    });
   });
 });
 
 describe('planScheduleSync', () => {
-  it('test_planScheduleSync_skips_settled_and_updates_open', () => {
+  it('test_planScheduleSync_skips_settled_never_deletes', () => {
     const expected = buildScheduleSyncExpected(
       '15.09.2026',
       '15.09.2026',
       [...BAZA_CEN_HEADERS],
       [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
       ODEBRANE_HEADERS,
-      [odebraneRow(), odebraneRow()],
+      [odebraneRow()],
     );
-    const plan = planScheduleSync(
-      expected,
-      [
-        {
-          sheetRow: 2,
-          key: expected[0]!.key,
-          transportNumber: '10',
-          settled: true,
-        },
-      ],
-      10,
-    );
+    const plan = planScheduleSync(expected, [
+      { sheetRow: 2, key: expected[0]!.key, settled: true },
+    ]);
     expect(plan.skippedSettled).toBe(1);
     expect(plan.create).toHaveLength(0);
     expect(plan.update).toHaveLength(0);
@@ -118,9 +106,9 @@ describe('defaultSyncWindow', () => {
 });
 
 describe('syncZestawienieHarmonogram', () => {
-  it('test_syncZestawienieHarmonogram_creates_sheet_and_appends_rows', async () => {
+  it('test_syncZestawienieHarmonogram_creates_sheet_and_appends_without_clear', async () => {
     const sheets = new Map<string, string[][]>();
-    sheets.set('odebrane z harmonogramu', [ODEBRANE_HEADERS, odebraneRow(), odebraneRow()]);
+    sheets.set('odebrane z harmonogramu', [ODEBRANE_HEADERS, odebraneRow(), odebraneRow({ 'Numer plomby': 'P2' })]);
     sheets.set('Baza cen harmonogram', [
       [...BAZA_CEN_HEADERS],
       ['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt'],
@@ -130,7 +118,9 @@ describe('syncZestawienieHarmonogram', () => {
       spreadsheets: {
         get: vi.fn(async () => ({
           data: {
-            sheets: [...sheets.keys()].map((title) => ({ properties: { title } })),
+            sheets: [...sheets.keys()].map((title, i) => ({
+              properties: { title, sheetId: i + 1, gridProperties: { rowCount: 1000 } },
+            })),
           },
         })),
         batchUpdate: vi.fn(async (args: {
@@ -147,7 +137,7 @@ describe('syncZestawienieHarmonogram', () => {
             const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
             return { data: { values: title ? sheets.get(title) : [] } };
           }),
-          update: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
+          update: vi.fn(async (args: { requestBody: { values: string[][] } }) => {
             sheets.set(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM, args.requestBody.values);
           }),
           append: vi.fn(async (args: { requestBody: { values: string[][] } }) => {
@@ -157,6 +147,7 @@ describe('syncZestawienieHarmonogram', () => {
             sheets.set(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM, [...current, ...args.requestBody.values]);
           }),
           batchUpdate: vi.fn(async () => ({})),
+          clear: vi.fn(),
         },
       },
     };
@@ -169,8 +160,11 @@ describe('syncZestawienieHarmonogram', () => {
 
     expect(result.sheetCreated).toBe(true);
     expect(result.createdCount).toBe(1);
-    expect(result.expectedCount).toBe(1);
-    expect(sheets.has(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM)).toBe(true);
+    expect(api.spreadsheets.values.clear).not.toHaveBeenCalled();
     expect(api.spreadsheets.values.append).toHaveBeenCalled();
+    const validationCalls = api.spreadsheets.batchUpdate.mock.calls.filter((c) =>
+      JSON.stringify(c[0]).includes('setDataValidation'),
+    );
+    expect(validationCalls.length).toBeGreaterThan(0);
   });
 });

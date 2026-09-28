@@ -611,7 +611,6 @@ describe('buildSettlementHarmonogramRead_', () => {
         {
           sheetRow: 2,
           cells: [
-            '100',
             '31-342 Kraków Radzikowskiego 138',
             '',
             'Radzikowskiego',
@@ -634,14 +633,13 @@ describe('buildSettlementHarmonogramRead_', () => {
         {
           sheetRow: 3,
           cells: [
-            '101',
             '30-045 Kraków ul. Królewska 52',
             '',
             '',
             '22.09.2026',
             'THOR',
             '',
-            '',
+            'ręczna',
             2,
             '',
             '',
@@ -657,7 +655,6 @@ describe('buildSettlementHarmonogramRead_', () => {
         {
           sheetRow: 4,
           cells: [
-            '102',
             'inny',
             '',
             '',
@@ -691,13 +688,12 @@ describe('buildSettlementHarmonogramRead_', () => {
     }
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({
-      transportNumber: '100',
+      transportNumber: '',
       bagCount: 0,
       pickupRate: 10000,
       pickupDate: '15.09.2026',
     });
     expect(result.rows[1]).toMatchObject({
-      transportNumber: '101',
       bagCount: 2,
       pickupRate: 10000,
       bagRate: 1000,
@@ -712,7 +708,6 @@ describe('buildSettlementHarmonogramRead_', () => {
         {
           sheetRow: 2,
           cells: [
-            '1',
             'Adres A',
             '',
             '',
@@ -735,7 +730,6 @@ describe('buildSettlementHarmonogramRead_', () => {
         {
           sheetRow: 3,
           cells: [
-            '2',
             'Adres B',
             '',
             '',

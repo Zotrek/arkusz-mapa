@@ -12,10 +12,9 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   - `Arkusz1` — rejestr transportów (Na zgłoszenie)
   - `odebrane z harmonogramu` — 1 wiersz = 1 worek (źródło sync)
-  - `zestawienie z harmonogramu` — rejestr odbiorów Harmonogram (jak Arkusz1; Ilość worków = suma)
-  - `Baza cen harmonogram`, `Baza stawek`, `Lista podwykonawców`, `Popraw adres`
+  - `zestawienie z harmonogramu` — rejestr odbiorów Harmonogram (bez nr zlecenia; Rodzaj zbiórki z Tryb zbiórki; sync uzupełnia, nigdy nie czyści)
 
-- **Wiersz 1 — nagłówki rejestru Arkusz1 / zestawienie z harmonogramu (kolejność kolumn):**
+- **Wiersz 1 — nagłówki rejestru Arkusz1 (kolejność kolumn):**
 
   1. Numer transportowy
 
@@ -57,9 +56,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   20. Komentarz 2
 
-
-
-## Wdrożenie Apps Script (jednorazowo)
+- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” ma listę tak/nie. Sync nigdy nie czyści zakładki.
 
 
 

@@ -1,6 +1,6 @@
 /**
- * Zakładka „zestawienie z harmonogramu” — rejestr jak Arkusz1.
- * Sync po skopiowaniu „odebrane z harmonogramu”: suma worków + dni podjazdu z Bazy cen.
+ * Zakładka „zestawienie z harmonogramu” — rejestr jak Arkusz1, bez nr zlecenia.
+ * Sync po „odebrane”: uzupełnia braki / aktualizuje nierozliczone; NIGDY nie czyści zakładki.
  */
 
 import {
@@ -12,10 +12,10 @@ import { parseWeekdaysFromDniHarmonogramu } from './harmonogramDays.js';
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
 import { buildAddress } from './sheets.js';
-import { parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
+import { aggregateRodzajZbiorkiFromSealRows, parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 
+/** Bez „Nr zlecenia transportowego”. Kolumna 17 = transport się odbył. */
 export const ZESTAWIENIE_HARMONOGRAM_HEADERS = [
-  'Nr zlecenia transportowego',
   'Adres odbioru',
   'Nazwa kontrahenta / podmiot handlowy',
   'Nazwa punktu / nazwa skrócona',
@@ -37,6 +37,9 @@ export const ZESTAWIENIE_HARMONOGRAM_HEADERS = [
   'Komentarz 2',
 ] as const;
 
+/** 1-based index of „transport się odbył” in {@link ZESTAWIENIE_HARMONOGRAM_HEADERS}. */
+export const SCHEDULE_COL_TRANSPORT_ODBYL = 17;
+
 export interface ScheduleSyncExpectedRow {
   key: string;
   address: string;
@@ -45,6 +48,7 @@ export interface ScheduleSyncExpectedRow {
   contractor: string;
   pickupDate: string;
   bagCount: number;
+  rodzajZbiorki: string;
   routeName: string;
   routeRate: string;
   pickupRate: string;
@@ -54,7 +58,6 @@ export interface ScheduleSyncExpectedRow {
 export interface ScheduleRegisterExistingRow {
   sheetRow: number;
   key: string;
-  transportNumber: string;
   settled: boolean;
 }
 
@@ -62,7 +65,6 @@ export interface ScheduleSyncPlan {
   create: ScheduleSyncExpectedRow[];
   update: Array<{ sheetRow: number; row: ScheduleSyncExpectedRow }>;
   skippedSettled: number;
-  nextNum: number;
 }
 
 type SheetsClient = {
@@ -112,7 +114,6 @@ export function scheduleRowKey(address: string, pickupDate: string, contractor: 
   return `${foldScheduleKeyPart(address)}\n${pickupDate}\n${foldScheduleKeyPart(contractor)}`;
 }
 
-/** ms UTC midnight → dd.mm.yyyy; NaN/∞ → null. */
 export function msToDdMmYyyy(ms: number): string | null {
   if (!Number.isFinite(ms) || ms === Number.NEGATIVE_INFINITY) {
     return null;
@@ -146,7 +147,6 @@ export function dateInRange(pickup: string, dataOd: string, dataDo: string): boo
   return true;
 }
 
-/** Daty dd.mm.yyyy w [dataOd, dataDo] o getUTCDay() z weekdays. */
 export function datesMatchingWeekdays(
   dataOd: string,
   dataDo: string,
@@ -203,6 +203,16 @@ function headerIndex(headers: string[], name: string): number {
   return -1;
 }
 
+/** Tryb zbiórki / Zbiórka / Rodzaj zbiórki w odebrane. */
+function findZbiorkaColumnIndex(headers: string[]): number {
+  const names = ['Tryb zbiórki', 'Zbiórka', 'Rodzaj zbiórki'];
+  for (const name of names) {
+    const ix = headerIndex(headers, name);
+    if (ix >= 0) return ix;
+  }
+  return -1;
+}
+
 function cell(row: string[] | undefined, index: number): string {
   return String(row?.[index] ?? '').trim();
 }
@@ -223,7 +233,8 @@ type BazaRate = {
 };
 
 /**
- * Oczekiwane wiersze sync: dni z Bazy cen (0 worków OK) + worki z odebrane (także bez Bazy cen).
+ * Oczekiwane wiersze: dni z Bazy cen + worki z odebrane.
+ * Rodzaj zbiórki = agregat Tryb zbiórki z worków grupy.
  */
 export function buildScheduleSyncExpected(
   dataOd: string,
@@ -291,6 +302,8 @@ export function buildScheduleSyncExpected(
   const ixData = headerIndex(odebraneHeaders, 'Data zamknięcia worka');
   const ixSklep = headerIndex(odebraneHeaders, 'Sklep');
   const ixPodmiot = headerIndex(odebraneHeaders, 'Podmiot handlowy');
+  const ixZbiorka = findZbiorkaColumnIndex(odebraneHeaders);
+  const ixPlomba = headerIndex(odebraneHeaders, 'Numer plomby');
 
   const bagGroups = new Map<
     string,
@@ -301,6 +314,7 @@ export function buildScheduleSyncExpected(
       contractor: string;
       pickupDate: string;
       bagCount: number;
+      seals: Array<{ numerPlomby: string; zbiorka: string }>;
     }
   >();
   if (ixKod >= 0 && ixMiasto >= 0 && ixUlica >= 0 && ixNumer >= 0 && ixFirma >= 0 && ixData >= 0) {
@@ -317,6 +331,8 @@ export function buildScheduleSyncExpected(
       const closeDate = parseToDdMmYyyy(cell(row, ixData));
       if (!closeDate || !dateInRange(closeDate, start, end)) continue;
       const key = scheduleRowKey(adres, closeDate, firma);
+      const plomba = ixPlomba >= 0 ? cell(row, ixPlomba) : '';
+      const zbiorka = ixZbiorka >= 0 ? cell(row, ixZbiorka) : '';
       const prev = bagGroups.get(key);
       if (!prev) {
         bagGroups.set(key, {
@@ -326,9 +342,14 @@ export function buildScheduleSyncExpected(
           contractor: firma,
           pickupDate: closeDate,
           bagCount: 1,
+          seals: [{ numerPlomby: plomba || '1', zbiorka }],
         });
       } else {
         prev.bagCount += 1;
+        prev.seals.push({
+          numerPlomby: plomba || String(prev.bagCount),
+          zbiorka,
+        });
         if (!prev.shopName && ixSklep >= 0) prev.shopName = cell(row, ixSklep);
         if (!prev.podmiot && ixPodmiot >= 0) prev.podmiot = cell(row, ixPodmiot);
       }
@@ -345,6 +366,7 @@ export function buildScheduleSyncExpected(
     shopName: string,
     podmiot: string,
     bagCount: number,
+    rodzajZbiorki: string,
   ): ScheduleSyncExpectedRow {
     const key = scheduleRowKey(address, pickupDate, contractor);
     let row = expected.get(key);
@@ -357,6 +379,7 @@ export function buildScheduleSyncExpected(
         contractor,
         pickupDate,
         bagCount,
+        rodzajZbiorki: rodzajZbiorki || '',
         routeName: '',
         routeRate: '',
         pickupRate: '',
@@ -366,6 +389,7 @@ export function buildScheduleSyncExpected(
       order.push(key);
     } else {
       row.bagCount = bagCount;
+      if (rodzajZbiorki) row.rodzajZbiorki = rodzajZbiorki;
       if (shopName && !row.shopName) row.shopName = shopName;
       if (podmiot && !row.podmiot) row.podmiot = podmiot;
     }
@@ -376,7 +400,7 @@ export function buildScheduleSyncExpected(
     const weekdays = parseWeekdaysFromDniHarmonogramu(meta.days);
     if (weekdays.length === 0) continue;
     for (const day of datesMatchingWeekdays(start, end, weekdays)) {
-      const row = ensure(meta.address, meta.contractor, day, '', '', 0);
+      const row = ensure(meta.address, meta.contractor, day, '', '', 0, '');
       let best: BazaRate | null = null;
       for (const rate of rateRows) {
         if (rate.shop !== meta.address) continue;
@@ -399,6 +423,13 @@ export function buildScheduleSyncExpected(
       const bags = bagGroups.get(bagKey);
       if (bags) {
         row.bagCount = bags.bagCount;
+        row.rodzajZbiorki = aggregateRodzajZbiorkiFromSealRows(
+          bags.seals.map((s) => ({
+            numerPlomby: s.numerPlomby,
+            dataZamknieciaWorka: bags.pickupDate,
+            zbiorka: s.zbiorka,
+          })),
+        );
         if (bags.shopName) row.shopName = bags.shopName;
         if (bags.podmiot) row.podmiot = bags.podmiot;
         bagGroups.delete(bagKey);
@@ -407,7 +438,21 @@ export function buildScheduleSyncExpected(
   }
 
   for (const g of bagGroups.values()) {
-    ensure(g.address, g.contractor, g.pickupDate, g.shopName, g.podmiot, g.bagCount);
+    ensure(
+      g.address,
+      g.contractor,
+      g.pickupDate,
+      g.shopName,
+      g.podmiot,
+      g.bagCount,
+      aggregateRodzajZbiorkiFromSealRows(
+        g.seals.map((s) => ({
+          numerPlomby: s.numerPlomby,
+          dataZamknieciaWorka: g.pickupDate,
+          zbiorka: s.zbiorka,
+        })),
+      ),
+    );
   }
 
   return order.map((k) => expected.get(k)!);
@@ -416,45 +461,37 @@ export function buildScheduleSyncExpected(
 export function parseScheduleRegisterRows(
   headers: string[],
   rows: string[][],
-): { existing: ScheduleRegisterExistingRow[]; maxNum: number } {
-  const ixNum = headerIndex(headers, 'Nr zlecenia transportowego');
+): ScheduleRegisterExistingRow[] {
   const ixAdres = headerIndex(headers, 'Adres odbioru');
   const ixData = headerIndex(headers, 'Data odbioru');
   const ixKto = headerIndex(headers, 'Kto odbiera');
   const ixRoz = headerIndex(headers, 'Rozliczony');
   const existing: ScheduleRegisterExistingRow[] = [];
-  let maxNum = 0;
   if (ixAdres < 0 || ixData < 0 || ixKto < 0) {
-    return { existing, maxNum };
+    return existing;
   }
   rows.forEach((row, index) => {
     const address = cell(row, ixAdres);
     const pickupDate = parseToDdMmYyyy(cell(row, ixData));
     const contractor = cell(row, ixKto);
     if (!address || !pickupDate || !contractor) return;
-    const transportNumber = ixNum >= 0 ? cell(row, ixNum) : '';
-    const n = Number(transportNumber);
-    if (Number.isFinite(n) && n > maxNum) maxNum = n;
     existing.push({
       sheetRow: index + 2,
       key: scheduleRowKey(address, pickupDate, contractor),
-      transportNumber,
       settled: ixRoz >= 0 && foldScheduleKeyPart(cell(row, ixRoz)) === 'tak',
     });
   });
-  return { existing, maxNum };
+  return existing;
 }
 
 export function planScheduleSync(
   expected: ScheduleSyncExpectedRow[],
   existing: ScheduleRegisterExistingRow[],
-  maxNum: number,
 ): ScheduleSyncPlan {
   const byKey = new Map(existing.map((e) => [e.key, e]));
   const create: ScheduleSyncExpectedRow[] = [];
   const update: Array<{ sheetRow: number; row: ScheduleSyncExpectedRow }> = [];
   let skippedSettled = 0;
-  let nextNum = maxNum + 1;
   for (const row of expected) {
     const found = byKey.get(row.key);
     if (found) {
@@ -467,25 +504,21 @@ export function planScheduleSync(
     }
     create.push(row);
   }
-  return { create, update, skippedSettled, nextNum };
+  return { create, update, skippedSettled };
 }
 
-export function zestawienieRowValues(
-  row: ScheduleSyncExpectedRow,
-  transportNumber: string,
-  headers: string[],
-): string[] {
+export function zestawienieRowValues(row: ScheduleSyncExpectedRow, headers: string[]): string[] {
   const values = headers.map(() => '');
   const put = (name: string, value: string | number) => {
     const index = headerIndex(headers, name);
     if (index >= 0) values[index] = String(value);
   };
-  put('Nr zlecenia transportowego', transportNumber);
   put('Adres odbioru', row.address);
   put('Nazwa kontrahenta / podmiot handlowy', row.podmiot);
   put('Nazwa punktu / nazwa skrócona', row.shopName);
   put('Data odbioru', row.pickupDate);
   put('Kto odbiera', row.contractor);
+  put('Rodzaj zbiórki', row.rodzajZbiorki);
   put('Ilość worków', row.bagCount);
   put('Trasa', row.routeName);
   put('Stawka za trasę', row.routeRate);
@@ -517,6 +550,79 @@ function columnLetter(index: number): string {
   return letters;
 }
 
+async function ensureTransportOdbyłValidation(
+  api: SheetsClient,
+  spreadsheetId: string,
+  sheetName: string,
+  addStrikeRule: boolean,
+): Promise<void> {
+  const metaResponse = await api.spreadsheets.get({ spreadsheetId });
+  const sheets = (
+    metaResponse.data as {
+      sheets?: Array<{
+        properties?: { sheetId?: number; title?: string; gridProperties?: { rowCount?: number } };
+      }>;
+    }
+  ).sheets;
+  const props = (sheets ?? []).find((s) => s.properties?.title === sheetName)?.properties;
+  const sheetId = props?.sheetId;
+  if (sheetId == null) {
+    return;
+  }
+  const rowCount = Math.max(props?.gridProperties?.rowCount ?? 1000, 2);
+  const col = SCHEDULE_COL_TRANSPORT_ODBYL - 1;
+  const requests: unknown[] = [
+    {
+      setDataValidation: {
+        range: {
+          sheetId,
+          startRowIndex: 1,
+          endRowIndex: rowCount,
+          startColumnIndex: col,
+          endColumnIndex: col + 1,
+        },
+        rule: {
+          condition: {
+            type: 'ONE_OF_LIST',
+            values: [{ userEnteredValue: 'tak' }, { userEnteredValue: 'nie' }],
+          },
+          showCustomUi: true,
+          strict: false,
+        },
+      },
+    },
+  ];
+  if (addStrikeRule) {
+    requests.push({
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [
+            {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: rowCount,
+              startColumnIndex: 0,
+              endColumnIndex: SCHEDULE_COL_TRANSPORT_ODBYL,
+            },
+          ],
+          booleanRule: {
+            condition: {
+              type: 'CUSTOM_FORMULA',
+              values: [{ userEnteredValue: '=$Q2="nie"' }],
+            },
+            format: { textFormat: { strikethrough: true } },
+          },
+        },
+        index: 0,
+      },
+    });
+  }
+  await api.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests },
+  });
+}
+
 export interface SyncZestawienieHarmonogramResult {
   expectedCount: number;
   createdCount: number;
@@ -527,6 +633,9 @@ export interface SyncZestawienieHarmonogramResult {
   dataDo: string;
 }
 
+/**
+ * Uzupełnia braki i aktualizuje nierozliczone. NIE czyści zakładki (żadnego clear/overwrite całości).
+ */
 export async function syncZestawienieHarmonogram(
   api: SheetsClient,
   input: { spreadsheetId: string; dataOd?: string; dataDo?: string; now?: Date },
@@ -587,80 +696,53 @@ export async function syncZestawienieHarmonogram(
     });
   }
 
-  const { existing, maxNum } = parseScheduleRegisterRows(
+  await ensureTransportOdbyłValidation(api, spreadsheetId, sheetName, sheetCreated);
+
+  const existing = parseScheduleRegisterRows(
     headers,
     currentValues.slice(1).map((r) => r.map((c) => String(c ?? ''))),
   );
-  const plan = planScheduleSync(expected, existing, maxNum);
+  const plan = planScheduleSync(expected, existing);
 
   if (plan.create.length > 0) {
-    let num = plan.nextNum;
     await api.spreadsheets.values.append({
       spreadsheetId,
       range: `${quoteSheet(sheetName)}!A1`,
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: plan.create.map((row) => {
-          const values = zestawienieRowValues(row, String(num), headers);
-          num += 1;
-          return values;
-        }),
+        values: plan.create.map((row) => zestawienieRowValues(row, headers)),
       },
     });
   }
 
   if (plan.update.length > 0) {
-    const ixBags = headerIndex(headers, 'Ilość worków');
-    const ixTrasa = headerIndex(headers, 'Trasa');
-    const ixStawkaTrasy = headerIndex(headers, 'Stawka za trasę');
-    const ixPodjazd = headerIndex(headers, 'Stawka za podjazd');
-    const ixWorek = headerIndex(headers, 'Stawka za worek');
-    const ixSklep = headerIndex(headers, 'Nazwa punktu / nazwa skrócona');
-    const ixPodmiot = headerIndex(headers, 'Nazwa kontrahenta / podmiot handlowy');
+    const fields: Array<{ name: string; value: (r: ScheduleSyncExpectedRow) => string }> = [
+      { name: 'Ilość worków', value: (r) => String(r.bagCount) },
+      { name: 'Rodzaj zbiórki', value: (r) => r.rodzajZbiorki },
+      { name: 'Trasa', value: (r) => r.routeName },
+      { name: 'Stawka za trasę', value: (r) => r.routeRate },
+      { name: 'Stawka za podjazd', value: (r) => r.pickupRate },
+      { name: 'Stawka za worek', value: (r) => r.bagRate },
+      { name: 'Nazwa punktu / nazwa skrócona', value: (r) => r.shopName },
+      { name: 'Nazwa kontrahenta / podmiot handlowy', value: (r) => r.podmiot },
+    ];
     const data: Array<{ range: string; values: string[][] }> = [];
     for (const item of plan.update) {
-      const { sheetRow, row } = item;
-      if (ixBags >= 0) {
+      for (const field of fields) {
+        const ix = headerIndex(headers, field.name);
+        if (ix < 0) continue;
+        const val = field.value(item.row);
+        if (
+          (field.name === 'Nazwa punktu / nazwa skrócona' ||
+            field.name === 'Nazwa kontrahenta / podmiot handlowy') &&
+          !val
+        ) {
+          continue;
+        }
         data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ixBags)}${sheetRow}`,
-          values: [[String(row.bagCount)]],
-        });
-      }
-      if (ixTrasa >= 0) {
-        data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ixTrasa)}${sheetRow}`,
-          values: [[row.routeName]],
-        });
-      }
-      if (ixStawkaTrasy >= 0) {
-        data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ixStawkaTrasy)}${sheetRow}`,
-          values: [[row.routeRate]],
-        });
-      }
-      if (ixPodjazd >= 0) {
-        data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ixPodjazd)}${sheetRow}`,
-          values: [[row.pickupRate]],
-        });
-      }
-      if (ixWorek >= 0) {
-        data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ixWorek)}${sheetRow}`,
-          values: [[row.bagRate]],
-        });
-      }
-      if (ixSklep >= 0 && row.shopName) {
-        data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ixSklep)}${sheetRow}`,
-          values: [[row.shopName]],
-        });
-      }
-      if (ixPodmiot >= 0 && row.podmiot) {
-        data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ixPodmiot)}${sheetRow}`,
-          values: [[row.podmiot]],
+          range: `${quoteSheet(sheetName)}!${columnLetter(ix)}${item.sheetRow}`,
+          values: [[val]],
         });
       }
     }
@@ -673,7 +755,7 @@ export async function syncZestawienieHarmonogram(
   }
 
   logger?.info(
-    'Zestawienie z harmonogramu: oczekiwane %d, nowe %d, zaktualizowane %d, pominięte rozliczone %d, okno %s–%s, nowa zakładka=%s',
+    'Zestawienie z harmonogramu: oczekiwane %d, nowe %d, zaktualizowane %d, pominięte rozliczone %d, okno %s–%s, nowa zakładka=%s (bez clear)',
     expected.length,
     plan.create.length,
     plan.update.length,

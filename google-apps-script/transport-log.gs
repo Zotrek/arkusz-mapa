@@ -49,8 +49,8 @@
  *   Jeden wiersz klucza nadpisuje kwoty. Dwa i więcej: { ok:false, error:'tie' }. Inna data: nowy wiersz.
  *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 14–17) nie rusza.
  *   Brak zakładki Baza stawek: ten zapis ją zakłada, z nagłówkami w wierszu 1.
- *   saveRateHarmonogram — Baza cen harmonogram. Body jak saveRate + dniOdbiorow.
- *   Ceny: klucz adres + podwykonawca + data (jak saveRate). Nazwy trasy i ceny trasy nie rusza.
+ *   saveRateHarmonogram — Baza cen harmonogram. Body jak saveRate + dniOdbiorow + opcjonalnie nazwaTrasy, kwotaTrasy.
+ *   Ceny: klucz adres + podwykonawca + data (jak saveRate). Nazwa+cena trasy razem albo obie puste (pusta para przy overwrite nie czyści).
  *   Dni: przy istniejącym połączeniu sklep + podwykonawca aktualizuje tylko gdy się zmieniły (wszystkie wiersze pary).
  *   Brak zakładki: zakłada z nagłówkami jak sync pipeline.
  * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
@@ -137,9 +137,8 @@ var HARMONOGRAM_RATE_HEADERS = [
   'Dni odbiorów',
 ];
 
-/** Nagłówki jak Arkusz1 — kolumny 1–20. */
+/** Nagłówki zestawienia Harmonogram — bez nr zlecenia. */
 var SCHEDULE_REGISTER_HEADERS = [
-  'Nr zlecenia transportowego',
   'Adres odbioru',
   'Nazwa kontrahenta / podmiot handlowy',
   'Nazwa punktu / nazwa skrócona',
@@ -161,6 +160,28 @@ var SCHEDULE_REGISTER_HEADERS = [
   'Komentarz 2',
 ];
 
+/** Kolumny zestawienia (1-based) — bez nr zlecenia. */
+var SCHEDULE_COL = {
+  adres: 1,
+  podmiot: 2,
+  sklep: 3,
+  dataOdbioru: 4,
+  ktoOdbiera: 5,
+  miejsceZrzutu: 6,
+  rodzajZbiorki: 7,
+  iloscWorkow: 8,
+  trasa: 9,
+  stawkaTrasy: 10,
+  stawkaPodjazdu: 11,
+  stawkaWorka: 12,
+  rozliczony: 13,
+  numerFaktury: 14,
+  kosztOdbioru: 15,
+  kosztPerWorek: 16,
+  transportOdbył: 17,
+  komentarz1: 18,
+  komentarz2: 19,
+};
 var REF_PODWYKO_HEADER = ['Nazwa', 'Dane do Worda'];
 var REF_PRZ_HEADER = [
   'Nazwa wyświetlana',
@@ -358,9 +379,52 @@ function getDataSheet_() {
 
 function getOrCreateScheduleRegisterSheet_() {
   var sheet = getOrCreateRefSheet_(SCHEDULE_REGISTER_SHEET_NAME, SCHEDULE_REGISTER_HEADERS);
-  return ensureRefSheetHeader_(sheet, SCHEDULE_REGISTER_HEADERS);
+  ensureRefSheetHeader_(sheet, SCHEDULE_REGISTER_HEADERS);
+  ensureScheduleTransportHappenedRules_(sheet);
+  return sheet;
 }
 
+/** Lista tak/nie na kolumnie „transport się odbył” (Q). */
+function ensureScheduleTransportHappenedRules_(sheet) {
+  var gridRows = sheet.getMaxRows() < 2 ? 1 : sheet.getMaxRows() - 1;
+  if (!dataValidationHasTakNie_(sheet.getRange(2, SCHEDULE_COL.transportOdbył).getDataValidation())) {
+    var validation = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['tak', 'nie'], true)
+      .setAllowInvalid(true)
+      .build();
+    sheet.getRange(2, SCHEDULE_COL.transportOdbył, gridRows, 1).setDataValidation(validation);
+  }
+  var formula = '=$Q2="nie"';
+  var rules = sheet.getConditionalFormatRules();
+  var hasStrike = false;
+  var expected = formula.replace(/\s/g, '');
+  var ri;
+  for (ri = 0; ri < rules.length; ri++) {
+    var rule = rules[ri];
+    if (!rule || typeof rule.getBooleanCondition !== 'function') {
+      continue;
+    }
+    var condition = rule.getBooleanCondition();
+    if (!condition || typeof condition.getCriteriaValues !== 'function') {
+      continue;
+    }
+    var values = condition.getCriteriaValues();
+    var f = values && values.length ? String(values[0]) : '';
+    if (f.replace(/\s/g, '') === expected) {
+      hasStrike = true;
+      break;
+    }
+  }
+  if (!hasStrike) {
+    var strike = SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(formula)
+      .setStrikethrough(true)
+      .setRanges([sheet.getRange(2, 1, gridRows, SCHEDULE_COL.transportOdbył)])
+      .build();
+    rules.push(strike);
+    sheet.setConditionalFormatRules(rules);
+  }
+}
 /** tryb=harmonogram|schedule → zestawienie; inaczej Arkusz1. */
 function settlementRegisterSheetForWrite_(body) {
   var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
@@ -1794,7 +1858,8 @@ function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days) {
  * Zapis cen i dni do Bazy cen harmonogram.
  * Ceny: te same reguły klucza co saveRate (adres + podwykonawca + data).
  * Dni: klucz sklep + podwykonawca — aktualizacja tylko gdy się zmieniły.
- * Nazwy trasy i ceny trasy nie rusza.
+ * Nazwa trasy + cena za trasę: razem albo obie puste.
+ * Pusta para przy overwrite nie czyści istniejących kolumn 3 i 6.
  */
 function handleSaveRateHarmonogramPost_(body) {
   var shop = cellStr_(body && body.sklep);
@@ -1811,6 +1876,14 @@ function handleSaveRateHarmonogramPost_(body) {
   if (!pickup || !bag) {
     return jsonResponse({ ok: false, error: 'amount' });
   }
+  var routeName = cellStr_(body && body.nazwaTrasy);
+  var routeRate = parseRateAmount_(body && body.kwotaTrasy);
+  if (!routeRate) {
+    return jsonResponse({ ok: false, error: 'amount' });
+  }
+  if ((routeName && routeRate.empty) || (!routeName && !routeRate.empty)) {
+    return jsonResponse({ ok: false, error: 'route' });
+  }
   var days = cellStr_(body && body.dniOdbiorow);
   var sheet = getOrCreateHarmonogramRateSheet_();
   var rows = listHarmonogramRateRows_(sheet);
@@ -1820,16 +1893,24 @@ function handleSaveRateHarmonogramPost_(body) {
   }
   var pickupCell = rateAmountCell_(pickup);
   var bagCell = rateAmountCell_(bag);
+  var routeRateCell = rateAmountCell_(routeRate);
+  var writeRoute = !!(routeName || !routeRate.empty);
   var daysUpdated = updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days);
   if (decision.action === 'overwrite') {
-    sheet.getRange(decision.row, 4, 1, 2).setValues([[pickupCell, bagCell]]);
+    if (writeRoute) {
+      sheet
+        .getRange(decision.row, 3, 1, 4)
+        .setValues([[routeName, pickupCell, bagCell, routeRateCell]]);
+    } else {
+      sheet.getRange(decision.row, 4, 1, 2).setValues([[pickupCell, bagCell]]);
+    }
     return jsonResponse({ ok: true, action: 'overwrite', daysUpdated: daysUpdated });
   }
   var next = Math.max(sheet.getLastRow(), 1) + 1;
   sheet.getRange(next, 7).setNumberFormat('@');
   sheet
     .getRange(next, 1, 1, 8)
-    .setValues([[shop, contractor, '', pickupCell, bagCell, '', validFrom, days]]);
+    .setValues([[shop, contractor, routeName, pickupCell, bagCell, routeRateCell, validFrom, days]]);
   sheet.getRange(next, 7).setNumberFormat('@').setValue(String(validFrom));
   return jsonResponse({ ok: true, action: 'append', daysUpdated: daysUpdated });
 }
@@ -1915,7 +1996,7 @@ function settlementSearchHarmonogram_(query) {
   var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
   return buildSettlementHarmonogramRead_(
     query,
-    readSettlementCells_(sheet, COL.transportOdbył),
+    readSettlementCells_(sheet, SCHEDULE_COL.transportOdbył),
     readSettlementCells_(baza, 8),
   );
 }
@@ -2227,6 +2308,31 @@ function mapSettlementRegisterRow_(sheetRow, cells) {
     didNotHappen: settlementFlag_(settlementCell_(cells, 17)) === 'nie',
     receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 15)),
     costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 16)),
+  };
+}
+
+/** Mapowanie wiersza zestawienia Harmonogram (bez nr zlecenia). */
+function mapSettlementScheduleRegisterRow_(sheetRow, cells) {
+  var pickupDate = settlementDateText_(settlementCell_(cells, 3));
+  if (!pickupDate) {
+    return null;
+  }
+  return {
+    sheetRow: sheetRow,
+    transportNumber: '',
+    address: settlementText_(settlementCell_(cells, 0)),
+    shopName: settlementText_(settlementCell_(cells, 2)),
+    pickupDate: pickupDate,
+    contractor: settlementText_(settlementCell_(cells, 4)),
+    bagCount: settlementBagCount_(settlementCell_(cells, 7)),
+    routeName: settlementText_(settlementCell_(cells, 8)),
+    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 9)),
+    pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 10)),
+    bagRate: settlementAmountToGrosze_(settlementCell_(cells, 11)),
+    settled: settlementFlag_(settlementCell_(cells, 12)) === 'tak',
+    didNotHappen: settlementFlag_(settlementCell_(cells, 16)) === 'nie',
+    receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 14)),
+    costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 15)),
   };
 }
 
@@ -2686,7 +2792,7 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
   var i;
   for (i = 0; i < sourceRows.length; i++) {
     var item = sourceRows[i];
-    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells);
+    var mapped = mapSettlementScheduleRegisterRow_(item.sheetRow, item.cells);
     if (!mapped || settlementFoldPl_(mapped.contractor) !== who) {
       continue;
     }
@@ -2799,6 +2905,8 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
   var ixData = settlementHeaderIndex_(odebraneHeaders, 'Data zamknięcia worka');
   var ixSklep = settlementHeaderIndex_(odebraneHeaders, 'Sklep');
   var ixPodmiot = settlementHeaderIndex_(odebraneHeaders, 'Podmiot handlowy');
+  var ixPlomba = settlementHeaderIndex_(odebraneHeaders, 'Numer plomby');
+  var ixTryb = settlementHeaderIndex_(odebraneHeaders, 'Tryb zbiórki');
   if (ixKod >= 0 && ixMiasto >= 0 && ixUlica >= 0 && ixNumer >= 0 && ixFirma >= 0 && ixData >= 0) {
     var oi;
     for (oi = 0; oi < odebraneRows.length; oi++) {
@@ -2816,6 +2924,8 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
         continue;
       }
       var gkey = settlementFoldPl_(adres) + '\n' + closeDate + '\n' + settlementFoldPl_(firma);
+      var plomba = ixPlomba >= 0 ? settlementText_(orow[ixPlomba]) : '';
+      var zbiorka = ixTryb >= 0 ? settlementText_(orow[ixTryb]) : '';
       if (!bagGroups[gkey]) {
         bagGroups[gkey] = {
           address: adres,
@@ -2824,9 +2934,14 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
           contractor: firma,
           pickupDate: closeDate,
           bagCount: 0,
+          seals: [],
         };
       }
       bagGroups[gkey].bagCount += 1;
+      bagGroups[gkey].seals.push({
+        numerPlomby: plomba || String(bagGroups[gkey].bagCount),
+        zbiorka: zbiorka,
+      });
       if (!bagGroups[gkey].shopName && ixSklep >= 0) {
         bagGroups[gkey].shopName = settlementText_(orow[ixSklep]);
       }
@@ -2836,7 +2951,7 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
   var expected = {};
   var order = [];
 
-  function ensureExpected(address, contractor, pickupDate, shopName, podmiot, bagCount) {
+  function ensureExpected(address, contractor, pickupDate, shopName, podmiot, bagCount, rodzajZbiorki) {
     var key = settlementFoldPl_(address) + '\n' + pickupDate + '\n' + settlementFoldPl_(contractor);
     if (!expected[key]) {
       expected[key] = {
@@ -2847,6 +2962,7 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
         contractor: contractor,
         pickupDate: pickupDate,
         bagCount: bagCount || 0,
+        rodzajZbiorki: rodzajZbiorki || '',
         routeName: '',
         routeRate: '',
         pickupRate: '',
@@ -2861,6 +2977,9 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
     }
     if (podmiot && !expected[key].podmiot) {
       expected[key].podmiot = podmiot;
+    }
+    if (rodzajZbiorki) {
+      expected[key].rodzajZbiorki = rodzajZbiorki;
     }
     return expected[key];
   }
@@ -2907,6 +3026,7 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
         settlementFoldPl_(meta.address) + '\n' + day + '\n' + settlementFoldPl_(meta.contractor);
       if (bagGroups[bagKey]) {
         row.bagCount = bagGroups[bagKey].bagCount;
+        row.rodzajZbiorki = scheduleAggregateRodzaj_(bagGroups[bagKey].seals);
         if (bagGroups[bagKey].shopName) {
           row.shopName = bagGroups[bagKey].shopName;
         }
@@ -2924,7 +3044,15 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
       continue;
     }
     var g = bagGroups[bk];
-    ensureExpected(g.address, g.contractor, g.pickupDate, g.shopName, g.podmiot, g.bagCount);
+    ensureExpected(
+      g.address,
+      g.contractor,
+      g.pickupDate,
+      g.shopName,
+      g.podmiot,
+      g.bagCount,
+      scheduleAggregateRodzaj_(g.seals),
+    );
   }
 
   var out = [];
@@ -2937,6 +3065,36 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
 
 function scheduleSyncRowKey_(address, pickupDate, contractor) {
   return settlementFoldPl_(address) + '\n' + pickupDate + '\n' + settlementFoldPl_(contractor);
+}
+
+/** Rodzaj zbiórki z Tryb zbiórki na workach (jak w protokole). */
+function scheduleAggregateRodzaj_(seals) {
+  var hasReczna = false;
+  var hasMaszyna = false;
+  var i;
+  for (i = 0; i < (seals || []).length; i++) {
+    var s = seals[i];
+    if (!s || !settlementText_(s.numerPlomby)) {
+      continue;
+    }
+    var raw = settlementFoldPl_(s.zbiorka);
+    if (raw.indexOf('reczn') >= 0 || raw === 'reczna') {
+      hasReczna = true;
+    }
+    if (raw.indexOf('maszyn') >= 0 || raw.indexOf('automat') >= 0) {
+      hasMaszyna = true;
+    }
+  }
+  if (hasReczna && hasMaszyna) {
+    return 'ręczna i automatyczna';
+  }
+  if (hasReczna) {
+    return 'ręczna';
+  }
+  if (hasMaszyna) {
+    return 'automatyczna';
+  }
+  return '';
 }
 
 function scheduleSyncDefaultWindow_() {
@@ -2953,7 +3111,7 @@ function scheduleSyncDefaultWindow_() {
 
 /**
  * Sync „zestawienie z harmonogramu” z odebrane + Baza cen.
- * Body: opcjonalne dataOd / dataDo (dd.mm.yyyy). Domyślnie miesiąc bieżący → dziś.
+ * Uzupełnia braki / aktualizuje nierozliczone. NIGDY nie czyści zakładki.
  */
 function syncZestawienieHarmonogram_(body) {
   var window = scheduleSyncDefaultWindow_();
@@ -2973,7 +3131,6 @@ function syncZestawienieHarmonogram_(body) {
     readOdebraneSheetRows_(odebrane),
   );
   var existing = scheduleRegisterIndex_(sheet);
-  var nextNum = existing.maxNum + 1;
   var created = 0;
   var updated = 0;
   var skippedSettled = 0;
@@ -2986,15 +3143,16 @@ function syncZestawienieHarmonogram_(body) {
         skippedSettled += 1;
         continue;
       }
-      sheet.getRange(found.row, COL.iloscWorkow).setValue(exp.bagCount);
-      sheet.getRange(found.row, COL.trasa, 1, 4).setValues([
+      sheet.getRange(found.row, SCHEDULE_COL.iloscWorkow).setValue(exp.bagCount);
+      sheet.getRange(found.row, SCHEDULE_COL.rodzajZbiorki).setValue(exp.rodzajZbiorki || '');
+      sheet.getRange(found.row, SCHEDULE_COL.trasa, 1, 4).setValues([
         [exp.routeName || '', exp.routeRate, exp.pickupRate, exp.bagRate],
       ]);
       if (exp.shopName) {
-        sheet.getRange(found.row, COL.sklep).setValue(exp.shopName);
+        sheet.getRange(found.row, SCHEDULE_COL.sklep).setValue(exp.shopName);
       }
       if (exp.podmiot) {
-        sheet.getRange(found.row, COL.podmiot).setValue(exp.podmiot);
+        sheet.getRange(found.row, SCHEDULE_COL.podmiot).setValue(exp.podmiot);
       }
       updated += 1;
       continue;
@@ -3008,19 +3166,18 @@ function syncZestawienieHarmonogram_(body) {
     for (c = 0; c < SCHEDULE_REGISTER_HEADERS.length; c++) {
       line.push('');
     }
-    line[COL.numer - 1] = String(nextNum);
-    line[COL.adres - 1] = exp.address;
-    line[COL.podmiot - 1] = exp.podmiot || '';
-    line[COL.sklep - 1] = exp.shopName || '';
-    line[COL.dataOdbioru - 1] = exp.pickupDate;
-    line[COL.ktoOdbiera - 1] = exp.contractor;
-    line[COL.iloscWorkow - 1] = exp.bagCount;
-    line[COL.trasa - 1] = exp.routeName || '';
-    line[COL.stawkaTrasy - 1] = exp.routeRate;
-    line[COL.stawkaPodjazdu - 1] = exp.pickupRate;
-    line[COL.stawkaWorka - 1] = exp.bagRate;
+    line[SCHEDULE_COL.adres - 1] = exp.address;
+    line[SCHEDULE_COL.podmiot - 1] = exp.podmiot || '';
+    line[SCHEDULE_COL.sklep - 1] = exp.shopName || '';
+    line[SCHEDULE_COL.dataOdbioru - 1] = exp.pickupDate;
+    line[SCHEDULE_COL.ktoOdbiera - 1] = exp.contractor;
+    line[SCHEDULE_COL.rodzajZbiorki - 1] = exp.rodzajZbiorki || '';
+    line[SCHEDULE_COL.iloscWorkow - 1] = exp.bagCount;
+    line[SCHEDULE_COL.trasa - 1] = exp.routeName || '';
+    line[SCHEDULE_COL.stawkaTrasy - 1] = exp.routeRate;
+    line[SCHEDULE_COL.stawkaPodjazdu - 1] = exp.pickupRate;
+    line[SCHEDULE_COL.stawkaWorka - 1] = exp.bagRate;
     sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
-    nextNum += 1;
     created += 1;
   }
   return {
@@ -3034,34 +3191,28 @@ function syncZestawienieHarmonogram_(body) {
   };
 }
 
-/** Indeks istniejących wierszy zestawienia: klucz → { row, settled }, maxNum. */
+/** Indeks istniejących wierszy zestawienia: klucz → { row, settled }. Bez clear. */
 function scheduleRegisterIndex_(sheet) {
   var byKey = {};
-  var maxNum = 0;
   if (!sheet) {
-    return { byKey: byKey, maxNum: maxNum };
+    return { byKey: byKey };
   }
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) {
-    return { byKey: byKey, maxNum: maxNum };
+    return { byKey: byKey };
   }
-  var width = Math.max(sheet.getLastColumn(), COL.transportOdbył);
+  var width = Math.max(sheet.getLastColumn(), SCHEDULE_COL.transportOdbył);
   var values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
   var i;
   for (i = 0; i < values.length; i++) {
-    var cells = values[i];
-    var mapped = mapSettlementRegisterRow_(i + 2, cells);
+    var mapped = mapSettlementScheduleRegisterRow_(i + 2, values[i]);
     if (!mapped) {
       continue;
-    }
-    var num = Number(mapped.transportNumber);
-    if (isFinite(num) && num > maxNum) {
-      maxNum = num;
     }
     var key = scheduleSyncRowKey_(mapped.address, mapped.pickupDate, mapped.contractor);
     byKey[key] = { row: i + 2, settled: mapped.settled };
   }
-  return { byKey: byKey, maxNum: maxNum };
+  return { byKey: byKey };
 }
 
 function isSettlementWriteAction_(action) {
@@ -3076,25 +3227,37 @@ function isSettlementWriteAction_(action) {
 }
 
 /**
- * Para klucza: numer wiersza i numer z kolumny 1.
+ * Para klucza: numer wiersza i numer z kolumny 1 (Arkusz1).
+ * Harmonogram: tylko sheetRow (bez nr zlecenia).
  * Rozliczony `tak` też odpada — wiersz nie jest już w zestawieniu.
  * Zwraca { row } albo { error }.
  */
 function registerWriteTarget_(sheet, body) {
-  if (!body || body.sheetRow == null || body.transportNumber == null) {
+  if (!body || body.sheetRow == null) {
     return { error: 'key' };
   }
   var row = Number(body.sheetRow);
   if (!isFinite(row) || Math.floor(row) !== row || row < 2 || row > sheet.getLastRow()) {
     return { error: 'key' };
   }
-  var actual = settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue());
-  var expected = settlementTransportNumber_(body.transportNumber);
-  if (actual !== expected) {
-    return { error: 'key' };
-  }
-  if (settlementFlag_(sheet.getRange(row, COL.rozliczony).getValue()) === 'tak') {
-    return { error: 'settled' };
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  if (!schedule) {
+    if (body.transportNumber == null) {
+      return { error: 'key' };
+    }
+    var actual = settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue());
+    var expected = settlementTransportNumber_(body.transportNumber);
+    if (actual !== expected) {
+      return { error: 'key' };
+    }
+    if (settlementFlag_(sheet.getRange(row, COL.rozliczony).getValue()) === 'tak') {
+      return { error: 'settled' };
+    }
+  } else {
+    if (settlementFlag_(sheet.getRange(row, SCHEDULE_COL.rozliczony).getValue()) === 'tak') {
+      return { error: 'settled' };
+    }
   }
   return { row: row };
 }
@@ -3132,7 +3295,12 @@ function patchBags_(body) {
   if (!bags) {
     return { ok: false, error: 'bags' };
   }
-  sheet.getRange(target.row, COL.iloscWorkow).setValue(bags.empty ? '' : bags.value);
+  var col =
+    settlementText_(body && (body.tryb || body.mode)).toLowerCase() === 'harmonogram' ||
+    settlementText_(body && (body.tryb || body.mode)).toLowerCase() === 'schedule'
+      ? SCHEDULE_COL.iloscWorkow
+      : COL.iloscWorkow;
+  sheet.getRange(target.row, col).setValue(bags.empty ? '' : bags.value);
   return { ok: true };
 }
 
@@ -3338,7 +3506,10 @@ function approveSkip_(item, reason) {
   return id;
 }
 
-function approveSaved_(sheet, row) {
+function approveSaved_(sheet, row, schedule) {
+  if (schedule) {
+    return { sheetRow: row, transportNumber: '' };
+  }
   return {
     sheetRow: row,
     transportNumber: settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue()),
@@ -3346,12 +3517,8 @@ function approveSaved_(sheet, row) {
 }
 
 /**
- * Jedyny zapis kolumn 14–17. Koszt jest już policzony (`koszt` w groszach).
- * Opcja samych worków i kwoty podjazdu oraz worka z zestawienia jadą w body,
- * bo arkusz ich nie pamięta na kolumnach rozliczenia. Ten skrypt ich nie czyta
- * i nie liczy kosztu z bazy drugi raz. Remisu z Bazy stawek nie sprawdza —
- * koszt jest ze snapshotu kolumn 12–13 (ew. nadpisany na ekranie).
- * Nagłówków rejestru nie wpisuje. Na żywy arkusz wchodzi w W1, nie w M6.
+ * Jedyny zapis kolumn rozliczenia. Koszt jest już policzony (`koszt` w groszach).
+ * tryb=harmonogram → kolumny SCHEDULE_COL; inaczej Arkusz1 COL.
  */
 function approve_(body) {
   var invoice = cellStr_(body && body.numerFaktury);
@@ -3362,12 +3529,19 @@ function approve_(body) {
   if (!rows) {
     return { ok: false, error: 'selection' };
   }
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
   var sheet = settlementRegisterSheetForWrite_(body);
+  var c = schedule ? SCHEDULE_COL : COL;
   var saved = [];
   var skipped = [];
   var i;
   for (i = 0; i < rows.length; i++) {
     var item = rows[i];
+    if (schedule) {
+      item = item || {};
+      item.tryb = 'harmonogram';
+    }
     var target = registerWriteTarget_(sheet, item);
     if (target.error) {
       skipped.push(approveSkip_(item, target.error));
@@ -3375,19 +3549,19 @@ function approve_(body) {
     }
     var markedNie = approveDidNotHappen_(item && item.nieOdbył);
     var alreadyNie =
-      settlementFlag_(sheet.getRange(target.row, COL.transportOdbył).getValue()) === 'nie';
+      settlementFlag_(sheet.getRange(target.row, c.transportOdbył).getValue()) === 'nie';
     if (alreadyNie && !markedNie) {
       skipped.push(approveSkip_(item, 'nie'));
       continue;
     }
-    var pickupDate = settlementDateText_(sheet.getRange(target.row, COL.dataOdbioru).getValue());
+    var pickupDate = settlementDateText_(sheet.getRange(target.row, c.dataOdbioru).getValue());
     if (!pickupDate) {
       skipped.push(approveSkip_(item, 'date'));
       continue;
     }
     if (markedNie) {
-      sheet.getRange(target.row, COL.transportOdbył).setValue('nie');
-      saved.push(approveSaved_(sheet, target.row));
+      sheet.getRange(target.row, c.transportOdbył).setValue('nie');
+      saved.push(approveSaved_(sheet, target.row, schedule));
       continue;
     }
     var cost = approveCostGrosze_(item && item.koszt);
@@ -3395,12 +3569,12 @@ function approve_(body) {
       skipped.push(approveSkip_(item, 'cost'));
       continue;
     }
-    var bags = settlementBagCount_(sheet.getRange(target.row, COL.iloscWorkow).getValue());
+    var bags = settlementBagCount_(sheet.getRange(target.row, c.iloscWorkow).getValue());
     var perBag = approvePerBagGrosze_(cost, bags);
-    sheet.getRange(target.row, COL.rozliczony, 1, 4).setValues([
+    sheet.getRange(target.row, c.rozliczony, 1, 4).setValues([
       ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(perBag)],
     ]);
-    saved.push(approveSaved_(sheet, target.row));
+    saved.push(approveSaved_(sheet, target.row, schedule));
   }
   return { ok: true, zapisane: saved, pominiete: skipped };
 }

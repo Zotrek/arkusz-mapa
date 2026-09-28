@@ -960,9 +960,15 @@ result = proposeRouteName(
       expect(html).toContain('id="bulk-rates-podwykonawca"');
       expect(html).toContain('id="bulk-rates-podjazd"');
       expect(html).toContain('id="bulk-rates-worek"');
+      expect(html).toContain('id="bulk-rates-trasa"');
+      expect(html).toContain('id="bulk-rates-kwota-trasy"');
+      expect(html).toContain('id="bulk-rates-trasa-wrap"');
       expect(html).toContain('id="bulk-rates-od-kiedy"');
       expect(html).toContain('name="bulk-rates-target"');
       expect(html).toContain('value="harmonogram"');
+      expect(html).toContain('isValidBulkRateAmount');
+      expect(html).toContain('payload.nazwaTrasy');
+      expect(html).toContain('payload.kwotaTrasy');
       expect(html).toContain('id="bulk-rates-dni"');
       expect(html).toContain('id="bulk-rates-dni-toggle"');
       expect(html).toContain('data-day-multi="bulk-rates-dni"');

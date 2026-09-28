@@ -798,13 +798,19 @@ export function buildMapHtml(
       <input type="text" id="bulk-rates-podjazd" inputmode="decimal" autocomplete="off" />
       <label for="bulk-rates-worek">Kwota za worek</label>
       <input type="text" id="bulk-rates-worek" inputmode="decimal" autocomplete="off" />
+      <div id="bulk-rates-trasa-wrap" hidden>
+        <label for="bulk-rates-trasa">Nazwa trasy</label>
+        <input type="text" id="bulk-rates-trasa" autocomplete="off" spellcheck="false" />
+        <label for="bulk-rates-kwota-trasy">Cena za trasę</label>
+        <input type="text" id="bulk-rates-kwota-trasy" inputmode="decimal" autocomplete="off" />
+      </div>
       <div id="bulk-rates-dni-wrap" hidden>
         <label for="bulk-rates-dni-toggle">Dni transportu</label>
         ${harmonogramDaysPickerHtml('bulk-rates-dni')}
       </div>
       <label for="bulk-rates-od-kiedy">Od kiedy obowiązuje</label>
       <input type="date" id="bulk-rates-od-kiedy" />
-      <p class="doc-modal-hint" style="margin-top:10px;margin-bottom:0">Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone.</p>
+      <p id="bulk-rates-footer-hint" class="doc-modal-hint" style="margin-top:10px;margin-bottom:0">Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone.</p>
       <p id="bulk-rates-status" class="doc-filter-info" aria-live="polite"></p>
       <div class="doc-modal-actions">
         <button type="button" id="bulk-rates-btn-cancel">Anuluj</button>
@@ -2492,12 +2498,34 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var isHarm = getBulkRatesTarget() === 'harmonogram';
       var dniWrap = document.getElementById('bulk-rates-dni-wrap');
       if (dniWrap) dniWrap.hidden = !isHarm;
+      var trasaWrap = document.getElementById('bulk-rates-trasa-wrap');
+      if (trasaWrap) trasaWrap.hidden = !isHarm;
       var hint = document.getElementById('bulk-rates-hint');
       if (hint) {
         hint.textContent = isHarm
           ? 'Te same wartości trafią do Bazy cen harmonogram dla każdego zaznaczonego sklepu (zapis po adresie + dni transportu).'
           : 'Te same wartości trafią do Bazy stawek dla każdego zaznaczonego sklepu (zapis po adresie).';
       }
+      var footer = document.getElementById('bulk-rates-footer-hint');
+      if (footer) {
+        footer.textContent = isHarm
+          ? 'Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone. Nazwa trasy i cena za trasę razem albo obie puste.'
+          : 'Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone.';
+      }
+    }
+    /** Kwota: puste OK; inaczej tylko cyfry, opcjonalnie przecinek/kropka i do 2 miejsc (jak parseRateAmount_). */
+    function isValidBulkRateAmount(text) {
+      var raw = String(text == null ? '' : text).trim().replace(',', '.');
+      if (!raw) return true;
+      var dot = raw.indexOf('.');
+      if (dot >= 0 && raw.indexOf('.', dot + 1) >= 0) return false;
+      var whole = dot < 0 ? raw : raw.slice(0, dot);
+      var frac = dot < 0 ? '' : raw.slice(dot + 1);
+      if (dot >= 0 && frac.length === 0) return false;
+      if (!whole || !/^[0-9]+$/.test(whole)) return false;
+      if (frac && (!/^[0-9]+$/.test(frac) || frac.length > 2)) return false;
+      var value = Number(raw);
+      return value === value && value !== Infinity;
     }
     function commonBulkShopField(shops, field) {
       var value = null;
@@ -2553,9 +2581,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (podValue) podValue.value = commonFirma;
       var podjazd = document.getElementById('bulk-rates-podjazd');
       var worek = document.getElementById('bulk-rates-worek');
+      var trasa = document.getElementById('bulk-rates-trasa');
+      var kwotaTrasy = document.getElementById('bulk-rates-kwota-trasy');
       var odKiedy = document.getElementById('bulk-rates-od-kiedy');
       if (podjazd) podjazd.value = '';
       if (worek) worek.value = '';
+      if (trasa) trasa.value = '';
+      if (kwotaTrasy) kwotaTrasy.value = '';
       if (odKiedy) odKiedy.value = '';
       setDayMultiValue('bulk-rates-dni', commonBulkShopField(shops, 'dniHarmonogramu'));
       syncBulkRatesTargetUi();
@@ -2577,6 +2609,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (code === 'tie') return 'Więcej niż jeden wiersz tej daty. Zapisu nie ma.';
       if (code === 'date') return 'Data w formacie dd.mm.yyyy albo puste.';
       if (code === 'amount') return 'Nieprawidłowa kwota.';
+      if (code === 'route') return 'Nazwa trasy i cena za trasę muszą być razem albo obie puste.';
       if (code === 'shop') return 'Wybierz podwykonawcę.';
       if (code === 'no_webapp') return 'Brak adresu Web App.';
       return 'Zapis nieudany.';
@@ -2606,6 +2639,25 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       var kwotaPodjazd = String((document.getElementById('bulk-rates-podjazd') || {}).value || '');
       var kwotaWorek = String((document.getElementById('bulk-rates-worek') || {}).value || '');
+      if (!isValidBulkRateAmount(kwotaPodjazd) || !isValidBulkRateAmount(kwotaWorek)) {
+        setBulkRatesStatus('Kwoty mogą zawierać tylko liczby (opcjonalnie z przecinkiem/kropką).', 'error');
+        return;
+      }
+      var nazwaTrasy = '';
+      var kwotaTrasy = '';
+      if (target === 'harmonogram') {
+        nazwaTrasy = String((document.getElementById('bulk-rates-trasa') || {}).value || '').trim();
+        kwotaTrasy = String((document.getElementById('bulk-rates-kwota-trasy') || {}).value || '');
+        var kwotaTrasyTrim = kwotaTrasy.trim();
+        if ((nazwaTrasy && !kwotaTrasyTrim) || (!nazwaTrasy && kwotaTrasyTrim)) {
+          setBulkRatesStatus('Nazwa trasy i cena za trasę muszą być razem albo obie puste.', 'error');
+          return;
+        }
+        if (!isValidBulkRateAmount(kwotaTrasy)) {
+          setBulkRatesStatus('Cena za trasę może zawierać tylko liczby (opcjonalnie z przecinkiem/kropką).', 'error');
+          return;
+        }
+      }
       var odKiedy = rateValidFromFromPicker((document.getElementById('bulk-rates-od-kiedy') || {}).value);
       var dniOdbiorow = String((document.getElementById('bulk-rates-dni') || {}).value || '').trim();
       var okBtn = document.getElementById('bulk-rates-btn-ok');
@@ -2631,7 +2683,11 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           kwotaWorek: kwotaWorek,
           odKiedy: odKiedy
         };
-        if (target === 'harmonogram') payload.dniOdbiorow = dniOdbiorow;
+        if (target === 'harmonogram') {
+          payload.dniOdbiorow = dniOdbiorow;
+          payload.nazwaTrasy = nazwaTrasy;
+          payload.kwotaTrasy = kwotaTrasy;
+        }
         postReferencePayload(payload).then(function (resp) {
           if (!resp || !resp.ok) {
             if (okBtn) okBtn.disabled = false;
