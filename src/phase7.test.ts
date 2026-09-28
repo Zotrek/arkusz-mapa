@@ -313,6 +313,18 @@ describe('phase7 pipeline', () => {
         order.push('syncBazaCenHarmonogram');
         return { shopCount: 1, appendedCount: 1, daysUpdatedCount: 0, sheetCreated: true };
       }),
+      syncZestawienieHarmonogram: vi.fn(async () => {
+        order.push('syncZestawienieHarmonogram');
+        return {
+          expectedCount: 1,
+          createdCount: 1,
+          updatedCount: 0,
+          skippedSettled: 0,
+          sheetCreated: true,
+          dataOd: '01.09.2026',
+          dataDo: '28.09.2026',
+        };
+      }),
       executePhase3: vi.fn(() => {
         order.push('executePhase3');
         return { rowsDuplikatyPlomb: [], rowsBezDuplikatow: rows, groupedByAddress: grouped };
@@ -352,6 +364,7 @@ describe('phase7 pipeline', () => {
       'loadSourceRows',
       'executeOdebraneZHarmonogramu',
       'syncBazaCenHarmonogram',
+      'syncZestawienieHarmonogram',
       'executePhase3',
       'executePhase5',
       'executePhase4',
@@ -361,6 +374,11 @@ describe('phase7 pipeline', () => {
     expect(deps.executeOdebraneZHarmonogramu).toHaveBeenCalledWith(
       { client: true },
       expect.objectContaining({ targetSpreadsheetId: 'ewidencja-sheet-id' }),
+      expect.anything(),
+    );
+    expect(deps.syncZestawienieHarmonogram).toHaveBeenCalledWith(
+      { client: true },
+      expect.objectContaining({ spreadsheetId: 'ewidencja-sheet-id' }),
       expect.anything(),
     );
   });

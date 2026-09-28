@@ -75,6 +75,8 @@ export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
 export const SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU = 'odebrane z harmonogramu';
 /** Stawki i dni odbiorów modułu Harmonogram. Ten sam plik co ewidencja. */
 export const SHEET_NAME_BAZA_CEN_HARMONOGRAM = 'Baza cen harmonogram';
+/** Rejestr odbiorów Harmonogram (1 wiersz = odbiór; Ilość worków = suma). */
+export const SHEET_NAME_ZESTAWIENIE_HARMONOGRAM = 'zestawienie z harmonogramu';
 
 /** Zakładki słowników w arkuszu transportów (osobny dokument od plomb). */
 export const SHEET_NAME_LISTA_PODWYKONAWCOW = 'Lista podwykonawców';

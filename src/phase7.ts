@@ -6,6 +6,7 @@ import { getConfig, getPhase5CacheFilePath, getEwidencjaOdbiorowSheetsId, getTra
 import { isCopyOdebraneZHarmonogramuEnabled } from './harmonogramDays.js';
 import { syncBazaCenHarmonogram } from './bazaCenHarmonogram.js';
 import { executeOdebraneZHarmonogramu } from './odebraneZHarmonogramu.js';
+import { syncZestawienieHarmonogram } from './syncZestawienieHarmonogram.js';
 import { applyAddressAliases, createSheetsClient, loadAddressAliases, loadSourceRows } from './sheets.js';
 import { executePhase3 } from './phase3.js';
 import { executePhase4 } from './phase4.js';
@@ -84,6 +85,7 @@ export interface Phase7Deps {
   loadSourceRows: typeof loadSourceRows;
   executeOdebraneZHarmonogramu: typeof executeOdebraneZHarmonogramu;
   syncBazaCenHarmonogram: typeof syncBazaCenHarmonogram;
+  syncZestawienieHarmonogram: typeof syncZestawienieHarmonogram;
   isCopyOdebraneZHarmonogramuEnabled: typeof isCopyOdebraneZHarmonogramuEnabled;
   getEwidencjaOdbiorowSheetsId: typeof getEwidencjaOdbiorowSheetsId;
   executePhase3: typeof executePhase3;
@@ -113,6 +115,7 @@ const defaultDeps: Phase7Deps = {
   loadSourceRows,
   executeOdebraneZHarmonogramu,
   syncBazaCenHarmonogram,
+  syncZestawienieHarmonogram,
   isCopyOdebraneZHarmonogramuEnabled,
   getEwidencjaOdbiorowSheetsId,
   executePhase3,
@@ -186,6 +189,16 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
       'syncBazaCenHarmonogram',
       () =>
         deps.syncBazaCenHarmonogram(
+          sheetsClient,
+          { spreadsheetId: ewidencjaId },
+          deps.logger,
+        ),
+      deps.logger,
+    );
+    await withGoogleApiRetry(
+      'syncZestawienieHarmonogram',
+      () =>
+        deps.syncZestawienieHarmonogram(
           sheetsClient,
           { spreadsheetId: ewidencjaId },
           deps.logger,

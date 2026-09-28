@@ -48,9 +48,11 @@ Workflow: `.github/workflows/arkusz-mapa-pages.yml` — tylko `workflow_dispatch
 
 Workflow: `.github/workflows/arkusz-mapa-pages-odebrane.yml` — mapa **+** kopiowanie kwalifikujących się plomb maszynowych z harmonogramem do zakładki `odebrane z harmonogramu` w arkuszu **ewidencja odbiorów** (`COPY_ODEBRANE_Z_HARMONOGRAMU=1`). Odczyt plomb: trasówki (`GOOGLE_SHEETS_ID`).
 
-Ten sam przebieg potem uzupełnia zakładkę `Baza cen harmonogram` w ewidencji: adres sklepu, podwykonawca (firma transportowa) i dni odbiorów. Nowy sklep dostaje puste ceny. Istniejące ceny, nazwa trasy i data obowiązywania zostają.
+Ten sam przebieg potem:
+1. uzupełnia zakładkę `Baza cen harmonogram` (adres, podwykonawca, dni; cen nie nadpisuje);
+2. buduje / odświeża zakładkę **`zestawienie z harmonogramu`** (1 wiersz = odbiór, Ilość worków = suma; dni podjazdu bez worków = 0; wiersze `Rozliczony=tak` nie są nadpisywane).
 
-Publikacja: **tylko Cloudflare Pages** (`wrangler pages deploy`). Workflow **nie** pushuje do gałęzi `gh-pages` i **nie** włącza GitHub Pages.
+Rozliczenia w trybie Harmonogram czytają i zatwierdzają na `zestawienie z harmonogramu`.
 
 Sekrety repo: `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `CLOUDFLARE_*`. Opcjonalnie `GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID` (domyślnie ID ewidencji/transportów w kodzie). Service Account musi mieć **edycję** ewidencji.
 
