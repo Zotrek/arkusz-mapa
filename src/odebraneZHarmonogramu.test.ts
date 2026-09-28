@@ -115,9 +115,10 @@ describe('odebraneZHarmonogramu', () => {
       makeRow({ numerPlomby: 'OK' }),
       makeRow({ numerPlomby: 'NO', dataZamknieciaWorka: '10.08.2026' }),
       makeRow({ numerPlomby: 'REC', zbiorka: 'Ręczna' }),
+      makeRow({ numerPlomby: 'UNK', zbiorka: 'coś innego' }),
     ];
     const out = filterRowsForOdebraneZHarmonogramu(rows, todayUtc);
-    expect(out.map((r) => r.numerPlomby)).toEqual(['OK']);
+    expect(out.map((r) => r.numerPlomby)).toEqual(['OK', 'REC']);
   });
 
   it('test_findNumerPlombyColumnIndex_when_ewidencja_headers_should_use_column_m', () => {
@@ -164,7 +165,7 @@ describe('odebraneZHarmonogramu', () => {
     const result = await executeOdebraneZHarmonogramu(api, {
       targetSpreadsheetId: 'id',
       headers: SOURCE_HEADERS,
-      rows: [makeRow({ zbiorka: 'Ręczna' })],
+      rows: [makeRow({ zbiorka: 'coś innego' })],
       columnMap: { ...DEFAULT_SHEET_COLUMN_MAP },
       todayUtc,
     });
@@ -291,7 +292,7 @@ describe('odebraneZHarmonogramu', () => {
     const result = await executeOdebraneZHarmonogramu(api, {
       targetSpreadsheetId: 'ewidencja-id',
       headers: SOURCE_HEADERS,
-      rows: [makeRow({ zbiorka: 'Ręczna' })],
+      rows: [makeRow({ zbiorka: 'coś innego' })],
       columnMap: { ...DEFAULT_SHEET_COLUMN_MAP },
       todayUtc,
     });

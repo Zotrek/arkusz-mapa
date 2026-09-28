@@ -71,7 +71,7 @@ export const SHEET_NAME_ADRESY_TYLKO_KOD_MIASTO = 'Adresy tylko kod+miasto';
 export const SHEET_NAME_BLISKIE_ADRESY = 'Bliskie adresy (≤20 m)';
 /** Grube niespójności: pinezka daleko od strefy kodu pocztowego (tylko gdy są wpisy). */
 export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
-/** Kopia plomb maszynowych po minięciu dnia z harmonogramu (tworzona tylko gdy są przypadki). */
+/** Kopia plomb (maszyna / ręczna) po minięciu dnia z harmonogramu (tworzona tylko gdy są przypadki). */
 export const SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU = 'odebrane z harmonogramu';
 /** Stawki i dni odbiorów modułu Harmonogram. Ten sam plik co ewidencja. */
 export const SHEET_NAME_BAZA_CEN_HARMONOGRAM = 'Baza cen harmonogram';

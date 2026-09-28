@@ -117,11 +117,33 @@ describe('shouldCopyToOdebraneZHarmonogramu', () => {
     ).toBe(false);
   });
 
-  it('test_shouldCopy_when_not_maszyna_or_not_tak_should_false', () => {
+  it('test_shouldCopy_when_reczna_and_eligible_should_true', () => {
     expect(
       shouldCopyToOdebraneZHarmonogramu({
         ...base,
         zbiorka: 'Ręczna',
+        dataZamknieciaWorka: '07.08.2026',
+        todayUtc: Date.UTC(2026, 7, 12),
+      }),
+    ).toBe(true);
+  });
+
+  it('test_shouldCopy_when_obie_and_eligible_should_true', () => {
+    expect(
+      shouldCopyToOdebraneZHarmonogramu({
+        ...base,
+        zbiorka: 'Ręczna / Maszyna',
+        dataZamknieciaWorka: '07.08.2026',
+        todayUtc: Date.UTC(2026, 7, 12),
+      }),
+    ).toBe(true);
+  });
+
+  it('test_shouldCopy_when_unknown_zbiorka_or_not_tak_should_false', () => {
+    expect(
+      shouldCopyToOdebraneZHarmonogramu({
+        ...base,
+        zbiorka: 'coś innego',
         dataZamknieciaWorka: '07.08.2026',
         todayUtc: Date.UTC(2026, 7, 12),
       }),
@@ -130,14 +152,6 @@ describe('shouldCopyToOdebraneZHarmonogramu', () => {
       shouldCopyToOdebraneZHarmonogramu({
         ...base,
         wgHarmonogramu: 'nie',
-        dataZamknieciaWorka: '07.08.2026',
-        todayUtc: Date.UTC(2026, 7, 12),
-      }),
-    ).toBe(false);
-    expect(
-      shouldCopyToOdebraneZHarmonogramu({
-        ...base,
-        zbiorka: 'Ręczna / Maszyna',
         dataZamknieciaWorka: '07.08.2026',
         todayUtc: Date.UTC(2026, 7, 12),
       }),

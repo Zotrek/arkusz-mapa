@@ -380,7 +380,9 @@ export interface OdebraneZHarmonogramuInput {
 }
 
 export function shouldCopyToOdebraneZHarmonogramu(input: OdebraneZHarmonogramuInput): boolean {
-  if (classifyMapPointZbiorka(input.zbiorka) !== 'maszyna') {
+  const kind = classifyMapPointZbiorka(input.zbiorka);
+  // Maszyna, ręczna i „obie” — unknown odpada.
+  if (kind === 'unknown') {
     return false;
   }
   if (normalizeWgHarmonogramu(input.wgHarmonogramu) !== 'tak') {
