@@ -16,7 +16,7 @@
 # Na CF Pages env: CFP_PASSWORD + GAS_PROXY_BASE=https://….workers.dev
 # W CF: wyłącz auto-build z Gita, żeby nie dublować.
 #
-# github.io (gh-pages): NIE publikujemy mapy z API — tylko stub „przenieś na pages.dev”.
+# GitHub Pages (github.io / gałąź gh-pages): NIE publikujemy — nie pushujemy do gh-pages.
 #
 # W repo muszą być (domyślnie):
 #   docs/pusty.docx
@@ -25,16 +25,14 @@
 # Cache geokodowania: commituj data/phase5-cache.json po lokalnym `npm run generate`.
 # Na CI: merge data/ (priorytet) + Actions cache — patrz scripts/merge-phase5-cache.mjs
 #
-# Legacy: gałąź gh-pages dostaje tylko stub (bez mapy / bez API).
-#
-# Każde uruchomienie zastępuje całą witrynę (tylko mapy z tego biegu).
+# Każde uruchomienie zastępuje całą witrynę na Cloudflare (tylko mapy z tego biegu).
 name: arkusz-mapa — Pages
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   actions: write
 
 concurrency:
@@ -133,30 +131,3 @@ jobs:
             exit 1
           fi
           npx --yes wrangler@4 pages deploy ./site --project-name="$PROJECT" --commit-dirty=true
-
-      - name: Stub na gh-pages (bez API — wymusza pages.dev)
-        run: |
-          mkdir -p gh-stub
-          cat > gh-stub/index.html <<'EOF'
-          <!DOCTYPE html>
-          <html lang="pl">
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Mapa przeniesiona</title>
-          </head>
-          <body style="font-family:system-ui;max-width:36rem;margin:3rem auto;padding:0 1rem;line-height:1.5">
-            <h1>Mapa jest na Cloudflare Pages</h1>
-            <p>Ten adres GitHub Pages nie obsługuje już rejestru transportów (hasło + API).</p>
-            <p>Użyj linku <strong>*.pages.dev</strong> od zespołu (po haśle).</p>
-          </body>
-          </html>
-          EOF
-
-      - name: Publikacja stubu na gałąź gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./gh-stub
-          force_orphan: true
-          commit_message: 'deploy: arkusz-mapa gh-stub ${{ github.run_id }}'

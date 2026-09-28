@@ -13,15 +13,15 @@
 # Odczyt plomb: trasówki (GOOGLE_SHEETS_ID). Zapis wyników: ewidencja (GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID).
 # Po kopiowaniu: uzupełnia zakładkę „Baza cen harmonogram” (adres, podwykonawca, dni). Cen nie nadpisuje.
 #
-# Concurrency „pages” — ten sam deployment GitHub Pages co zwykły generate.
-# Publikacja: peaceiris/actions-gh-pages → gałąź gh-pages (bez actions/deploy-pages).
+# Concurrency „pages” — nie dubluj równoległych deployów Cloudflare.
+# GitHub Pages (gh-pages): NIE publikujemy.
 name: arkusz-mapa — Pages + odebrane
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   actions: write
 
 concurrency:
@@ -118,30 +118,3 @@ jobs:
             exit 1
           fi
           npx --yes wrangler@4 pages deploy ./site --project-name="$PROJECT" --commit-dirty=true
-
-      - name: Stub na gh-pages (bez API — wymusza pages.dev)
-        run: |
-          mkdir -p gh-stub
-          cat > gh-stub/index.html <<'EOF'
-          <!DOCTYPE html>
-          <html lang="pl">
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Mapa przeniesiona</title>
-          </head>
-          <body style="font-family:system-ui;max-width:36rem;margin:3rem auto;padding:0 1rem;line-height:1.5">
-            <h1>Mapa jest na Cloudflare Pages</h1>
-            <p>Ten adres GitHub Pages nie obsługuje już rejestru transportów (hasło + API).</p>
-            <p>Użyj linku <strong>*.pages.dev</strong> od zespołu (po haśle).</p>
-          </body>
-          </html>
-          EOF
-
-      - name: Publikacja stubu na gałąź gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./gh-stub
-          force_orphan: true
-          commit_message: 'deploy: arkusz-mapa odebrane gh-stub ${{ github.run_id }}'

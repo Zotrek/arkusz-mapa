@@ -42,7 +42,7 @@ Dla każdej godziny (np. **9:30** i **14:00**, strefa **Europe/Warsaw**):
 
 Po wywołaniu: **Actions** → **arkusz-mapa — Pages** → nowy run **„Manually run”** / workflow_dispatch (wywołany przez API wygląda podobnie).
 
-## GitHub Pages (CI)
+## Cloudflare Pages (CI)
 
 Workflow: `.github/workflows/arkusz-mapa-pages.yml` — tylko `workflow_dispatch` (mapa **bez** kopiowania do „odebrane z harmonogramu”).
 
@@ -50,7 +50,9 @@ Workflow: `.github/workflows/arkusz-mapa-pages-odebrane.yml` — mapa **+** kopi
 
 Ten sam przebieg potem uzupełnia zakładkę `Baza cen harmonogram` w ewidencji: adres sklepu, podwykonawca (firma transportowa) i dni odbiorów. Nowy sklep dostaje puste ceny. Istniejące ceny, nazwa trasy i data obowiązywania zostają.
 
-Sekrety repo: `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`. Opcjonalnie `GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID` (domyślnie ID ewidencji/transportów w kodzie). Service Account musi mieć **edycję** ewidencji.
+Publikacja: **tylko Cloudflare Pages** (`wrangler pages deploy`). Workflow **nie** pushuje do gałęzi `gh-pages` i **nie** włącza GitHub Pages.
+
+Sekrety repo: `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `CLOUDFLARE_*`. Opcjonalnie `GOOGLE_EWIDENCJA_ODBIOROW_SHEETS_ID` (domyślnie ID ewidencji/transportów w kodzie). Service Account musi mieć **edycję** ewidencji.
 
 ### Dispatch „Pages + odebrane” (cron-job.org)
 
@@ -64,16 +66,6 @@ Body: `{"ref":"master"}` — te same nagłówki `Authorization` / `Accept`.
 
 Pliki ze `schedule` w repo (smoke, cron-trigger) — nie działały w tym projekcie.
 
+Publikacja stubu na gałąź `gh-pages` (`peaceiris/actions-gh-pages`) — wyłączona, żeby Actions nie włączały / nie odświeżały GitHub Pages.
+
 Jeśli kiedyś `schedule` zacznie działać (zmiana po stronie GitHub), można ponownie dodać `on.schedule` w workflow — wtedy wyłącz zewnętrzny cron, żeby nie dublować.
-
-## GitHub Pages (gałąź `gh-pages`)
-
-Publikacja idzie przez `peaceiris/actions-gh-pages@v4` → gałąź **`gh-pages`** (orphan commit z katalogiem `site/`).
-
-**Wymagane w Settings → Pages:**
-- Source: **Deploy from a branch**
-- Branch: **`gh-pages`** / **`/(root)`**
-
-Nie używamy `actions/deploy-pages` — przy `workflow_dispatch` bez nowego commita ID deployu = SHA `master`, a po anulowaniach kolejka Pages zostawała zablokowana (pusty status / `deployment_queued`, [bug #383](https://github.com/actions/deploy-pages/issues/383)).
-
-Pierwszy udany run workflowu utworzy gałąź `gh-pages`, jeśli jeszcze nie istnieje. Potem upewnij się, że Source Pages wskazuje tę gałąź (inaczej strona nie odświeży się mimo zielonego Actions).
