@@ -88,6 +88,20 @@ class FakeSheet {
     return max;
   }
 
+  getLastColumn(): number {
+    let max = 0;
+    for (const [key, value] of this.cells) {
+      if (value == null || value === "") {
+        continue;
+      }
+      const col = Number(key.split(",")[1]);
+      if (col > max) {
+        max = col;
+      }
+    }
+    return max;
+  }
+
   getRange(row: number, col: number, numRows?: number, numCols?: number): FakeRange {
     return new FakeRange(this, row, col, numRows ?? 1, numCols ?? 1);
   }
@@ -125,9 +139,14 @@ let lockDepth = 0;
 let maxLock = 0;
 let lastBody = "";
 
-const holder: { register: FakeSheet; rates: FakeSheet | null } = {
+const holder: {
+  register: FakeSheet;
+  rates: FakeSheet | null;
+  schedule: FakeSheet | null;
+} = {
   register: new FakeSheet(),
   rates: null,
+  schedule: null,
 };
 
 type PostResult = {
@@ -154,7 +173,17 @@ beforeAll(() => {
             if (name === "Baza stawek") {
               return holder.rates;
             }
+            if (name === "zestawienie z harmonogramu") {
+              return holder.schedule;
+            }
             return null;
+          },
+          insertSheet(name: string) {
+            if (name === "zestawienie z harmonogramu") {
+              holder.schedule = new FakeSheet();
+              return holder.schedule;
+            }
+            throw new Error(`unexpected insertSheet ${name}`);
           },
         };
       },
@@ -213,12 +242,14 @@ beforeAll(() => {
   };
 });
 
-function fresh(): { register: FakeSheet; rates: FakeSheet } {
+function fresh(): { register: FakeSheet; rates: FakeSheet; schedule: FakeSheet } {
   const register = new FakeSheet();
   const rates = new FakeSheet();
+  const schedule = new FakeSheet();
   holder.register = register;
   holder.rates = rates;
-  return { register, rates };
+  holder.schedule = schedule;
+  return { register, rates, schedule };
 }
 
 function seedRegister(sheet: FakeSheet, row: number, over: Partial<Record<number, Cell>> = {}): void {
@@ -999,6 +1030,47 @@ describe("approve", () => {
     expect(register.cell(2, 14)).toBe("");
     expect(register.cell(3, 16)).toBe(20);
     expect(register.cell(3, 17)).toBe(10);
+  });
+
+  it("test_approve_schedule_tryb_writes_zestawienie_not_arkusz1", () => {
+    const { register, schedule } = fresh();
+    seedRegister(register, 2);
+    seedRegister(schedule, 2, { 1: 50, 5: "20.09.2026", 9: 3 });
+
+    const result = postToSheet({
+      action: "approve",
+      tryb: "harmonogram",
+      numerFaktury: "FV/H1",
+      wiersze: [{ sheetRow: 2, transportNumber: "50", koszt: 3000 }],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      zapisane: [{ sheetRow: 2, transportNumber: "50" }],
+      pominiete: [],
+    });
+    expect(schedule.cell(2, 14)).toBe("tak");
+    expect(schedule.cell(2, 15)).toBe("FV/H1");
+    expect(schedule.cell(2, 16)).toBe(30);
+    expect(register.cell(2, 14)).toBe("");
+  });
+
+  it("test_patchBags_schedule_tryb_writes_zestawienie", () => {
+    const { register, schedule } = fresh();
+    seedRegister(register, 2);
+    seedRegister(schedule, 2, { 1: 50, 9: 1 });
+
+    const result = postToSheet({
+      action: "patchBags",
+      tryb: "harmonogram",
+      sheetRow: 2,
+      transportNumber: "50",
+      iloscWorkow: 7,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(schedule.cell(2, 9)).toBe(7);
+    expect(register.cell(2, 9)).toBe(2);
   });
 });
 

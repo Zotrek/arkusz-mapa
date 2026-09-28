@@ -106,9 +106,15 @@ type GasFns = {
   ) => SettlementResult;
   buildSettlementHarmonogramRead_: (
     query: Record<string, unknown>,
+    register: { sheetRow: number; cells: Cell[] }[],
+    bazaCen: { sheetRow: number; cells: Cell[] }[],
+  ) => SettlementResult;
+  buildScheduleSyncExpected_: (
+    dataOd: string,
+    dataDo: string,
     bazaCen: { sheetRow: number; cells: Cell[] }[],
     odebrane: { headers: string[]; rows: Cell[][] },
-  ) => SettlementResult;
+  ) => Record<string, unknown>[];
 };
 
 const gsPath = join(
@@ -185,13 +191,15 @@ beforeAll(() => {
   const buildRead = context.buildSettlementRead_;
   const buildStats = context.buildSettlementStats_;
   const buildHarm = context.buildSettlementHarmonogramRead_;
+  const buildSync = context.buildScheduleSyncExpected_;
   if (
     typeof search !== 'function' ||
     typeof stats !== 'function' ||
     typeof doGet !== 'function' ||
     typeof buildRead !== 'function' ||
     typeof buildStats !== 'function' ||
-    typeof buildHarm !== 'function'
+    typeof buildHarm !== 'function' ||
+    typeof buildSync !== 'function'
   ) {
     throw new Error('transport-log.gs nie wystawił settlementSearch/settlementStats');
   }
@@ -202,6 +210,7 @@ beforeAll(() => {
     buildSettlementRead_: buildRead as GasFns['buildSettlementRead_'],
     buildSettlementStats_: buildStats as GasFns['buildSettlementStats_'],
     buildSettlementHarmonogramRead_: buildHarm as GasFns['buildSettlementHarmonogramRead_'],
+    buildScheduleSyncExpected_: buildSync as GasFns['buildScheduleSyncExpected_'],
   };
 });
 
@@ -595,6 +604,169 @@ describe('buildSettlementRead_ pure amounts', () => {
 });
 
 describe('buildSettlementHarmonogramRead_', () => {
+  it('test_buildSettlementHarmonogramRead_reads_schedule_register_like_arkusz1', () => {
+    const result = gas.buildSettlementHarmonogramRead_(
+      { podwykonawca: 'THOR', dataOd: '14.09.2026', dataDo: '23.09.2026' },
+      [
+        {
+          sheetRow: 2,
+          cells: [
+            '100',
+            '31-342 Kraków Radzikowskiego 138',
+            '',
+            'Radzikowskiego',
+            '15.09.2026',
+            'THOR',
+            '',
+            '',
+            0,
+            '',
+            '',
+            100,
+            0,
+            '',
+            '',
+            '',
+            '',
+            '',
+          ],
+        },
+        {
+          sheetRow: 3,
+          cells: [
+            '101',
+            '30-045 Kraków ul. Królewska 52',
+            '',
+            '',
+            '22.09.2026',
+            'THOR',
+            '',
+            '',
+            2,
+            '',
+            '',
+            100,
+            10,
+            '',
+            '',
+            '',
+            '',
+            '',
+          ],
+        },
+        {
+          sheetRow: 4,
+          cells: [
+            '102',
+            'inny',
+            '',
+            '',
+            '15.09.2026',
+            'INNY',
+            '',
+            '',
+            1,
+            '',
+            '',
+            50,
+            0,
+            '',
+            '',
+            '',
+            '',
+            '',
+          ],
+        },
+      ],
+      [
+        {
+          sheetRow: 2,
+          cells: ['31-342 Kraków Radzikowskiego 138', 'THOR', '', 100, 0, '', '01.01.2026', 'wt'],
+        },
+      ],
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]).toMatchObject({
+      transportNumber: '100',
+      bagCount: 0,
+      pickupRate: 10000,
+      pickupDate: '15.09.2026',
+    });
+    expect(result.rows[1]).toMatchObject({
+      transportNumber: '101',
+      bagCount: 2,
+      pickupRate: 10000,
+      bagRate: 1000,
+    });
+    expect(result.rates).toHaveLength(1);
+  });
+
+  it('test_buildSettlementHarmonogramRead_skips_settled_and_nie', () => {
+    const result = gas.buildSettlementHarmonogramRead_(
+      { podwykonawca: 'THOR', dataOd: '15.09.2026', dataDo: '15.09.2026' },
+      [
+        {
+          sheetRow: 2,
+          cells: [
+            '1',
+            'Adres A',
+            '',
+            '',
+            '15.09.2026',
+            'THOR',
+            '',
+            '',
+            1,
+            '',
+            '',
+            50,
+            0,
+            'tak',
+            'FV/1',
+            50,
+            50,
+            '',
+          ],
+        },
+        {
+          sheetRow: 3,
+          cells: [
+            '2',
+            'Adres B',
+            '',
+            '',
+            '15.09.2026',
+            'THOR',
+            '',
+            '',
+            1,
+            '',
+            '',
+            50,
+            0,
+            '',
+            '',
+            '',
+            '',
+            'nie',
+          ],
+        },
+      ],
+      [],
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toHaveLength(0);
+  });
+});
+
+describe('buildScheduleSyncExpected_', () => {
   const odebraneHeaders = [
     'NIP',
     'Podmiot handlowy',
@@ -614,10 +786,10 @@ describe('buildSettlementHarmonogramRead_', () => {
     'Data zamknięcia worka',
   ];
 
-  it('test_buildSettlementHarmonogramRead_pickup_days_even_without_bags', () => {
-    // wt=2: 15.09.2026 i 22.09.2026 w zakresie 14–23.09
-    const result = gas.buildSettlementHarmonogramRead_(
-      { podwykonawca: 'THOR', dataOd: '14.09.2026', dataDo: '23.09.2026' },
+  it('test_buildScheduleSyncExpected_pickup_days_even_without_bags', () => {
+    const rows = gas.buildScheduleSyncExpected_(
+      '14.09.2026',
+      '23.09.2026',
       [
         {
           sheetRow: 2,
@@ -634,20 +806,16 @@ describe('buildSettlementHarmonogramRead_', () => {
       ],
       { headers: odebraneHeaders, rows: [] },
     );
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    expect(result.rows).toHaveLength(6);
-    expect(result.rows.every((r) => r.bagCount === 0)).toBe(true);
-    expect(result.rows.every((r) => r.pickupRate === 10000)).toBe(true);
-    expect(result.rows.filter((r) => r.pickupDate === '15.09.2026')).toHaveLength(3);
-    expect(result.rows.filter((r) => r.pickupDate === '22.09.2026')).toHaveLength(3);
+    expect(rows).toHaveLength(6);
+    expect(rows.every((r) => r.bagCount === 0)).toBe(true);
+    expect(rows.filter((r) => r.pickupDate === '15.09.2026')).toHaveLength(3);
+    expect(rows.filter((r) => r.pickupDate === '22.09.2026')).toHaveLength(3);
   });
 
-  it('test_buildSettlementHarmonogramRead_counts_odebrane_bags_on_matching_day', () => {
-    const result = gas.buildSettlementHarmonogramRead_(
-      { podwykonawca: 'THOR', dataOd: '15.09.2026', dataDo: '15.09.2026' },
+  it('test_buildScheduleSyncExpected_counts_odebrane_bags_on_matching_day', () => {
+    const rows = gas.buildScheduleSyncExpected_(
+      '15.09.2026',
+      '15.09.2026',
       [
         {
           sheetRow: 2,
@@ -696,30 +864,26 @@ describe('buildSettlementHarmonogramRead_', () => {
         ],
       },
     );
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    expect(result.rows).toHaveLength(1);
-    expect(result.rows[0]).toMatchObject({
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
       bagCount: 2,
-      pickupRate: 5000,
-      bagRate: 1000,
       pickupDate: '15.09.2026',
+      contractor: 'THOR',
     });
   });
 
-  it('test_buildSettlementHarmonogramRead_ignores_shops_only_in_odebrane', () => {
-    const result = gas.buildSettlementHarmonogramRead_(
-      { podwykonawca: 'THOR', dataOd: '15.09.2026', dataDo: '15.09.2026' },
+  it('test_buildScheduleSyncExpected_includes_shops_only_in_odebrane', () => {
+    const rows = gas.buildScheduleSyncExpected_(
+      '15.09.2026',
+      '15.09.2026',
       [],
       {
         headers: odebraneHeaders,
         rows: [
           [
             '',
-            '',
-            'X',
+            'Firma X',
+            'Sklep X',
             'Tak',
             'wt',
             'THOR',
@@ -737,10 +901,11 @@ describe('buildSettlementHarmonogramRead_', () => {
         ],
       },
     );
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    expect(result.rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      bagCount: 1,
+      shopName: 'Sklep X',
+      contractor: 'THOR',
+    });
   });
 });

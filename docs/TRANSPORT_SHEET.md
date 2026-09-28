@@ -8,9 +8,14 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 - **ID (przykład):** `1hvSvy9c069SefhYH3rCUDtCViRhAoRQ6DDj_EIlmWNk`
 
-- **Zakładka rejestru:** `Arkusz1` — Web App szuka jej **po nazwie**, nie po kolejności kart w pliku.
+- **Zakładki (Web App szuka po nazwie):**
 
-- **Wiersz 1 — nagłówki (kolejność kolumn):**
+  - `Arkusz1` — rejestr transportów (Na zgłoszenie)
+  - `odebrane z harmonogramu` — 1 wiersz = 1 worek (źródło sync)
+  - `zestawienie z harmonogramu` — rejestr odbiorów Harmonogram (jak Arkusz1; Ilość worków = suma)
+  - `Baza cen harmonogram`, `Baza stawek`, `Lista podwykonawców`, `Popraw adres`
+
+- **Wiersz 1 — nagłówki rejestru Arkusz1 / zestawienie z harmonogramu (kolejność kolumn):**
 
   1. Numer transportowy
 
@@ -96,6 +101,10 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 | GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres**. Wiersz z kolumną 18 = `nie` nie wchodzi |
 
 | GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 18 = `nie` nie wchodzi |
+
+| GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia z `zestawienie z harmonogramu` |
+
+| POST | `action=syncZestawienieHarmonogram` | Agregacja odebrane + dni Bazy cen → zestawienie (domyślnie bieżący miesiąc → dziś) |
 
 | POST | JSON w body (`Content-Type: text/plain`) | Atomowy zapis wiersza (`LockService`) + zwraca `numer`. Opcjonalne `numer` w body — jeśli użytkownik wpisał ręcznie, ten numer trafia do arkusza zamiast automatycznego |
 

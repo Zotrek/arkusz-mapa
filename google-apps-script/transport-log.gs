@@ -15,14 +15,18 @@
  * GET ?action=listStoreAddresses → { ok, data: [ { adres, sklep }, … ] }
  *   Unikalny adres z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta. Zapis stawki i tak idzie adresem. Bez zapisu.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
- *   dataOd opcjonalna. tryb=harmonogram → Baza cen + odebrane z harmonogramu (dni podjazdu).
+ *   dataOd opcjonalna. tryb=harmonogram → zakładka „zestawienie z harmonogramu” (+ rates z Bazy cen).
  *   To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
+ * POST { action: syncZestawienieHarmonogram, dataOd?, dataDo? }
+ *   Agreguje odebrane + dni podjazdu z Bazy cen → „zestawienie z harmonogramu”.
+ *   Domyślne okno: 1. bieżącego miesiąca → dziś. Rozliczony=tak nie nadpisuje.
  * GET ?action=settlementStats&dataOd=dd.mm.yyyy&dataDo=dd.mm.yyyy&podwykonawca=…
  *   Oba krańce dat wymagane. podwykonawca opcjonalny (pusty = wszyscy). Nic nie zapisuje.
  *   Wiersze: rejestr (mode=report) + grupy worków z „odebrane z harmonogramu” (mode=schedule).
  *   Pola: P/Q/I, status, snapshoty L/M, adres, data, podwykonawca, mode; rates do remisów.
  * POST { action: patchBags | patchRouteRate | detachRoute | attachRoute | resolveRateTie | approve }
  *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
+ *   tryb=harmonogram|schedule → zapis na „zestawienie z harmonogramu”; inaczej Arkusz1.
  *   Rejestr: sheetRow + transportNumber. Odpada, gdy w tym wierszu kolumna 1 jest inna.
  *   Kolumn 16 i 17 nie ruszają patchBags, patchRouteRate, detachRoute, attachRoute.
  *   resolveRateTie pisze tylko w Bazie stawek.
@@ -55,7 +59,9 @@
  * (Cloudflare Worker dokleja secret= / body.secret). Bez property = błąd.
  *
  * Zakładki (ten sam plik; rejestr po nazwie, nie po kolejności kart):
- *   Arkusz1 — rejestr transportów
+ *   Arkusz1 — rejestr transportów (Na zgłoszenie)
+ *   odebrane z harmonogramu — 1 wiersz = 1 worek (źródło sync)
+ *   zestawienie z harmonogramu — rejestr odbiorów Harmonogram (jak Arkusz1)
  *   Lista podwykonawców, Popraw adres, Baza stawek, Baza cen harmonogram
  *   (legacy odczyt: Przewoźnicy, Miejsca dostawy — scalane przy listReferenceData)
  */
@@ -119,6 +125,7 @@ var REF_POPRAW_SHEET_NAME = 'Popraw adres';
 var RATE_SHEET_NAME = 'Baza stawek';
 var HARMONOGRAM_RATE_SHEET_NAME = 'Baza cen harmonogram';
 var ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME = 'odebrane z harmonogramu';
+var SCHEDULE_REGISTER_SHEET_NAME = 'zestawienie z harmonogramu';
 var HARMONOGRAM_RATE_HEADERS = [
   'Adres sklepu',
   'Podwykonawca',
@@ -128,6 +135,30 @@ var HARMONOGRAM_RATE_HEADERS = [
   'Cena za trasę',
   'Od kiedy obowiązuje cena',
   'Dni odbiorów',
+];
+
+/** Nagłówki jak Arkusz1 — kolumny 1–20. */
+var SCHEDULE_REGISTER_HEADERS = [
+  'Nr zlecenia transportowego',
+  'Adres odbioru',
+  'Nazwa kontrahenta / podmiot handlowy',
+  'Nazwa punktu / nazwa skrócona',
+  'Data odbioru',
+  'Kto odbiera',
+  'Miejsce zrzutu',
+  'Rodzaj zbiórki',
+  'Ilość worków',
+  'Trasa',
+  'Stawka za trasę',
+  'Stawka za podjazd',
+  'Stawka za worek',
+  'Rozliczony',
+  'Numer faktury',
+  'Koszt odbioru',
+  'Koszt odbioru per worek',
+  'transport się odbył',
+  'Komentarz 1',
+  'Komentarz 2',
 ];
 
 var REF_PODWYKO_HEADER = ['Nazwa', 'Dane do Worda'];
@@ -234,6 +265,9 @@ function doPost(e) {
   lock.waitLock(30000);
   try {
     var writeAction = body && body.action ? String(body.action) : '';
+    if (writeAction === 'syncZestawienieHarmonogram') {
+      return jsonResponse(syncZestawienieHarmonogram_(body));
+    }
     if (isSettlementWriteAction_(writeAction)) {
       return jsonResponse(runSettlementWrite_(writeAction, body));
     }
@@ -320,6 +354,20 @@ function getDataSheet_() {
     );
   }
   return sheet;
+}
+
+function getOrCreateScheduleRegisterSheet_() {
+  var sheet = getOrCreateRefSheet_(SCHEDULE_REGISTER_SHEET_NAME, SCHEDULE_REGISTER_HEADERS);
+  return ensureRefSheetHeader_(sheet, SCHEDULE_REGISTER_HEADERS);
+}
+
+/** tryb=harmonogram|schedule → zestawienie; inaczej Arkusz1. */
+function settlementRegisterSheetForWrite_(body) {
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  if (tryb === 'harmonogram' || tryb === 'schedule') {
+    return getOrCreateScheduleRegisterSheet_();
+  }
+  return getDataSheet_();
 }
 
 /** Kolumna 10, bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */
@@ -1842,7 +1890,7 @@ function uniqueStoreAddresses_(rows) {
 
 /**
  * Odczyt zestawienia. Nie bierze locka i nic nie zapisuje.
- * tryb=harmonogram: Baza cen × dni + worki z „odebrane z harmonogramu”.
+ * tryb=harmonogram: zakładka „zestawienie z harmonogramu” + rates z Bazy cen.
  * Inaczej: Arkusz1 + Baza stawek (Na zgłoszenie).
  */
 function settlementSearch_(query) {
@@ -1859,16 +1907,16 @@ function settlementSearch_(query) {
 }
 
 /**
- * Harmonogram: sklepy/dni/stawki z Bazy cen; worki z odebranych (0 = sam podjazd).
+ * Harmonogram: wiersze z „zestawienie z harmonogramu”; rates z Bazy cen (okno stawek).
  */
 function settlementSearchHarmonogram_(query) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SCHEDULE_REGISTER_SHEET_NAME);
   var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
-  var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
   return buildSettlementHarmonogramRead_(
     query,
+    readSettlementCells_(sheet, COL.transportOdbył),
     readSettlementCells_(baza, 8),
-    readOdebraneSheetRows_(odebrane),
   );
 }
 
@@ -2620,11 +2668,11 @@ function settlementBuildAddressParts_(kod, miasto, ulica, numer) {
 }
 
 /**
- * Odczyt Harmonogram. bazaCen = cells Bazy cen (8 kolumn).
- * odebrane = { headers, rows } z zakładki odebrane.
- * Każdy dzień podjazdu = wiersz; worki mogą być 0.
+ * Odczyt Harmonogram z rejestru „zestawienie z harmonogramu”.
+ * register = cells jak Arkusz1 (do kolumny 18).
+ * bazaCen = cells Bazy cen (8 kolumn) — tylko do rates w odpowiedzi.
  */
-function buildSettlementHarmonogramRead_(query, bazaCen, odebrane) {
+function buildSettlementHarmonogramRead_(query, register, bazaCen) {
   var error = settlementQueryError_(query);
   if (error) {
     return { ok: false, error: error };
@@ -2633,14 +2681,37 @@ function buildSettlementHarmonogramRead_(query, bazaCen, odebrane) {
   var dataOd = q.dataOd ? settlementDateText_(q.dataOd) : '';
   var dataDo = settlementDateText_(q.dataDo);
   var who = settlementFoldPl_(q.podwykonawca);
+  var rows = [];
+  var sourceRows = register || [];
+  var i;
+  for (i = 0; i < sourceRows.length; i++) {
+    var item = sourceRows[i];
+    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells);
+    if (!mapped || settlementFoldPl_(mapped.contractor) !== who) {
+      continue;
+    }
+    if (mapped.settled || mapped.didNotHappen) {
+      continue;
+    }
+    if (!settlementDateInRange_(mapped.pickupDate, dataOd, dataDo)) {
+      continue;
+    }
+    rows.push(settlementPublicRow_(mapped));
+  }
+  rows.sort(function (a, b) {
+    var byDate = settlementCompareDate_(a.pickupDate, b.pickupDate);
+    if (byDate !== 0) {
+      return byDate;
+    }
+    return a.address.localeCompare(b.address, 'pl');
+  });
 
-  var shops = {};
-  var rateRows = [];
+  var publicRates = [];
   var sourceBaza = bazaCen || [];
   var bi;
   for (bi = 0; bi < sourceBaza.length; bi++) {
-    var item = sourceBaza[bi];
-    var cells = item.cells || [];
+    var rateItem = sourceBaza[bi];
+    var cells = rateItem.cells || [];
     var shop = settlementText_(cells[0]);
     var contractor = settlementText_(cells[1]);
     if (!shop || settlementFoldPl_(contractor) !== who) {
@@ -2655,26 +2726,69 @@ function buildSettlementHarmonogramRead_(query, bazaCen, odebrane) {
         continue;
       }
     }
-    var pickupAmount = settlementAmountToGrosze_(cells[3]);
-    var bagAmount = settlementAmountToGrosze_(cells[4]);
-    var days = settlementText_(cells[7]);
-    rateRows.push({
-      sheetRow: item.sheetRow,
+    publicRates.push({
+      sheetRow: rateItem.sheetRow,
       shop: shop,
       contractor: contractor,
-      pickupAmount: pickupAmount,
-      bagAmount: bagAmount,
+      pickupAmount: settlementAmountToGrosze_(cells[3]),
+      bagAmount: settlementAmountToGrosze_(cells[4]),
       validFrom: validFrom,
-      days: days,
     });
-    if (!shops[shop]) {
-      shops[shop] = { address: shop, contractor: contractor, days: days };
-    } else if (!shops[shop].days && days) {
-      shops[shop].days = days;
+  }
+  return { ok: true, rows: rows, rates: publicRates };
+}
+
+/**
+ * Buduje oczekiwane wiersze sync (adres+data+firma).
+ * bazaCen = { sheetRow, cells }[]; odebrane = { headers, rows }.
+ */
+function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
+  var start = settlementDateText_(dataOd);
+  var end = settlementDateText_(dataDo);
+  if (!start || !end || settlementCompareDate_(start, end) > 0) {
+    return [];
+  }
+
+  var rateRows = [];
+  var shops = {};
+  var sourceBaza = bazaCen || [];
+  var bi;
+  for (bi = 0; bi < sourceBaza.length; bi++) {
+    var item = sourceBaza[bi];
+    var cells = item.cells || [];
+    var shop = settlementText_(cells[0]);
+    var contractor = settlementText_(cells[1]);
+    if (!shop || !contractor) {
+      continue;
+    }
+    var rawFrom = cells[6];
+    var validFrom = '';
+    var hasFrom = rawFrom instanceof Date || settlementText_(rawFrom) !== '';
+    if (hasFrom) {
+      validFrom = settlementDateText_(rawFrom);
+      if (!validFrom) {
+        continue;
+      }
+    }
+    rateRows.push({
+      shop: shop,
+      contractor: contractor,
+      routeName: settlementText_(cells[2]),
+      pickupAmount: cells[3],
+      bagAmount: cells[4],
+      routeAmount: cells[5],
+      validFrom: validFrom,
+      days: settlementText_(cells[7]),
+    });
+    var shopKey = settlementFoldPl_(shop) + '\n' + settlementFoldPl_(contractor);
+    if (!shops[shopKey]) {
+      shops[shopKey] = { address: shop, contractor: contractor, days: settlementText_(cells[7]) };
+    } else if (!shops[shopKey].days && cells[7]) {
+      shops[shopKey].days = settlementText_(cells[7]);
     }
   }
 
-  var bagCounts = {};
+  var bagGroups = {};
   var odebraneHeaders = (odebrane && odebrane.headers) || [];
   var odebraneRows = (odebrane && odebrane.rows) || [];
   var ixKod = settlementHeaderIndex_(odebraneHeaders, 'Kod pocztowy');
@@ -2684,12 +2798,13 @@ function buildSettlementHarmonogramRead_(query, bazaCen, odebrane) {
   var ixFirma = settlementHeaderIndex_(odebraneHeaders, 'Firma transportowa');
   var ixData = settlementHeaderIndex_(odebraneHeaders, 'Data zamknięcia worka');
   var ixSklep = settlementHeaderIndex_(odebraneHeaders, 'Sklep');
+  var ixPodmiot = settlementHeaderIndex_(odebraneHeaders, 'Podmiot handlowy');
   if (ixKod >= 0 && ixMiasto >= 0 && ixUlica >= 0 && ixNumer >= 0 && ixFirma >= 0 && ixData >= 0) {
     var oi;
     for (oi = 0; oi < odebraneRows.length; oi++) {
       var orow = odebraneRows[oi];
       var firma = settlementText_(orow[ixFirma]);
-      if (settlementFoldPl_(firma) !== who) {
+      if (!firma) {
         continue;
       }
       var adres = settlementBuildAddressParts_(orow[ixKod], orow[ixMiasto], orow[ixUlica], orow[ixNumer]);
@@ -2697,35 +2812,79 @@ function buildSettlementHarmonogramRead_(query, bazaCen, odebrane) {
         continue;
       }
       var closeDate = settlementDateText_(orow[ixData]);
-      if (!closeDate) {
+      if (!closeDate || !settlementDateInRange_(closeDate, start, end)) {
         continue;
       }
-      var bagKey = settlementFoldPl_(adres) + '\n' + closeDate;
-      bagCounts[bagKey] = (bagCounts[bagKey] || 0) + 1;
+      var gkey = settlementFoldPl_(adres) + '\n' + closeDate + '\n' + settlementFoldPl_(firma);
+      if (!bagGroups[gkey]) {
+        bagGroups[gkey] = {
+          address: adres,
+          shopName: ixSklep >= 0 ? settlementText_(orow[ixSklep]) : '',
+          podmiot: ixPodmiot >= 0 ? settlementText_(orow[ixPodmiot]) : '',
+          contractor: firma,
+          pickupDate: closeDate,
+          bagCount: 0,
+        };
+      }
+      bagGroups[gkey].bagCount += 1;
+      if (!bagGroups[gkey].shopName && ixSklep >= 0) {
+        bagGroups[gkey].shopName = settlementText_(orow[ixSklep]);
+      }
     }
   }
 
-  var rows = [];
-  var nextSheetRow = 2;
-  var shopAddr;
-  for (shopAddr in shops) {
-    if (!Object.prototype.hasOwnProperty.call(shops, shopAddr)) {
+  var expected = {};
+  var order = [];
+
+  function ensureExpected(address, contractor, pickupDate, shopName, podmiot, bagCount) {
+    var key = settlementFoldPl_(address) + '\n' + pickupDate + '\n' + settlementFoldPl_(contractor);
+    if (!expected[key]) {
+      expected[key] = {
+        key: key,
+        address: address,
+        shopName: shopName || '',
+        podmiot: podmiot || '',
+        contractor: contractor,
+        pickupDate: pickupDate,
+        bagCount: bagCount || 0,
+        routeName: '',
+        routeRate: '',
+        pickupRate: '',
+        bagRate: '',
+      };
+      order.push(key);
+    } else if (bagCount != null) {
+      expected[key].bagCount = bagCount;
+    }
+    if (shopName && !expected[key].shopName) {
+      expected[key].shopName = shopName;
+    }
+    if (podmiot && !expected[key].podmiot) {
+      expected[key].podmiot = podmiot;
+    }
+    return expected[key];
+  }
+
+  var sk;
+  for (sk in shops) {
+    if (!Object.prototype.hasOwnProperty.call(shops, sk)) {
       continue;
     }
-    var meta = shops[shopAddr];
+    var meta = shops[sk];
     var weekdays = settlementParseWeekdays_(meta.days);
     if (!weekdays.length) {
       continue;
     }
-    var dates = settlementDatesMatchingWeekdays_(dataOd, dataDo, weekdays);
+    var dates = settlementDatesMatchingWeekdays_(start, end, weekdays);
     var di;
     for (di = 0; di < dates.length; di++) {
       var day = dates[di];
+      var row = ensureExpected(meta.address, meta.contractor, day, '', '', 0);
       var best = null;
       var ri;
       for (ri = 0; ri < rateRows.length; ri++) {
         var rate = rateRows[ri];
-        if (rate.shop !== shopAddr) {
+        if (rate.shop !== meta.address || settlementFoldPl_(rate.contractor) !== settlementFoldPl_(meta.contractor)) {
           continue;
         }
         if (rate.validFrom && settlementCompareDate_(rate.validFrom, day) > 0) {
@@ -2738,52 +2897,172 @@ function buildSettlementHarmonogramRead_(query, bazaCen, odebrane) {
           best = rate;
         }
       }
-      var pickupRate = best ? best.pickupAmount : null;
-      var bagRate = best ? best.bagAmount : null;
-      var bagKey2 = settlementFoldPl_(shopAddr) + '\n' + day;
-      var bags = bagCounts[bagKey2] || 0;
-      rows.push({
-        sheetRow: nextSheetRow,
-        transportNumber: '',
-        address: shopAddr,
-        shopName: ixSklep >= 0 ? '' : '',
-        pickupDate: day,
-        contractor: q.podwykonawca,
-        bagCount: bags,
-        routeName: '',
-        routeRate: null,
-        pickupRate: pickupRate,
-        bagRate: bagRate,
-      });
-      nextSheetRow += 1;
+      if (best) {
+        row.routeName = best.routeName || '';
+        row.routeRate = best.routeAmount != null && best.routeAmount !== '' ? best.routeAmount : '';
+        row.pickupRate = best.pickupAmount != null && best.pickupAmount !== '' ? best.pickupAmount : '';
+        row.bagRate = best.bagAmount != null && best.bagAmount !== '' ? best.bagAmount : '';
+      }
+      var bagKey =
+        settlementFoldPl_(meta.address) + '\n' + day + '\n' + settlementFoldPl_(meta.contractor);
+      if (bagGroups[bagKey]) {
+        row.bagCount = bagGroups[bagKey].bagCount;
+        if (bagGroups[bagKey].shopName) {
+          row.shopName = bagGroups[bagKey].shopName;
+        }
+        if (bagGroups[bagKey].podmiot) {
+          row.podmiot = bagGroups[bagKey].podmiot;
+        }
+        delete bagGroups[bagKey];
+      }
     }
   }
 
-  rows.sort(function (a, b) {
-    var byDate = settlementCompareDate_(a.pickupDate, b.pickupDate);
-    if (byDate !== 0) {
-      return byDate;
+  var bk;
+  for (bk in bagGroups) {
+    if (!Object.prototype.hasOwnProperty.call(bagGroups, bk)) {
+      continue;
     }
-    return a.address.localeCompare(b.address, 'pl');
-  });
-  for (var si = 0; si < rows.length; si++) {
-    rows[si].sheetRow = si + 2;
+    var g = bagGroups[bk];
+    ensureExpected(g.address, g.contractor, g.pickupDate, g.shopName, g.podmiot, g.bagCount);
   }
 
-  var publicRates = [];
-  for (ri = 0; ri < rateRows.length; ri++) {
-    publicRates.push({
-      sheetRow: rateRows[ri].sheetRow,
-      shop: rateRows[ri].shop,
-      contractor: rateRows[ri].contractor,
-      pickupAmount: rateRows[ri].pickupAmount,
-      bagAmount: rateRows[ri].bagAmount,
-      validFrom: rateRows[ri].validFrom,
-    });
+  var out = [];
+  var oi2;
+  for (oi2 = 0; oi2 < order.length; oi2++) {
+    out.push(expected[order[oi2]]);
   }
-  return { ok: true, rows: rows, rates: publicRates };
+  return out;
+}
+
+function scheduleSyncRowKey_(address, pickupDate, contractor) {
+  return settlementFoldPl_(address) + '\n' + pickupDate + '\n' + settlementFoldPl_(contractor);
+}
+
+function scheduleSyncDefaultWindow_() {
+  var now = new Date();
+  var y = now.getFullYear();
+  var m = now.getMonth() + 1;
+  var d = now.getDate();
+  return {
+    dataOd: settlementFormatDate_(y, m, 1),
+    dataDo: settlementFormatDate_(y, m, d),
+  };
 }
 /* settlement-read-pure:end */
+
+/**
+ * Sync „zestawienie z harmonogramu” z odebrane + Baza cen.
+ * Body: opcjonalne dataOd / dataDo (dd.mm.yyyy). Domyślnie miesiąc bieżący → dziś.
+ */
+function syncZestawienieHarmonogram_(body) {
+  var window = scheduleSyncDefaultWindow_();
+  var dataOd = settlementDateText_(body && body.dataOd) || window.dataOd;
+  var dataDo = settlementDateText_(body && body.dataDo) || window.dataDo;
+  if (settlementCompareDate_(dataOd, dataDo) > 0) {
+    return { ok: false, error: 'dataOd after dataDo' };
+  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateScheduleRegisterSheet_();
+  var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
+  var expected = buildScheduleSyncExpected_(
+    dataOd,
+    dataDo,
+    readSettlementCells_(baza, 8),
+    readOdebraneSheetRows_(odebrane),
+  );
+  var existing = scheduleRegisterIndex_(sheet);
+  var nextNum = existing.maxNum + 1;
+  var created = 0;
+  var updated = 0;
+  var skippedSettled = 0;
+  var ei;
+  for (ei = 0; ei < expected.length; ei++) {
+    var exp = expected[ei];
+    var found = existing.byKey[exp.key];
+    if (found) {
+      if (found.settled) {
+        skippedSettled += 1;
+        continue;
+      }
+      sheet.getRange(found.row, COL.iloscWorkow).setValue(exp.bagCount);
+      sheet.getRange(found.row, COL.trasa, 1, 4).setValues([
+        [exp.routeName || '', exp.routeRate, exp.pickupRate, exp.bagRate],
+      ]);
+      if (exp.shopName) {
+        sheet.getRange(found.row, COL.sklep).setValue(exp.shopName);
+      }
+      if (exp.podmiot) {
+        sheet.getRange(found.row, COL.podmiot).setValue(exp.podmiot);
+      }
+      updated += 1;
+      continue;
+    }
+    var newRow = sheet.getLastRow() + 1;
+    if (newRow < 2) {
+      newRow = 2;
+    }
+    var line = [];
+    var c;
+    for (c = 0; c < SCHEDULE_REGISTER_HEADERS.length; c++) {
+      line.push('');
+    }
+    line[COL.numer - 1] = String(nextNum);
+    line[COL.adres - 1] = exp.address;
+    line[COL.podmiot - 1] = exp.podmiot || '';
+    line[COL.sklep - 1] = exp.shopName || '';
+    line[COL.dataOdbioru - 1] = exp.pickupDate;
+    line[COL.ktoOdbiera - 1] = exp.contractor;
+    line[COL.iloscWorkow - 1] = exp.bagCount;
+    line[COL.trasa - 1] = exp.routeName || '';
+    line[COL.stawkaTrasy - 1] = exp.routeRate;
+    line[COL.stawkaPodjazdu - 1] = exp.pickupRate;
+    line[COL.stawkaWorka - 1] = exp.bagRate;
+    sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
+    nextNum += 1;
+    created += 1;
+  }
+  return {
+    ok: true,
+    dataOd: dataOd,
+    dataDo: dataDo,
+    created: created,
+    updated: updated,
+    skippedSettled: skippedSettled,
+    expected: expected.length,
+  };
+}
+
+/** Indeks istniejących wierszy zestawienia: klucz → { row, settled }, maxNum. */
+function scheduleRegisterIndex_(sheet) {
+  var byKey = {};
+  var maxNum = 0;
+  if (!sheet) {
+    return { byKey: byKey, maxNum: maxNum };
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return { byKey: byKey, maxNum: maxNum };
+  }
+  var width = Math.max(sheet.getLastColumn(), COL.transportOdbył);
+  var values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var cells = values[i];
+    var mapped = mapSettlementRegisterRow_(i + 2, cells);
+    if (!mapped) {
+      continue;
+    }
+    var num = Number(mapped.transportNumber);
+    if (isFinite(num) && num > maxNum) {
+      maxNum = num;
+    }
+    var key = scheduleSyncRowKey_(mapped.address, mapped.pickupDate, mapped.contractor);
+    byKey[key] = { row: i + 2, settled: mapped.settled };
+  }
+  return { byKey: byKey, maxNum: maxNum };
+}
 
 function isSettlementWriteAction_(action) {
   return (
@@ -2844,7 +3123,7 @@ function routeRateWriteValue_(parsed) {
 }
 
 function patchBags_(body) {
-  var sheet = getDataSheet_();
+  var sheet = settlementRegisterSheetForWrite_(body);
   var target = registerWriteTarget_(sheet, body);
   if (target.error) {
     return { ok: false, error: target.error };
@@ -2862,7 +3141,7 @@ function patchBags_(body) {
  * Pusta stawka czyści. Kolumny 16 i 17 nie wchodzą w ten zapis.
  */
 function patchRouteRate_(body) {
-  var sheet = getDataSheet_();
+  var sheet = settlementRegisterSheetForWrite_(body);
   var target = registerWriteTarget_(sheet, body);
   if (target.error) {
     return { ok: false, error: target.error };
@@ -2881,7 +3160,7 @@ function patchRouteRate_(body) {
 
 /** Czyści Trasa i Stawka za trasę jednego wiersza. Reszty trasy nie rusza. */
 function detachRoute_(body) {
-  var sheet = getDataSheet_();
+  var sheet = settlementRegisterSheetForWrite_(body);
   var target = registerWriteTarget_(sheet, body);
   if (target.error) {
     return { ok: false, error: target.error };
@@ -2896,7 +3175,7 @@ function detachRoute_(body) {
  * Potem ta sama reguła co patchRouteRate.
  */
 function attachRoute_(body) {
-  var sheet = getDataSheet_();
+  var sheet = settlementRegisterSheetForWrite_(body);
   var target = registerWriteTarget_(sheet, body);
   if (target.error) {
     return { ok: false, error: target.error };
@@ -3083,7 +3362,7 @@ function approve_(body) {
   if (!rows) {
     return { ok: false, error: 'selection' };
   }
-  var sheet = getDataSheet_();
+  var sheet = settlementRegisterSheetForWrite_(body);
   var saved = [];
   var skipped = [];
   var i;
