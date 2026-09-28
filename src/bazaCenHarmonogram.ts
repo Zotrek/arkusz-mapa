@@ -37,6 +37,11 @@ export interface BazaCenExistingRow {
   adres: string;
   podwykonawca: string;
   dni: string;
+  /** Kolumna „Od kiedy obowiązuje cena” (pusta = od zawsze). */
+  validFrom: string;
+  routeName: string;
+  /** Czy którakolwiek z kolumn cen jest wypełniona. */
+  hasPrices: boolean;
 }
 
 export interface BazaCenSyncPlan {
@@ -44,6 +49,11 @@ export interface BazaCenSyncPlan {
   dayUpdates: Array<{ sheetRow: number; dni: string }>;
   /** Ujednolicenie adresu do formy z mapy (al./pl./Św. → kanoniczny). */
   addressHeals: Array<{ sheetRow: number; adres: string }>;
+  /**
+   * Wiersze do usunięcia: bliźniaki po normalizacji adresu (ten sam klucz sklep+firma
+   * i ta sama data obowiązywania) albo pusty seed bez cen przy istniejącym wierszu z cenami.
+   */
+  duplicateDeletes: number[];
 }
 
 type SheetsClient = {
@@ -108,6 +118,85 @@ function columnLetter(index: number): string {
   return letters;
 }
 
+function cellHasAmount(value: string): boolean {
+  return collapse(value).length > 0;
+}
+
+function duplicateKeepScore(row: BazaCenExistingRow): number {
+  let score = 0;
+  if (row.hasPrices) score += 100;
+  if (row.routeName) score += 10;
+  if (row.dni) score += 1;
+  return score;
+}
+
+/**
+ * Usuwa bliźniaki powstałe po healu al./pl./Św. (ten sam sklep+firma+data).
+ * Zostawia historię cen (różne „Od kiedy”).
+ * Usuwa też pusty seed bez cen, gdy istnieje wiersz z cenami dla tej samej pary.
+ */
+export function planBazaCenDuplicateDeletes(existing: BazaCenExistingRow[]): number[] {
+  const byShop = new Map<string, BazaCenExistingRow[]>();
+  for (const row of existing) {
+    if (!row.adres || !row.podwykonawca) {
+      continue;
+    }
+    const key = bazaCenKey(row.adres, row.podwykonawca);
+    const list = byShop.get(key);
+    if (list) {
+      list.push(row);
+    } else {
+      byShop.set(key, [row]);
+    }
+  }
+
+  const toDelete = new Set<number>();
+  for (const rows of byShop.values()) {
+    if (rows.length < 2) {
+      continue;
+    }
+
+    const hasPricedSibling = rows.some((row) => row.hasPrices);
+    if (hasPricedSibling) {
+      for (const row of rows) {
+        if (!row.hasPrices && !row.validFrom) {
+          toDelete.add(row.sheetRow);
+        }
+      }
+    }
+
+    const survivors = rows.filter((row) => !toDelete.has(row.sheetRow));
+    const byValidFrom = new Map<string, BazaCenExistingRow[]>();
+    for (const row of survivors) {
+      const dateKey = row.validFrom;
+      const list = byValidFrom.get(dateKey);
+      if (list) {
+        list.push(row);
+      } else {
+        byValidFrom.set(dateKey, [row]);
+      }
+    }
+
+    for (const group of byValidFrom.values()) {
+      if (group.length < 2) {
+        continue;
+      }
+      const ranked = [...group].sort((a, b) => {
+        const scoreDiff = duplicateKeepScore(b) - duplicateKeepScore(a);
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+        return a.sheetRow - b.sheetRow;
+      });
+      for (const row of ranked.slice(1)) {
+        toDelete.add(row.sheetRow);
+      }
+    }
+  }
+
+  return [...toDelete].sort((a, b) => b - a);
+}
+
 /**
  * Jedna pozycja na adres + firmę transportową.
  * Adres jak na mapie: normalizacja miasta/ulicy (al./pl./Św.).
@@ -157,17 +246,29 @@ export function parseBazaCenRows(headers: string[], rows: string[][]): BazaCenEx
   const adres = requireHeader(headers, 'Adres sklepu', SHEET_NAME_BAZA_CEN_HARMONOGRAM);
   const podwykonawca = requireHeader(headers, 'Podwykonawca', SHEET_NAME_BAZA_CEN_HARMONOGRAM);
   const dni = requireHeader(headers, 'Dni odbiorów', SHEET_NAME_BAZA_CEN_HARMONOGRAM);
+  const routeName = headerIndex(headers, 'Nazwa trasy');
+  const pickup = headerIndex(headers, 'Cena za podjazd');
+  const bag = headerIndex(headers, 'Cena za worek');
+  const routeAmount = headerIndex(headers, 'Cena za trasę');
+  const validFrom = headerIndex(headers, 'Od kiedy obowiązuje cena');
   const parsed: BazaCenExistingRow[] = [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] ?? [];
     if (row.every((value) => String(value ?? '').trim() === '')) {
       continue;
     }
+    const pickupVal = pickup >= 0 ? cell(row, pickup) : '';
+    const bagVal = bag >= 0 ? cell(row, bag) : '';
+    const routeAmountVal = routeAmount >= 0 ? cell(row, routeAmount) : '';
     parsed.push({
       sheetRow: i + 2,
       adres: collapse(cell(row, adres)),
       podwykonawca: collapse(cell(row, podwykonawca)),
       dni: collapse(cell(row, dni)),
+      validFrom: validFrom >= 0 ? collapse(cell(row, validFrom)) : '',
+      routeName: routeName >= 0 ? collapse(cell(row, routeName)) : '',
+      hasPrices:
+        cellHasAmount(pickupVal) || cellHasAmount(bagVal) || cellHasAmount(routeAmountVal),
     });
   }
   return parsed;
@@ -175,8 +276,12 @@ export function parseBazaCenRows(headers: string[], rows: string[][]): BazaCenEx
 
 /** Dopisuje brakujące sklepy. Dni aktualizuje na każdym wierszu tej pary. Cen nie rusza. */
 export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingRow[]): BazaCenSyncPlan {
+  const duplicateDeletes = planBazaCenDuplicateDeletes(existing);
+  const deleteSet = new Set(duplicateDeletes);
+  const survivors = existing.filter((row) => !deleteSet.has(row.sheetRow));
+
   const rowsByKey = new Map<string, BazaCenExistingRow[]>();
-  for (const row of existing) {
+  for (const row of survivors) {
     if (!row.adres || !row.podwykonawca) {
       continue;
     }
@@ -207,7 +312,7 @@ export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingR
       }
     }
   }
-  return { append, dayUpdates, addressHeals };
+  return { append, dayUpdates, addressHeals, duplicateDeletes };
 }
 
 export function bazaCenRowValues(shop: BazaCenShop, headers: string[]): string[] {
@@ -236,11 +341,54 @@ async function readValues(
   return ((response.data as { values?: string[][] }).values ?? []) as string[][];
 }
 
+async function resolveSheetId(
+  api: SheetsClient,
+  spreadsheetId: string,
+  sheetName: string,
+): Promise<number | null> {
+  const metaResponse = await api.spreadsheets.get({ spreadsheetId });
+  const sheets = (
+    metaResponse.data as {
+      sheets?: Array<{ properties?: { sheetId?: number; title?: string } }>;
+    }
+  ).sheets;
+  const props = (sheets ?? []).find((s) => s.properties?.title === sheetName)?.properties;
+  return props?.sheetId ?? null;
+}
+
+async function deleteSheetRows(
+  api: SheetsClient,
+  spreadsheetId: string,
+  sheetId: number,
+  sheetRows: number[],
+): Promise<void> {
+  if (sheetRows.length === 0) {
+    return;
+  }
+  const sorted = [...sheetRows].sort((a, b) => b - a);
+  await api.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: sorted.map((sheetRow) => ({
+        deleteDimension: {
+          range: {
+            sheetId,
+            dimension: 'ROWS',
+            startIndex: sheetRow - 1,
+            endIndex: sheetRow,
+          },
+        },
+      })),
+    },
+  });
+}
+
 export interface SyncBazaCenHarmonogramResult {
   shopCount: number;
   appendedCount: number;
   daysUpdatedCount: number;
   addressHealedCount: number;
+  duplicatesRemovedCount: number;
   sheetCreated: boolean;
 }
 
@@ -254,10 +402,19 @@ export async function syncBazaCenHarmonogram(
     throw new Error('Missing spreadsheetId for Baza cen harmonogram');
   }
 
+  const emptyResult = {
+    shopCount: 0,
+    appendedCount: 0,
+    daysUpdatedCount: 0,
+    addressHealedCount: 0,
+    duplicatesRemovedCount: 0,
+    sheetCreated: false,
+  };
+
   const sourceExists = await sheetExists(api, spreadsheetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
   if (!sourceExists) {
     logger?.info('Baza cen harmonogram: brak zakładki „odebrane z harmonogramu”');
-    return { shopCount: 0, appendedCount: 0, daysUpdatedCount: 0, addressHealedCount: 0, sheetCreated: false };
+    return emptyResult;
   }
 
   const sourceValues = await readValues(api, spreadsheetId, SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
@@ -342,12 +499,23 @@ export async function syncBazaCenHarmonogram(
     });
   }
 
+  let duplicatesRemovedCount = 0;
+  if (plan.duplicateDeletes.length > 0) {
+    const sheetId = await resolveSheetId(api, spreadsheetId, sheetName);
+    if (sheetId == null) {
+      throw new Error(`Brak sheetId dla zakładki „${sheetName}”`);
+    }
+    await deleteSheetRows(api, spreadsheetId, sheetId, plan.duplicateDeletes);
+    duplicatesRemovedCount = plan.duplicateDeletes.length;
+  }
+
   logger?.info(
-    'Baza cen harmonogram: sklepy %d, dopisane %d, dni zaktualizowane %d, adresy ujednolicone %d, nowa zakładka=%s',
+    'Baza cen harmonogram: sklepy %d, dopisane %d, dni zaktualizowane %d, adresy ujednolicone %d, duplikaty usunięte %d, nowa zakładka=%s',
     shops.length,
     plan.append.length,
     plan.dayUpdates.length,
     plan.addressHeals.length,
+    duplicatesRemovedCount,
     sheetCreated,
   );
 
@@ -356,6 +524,7 @@ export async function syncBazaCenHarmonogram(
     appendedCount: plan.append.length,
     daysUpdatedCount: plan.dayUpdates.length,
     addressHealedCount: plan.addressHeals.length,
+    duplicatesRemovedCount,
     sheetCreated,
   };
 }
