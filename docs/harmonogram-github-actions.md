@@ -50,7 +50,7 @@ Workflow: `.github/workflows/arkusz-mapa-pages-odebrane.yml` — mapa **+** kopi
 
 Ten sam przebieg potem:
 1. uzupełnia zakładkę `Baza cen harmonogram` (adres, podwykonawca, dni; cen nie nadpisuje);
-2. buduje / odświeża zakładkę **`zestawienie z harmonogramu`** (1 wiersz = odbiór, Ilość worków = suma; Rodzaj zbiórki z Tryb zbiórki na workach; dni podjazdu bez worków = 0; sync **tylko uzupełnia / aktualizuje nierozliczone** — nigdy nie czyści zakładki; `Rozliczony=tak` nie jest nadpisywany).
+2. buduje / odświeża zakładkę **`zestawienie z harmonogramu`** (1 wiersz = odbiór, Ilość worków = suma; Rodzaj zbiórki z Tryb zbiórki na workach; dni podjazdu bez worków = 0; sync **tylko uzupełnia / aktualizuje nierozliczone** — nigdy nie czyści zakładki; przy update Ilość worków tylko w górę — usunięcie worków z „odebrane” nie cofa sumy; `Rozliczony=tak` nie jest nadpisywany).
 
 Rozliczenia w trybie Harmonogram czytają i zatwierdzają na `zestawienie z harmonogramu`.
 

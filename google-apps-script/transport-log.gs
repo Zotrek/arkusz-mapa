@@ -903,7 +903,7 @@ function appendTransportRow_(numer, body) {
   var routeRate = '';
   if (bodyHasRoute_(body)) {
     routeName = body.trasa == null ? '' : String(body.trasa).trim();
-    routeRate = body.stawkaTrasy == null ? '' : String(body.stawkaTrasy).trim();
+    routeRate = body.stawkaTrasy == null ? '' : sheetRateWriteValue_(body.stawkaTrasy);
   }
   var row = [
     numer,
@@ -917,8 +917,8 @@ function appendTransportRow_(numer, body) {
     body.iloscWorkow != null ? body.iloscWorkow : '',
     routeName,
     routeRate,
-    snapshot.pickup,
-    snapshot.bag,
+    sheetRateWriteValue_(snapshot.pickup),
+    sheetRateWriteValue_(snapshot.bag),
     '',
     '',
     '',
@@ -2010,7 +2010,12 @@ function applyHarmonogramRatesToScheduleRegister_(shop, contractor) {
     }
     var snap = resolveHarmonogramSnapshot_(rates, mapped.address, mapped.contractor, mapped.pickupDate);
     register.getRange(i + 2, SCHEDULE_COL.trasa, 1, 4).setValues([
-      [snap.routeName, snap.route, snap.pickup, snap.bag],
+      [
+        snap.routeName,
+        sheetRateWriteValue_(snap.route),
+        sheetRateWriteValue_(snap.pickup),
+        sheetRateWriteValue_(snap.bag),
+      ],
     ]);
     updated += 1;
   }
@@ -3299,6 +3304,7 @@ function scheduleSyncDefaultWindow_() {
 /**
  * Sync „zestawienie z harmonogramu” z odebrane + Baza cen.
  * Uzupełnia braki / aktualizuje nierozliczone. NIGDY nie czyści zakładki.
+ * Ilość worków przy update: max(istniejąca, z odebrane) — usunięcie worków z odebrane nie cofa sumy.
  */
 function syncZestawienieHarmonogram_(body) {
   var window = scheduleSyncDefaultWindow_();
@@ -3330,10 +3336,17 @@ function syncZestawienieHarmonogram_(body) {
         skippedSettled += 1;
         continue;
       }
-      sheet.getRange(found.row, SCHEDULE_COL.iloscWorkow).setValue(exp.bagCount);
+      var existingBags = found.bagCount != null ? found.bagCount : 0;
+      var writeBags = Math.max(existingBags, exp.bagCount || 0);
+      sheet.getRange(found.row, SCHEDULE_COL.iloscWorkow).setValue(writeBags);
       sheet.getRange(found.row, SCHEDULE_COL.rodzajZbiorki).setValue(exp.rodzajZbiorki || '');
       sheet.getRange(found.row, SCHEDULE_COL.trasa, 1, 4).setValues([
-        [exp.routeName || '', exp.routeRate, exp.pickupRate, exp.bagRate],
+        [
+          exp.routeName || '',
+          sheetRateWriteValue_(exp.routeRate),
+          sheetRateWriteValue_(exp.pickupRate),
+          sheetRateWriteValue_(exp.bagRate),
+        ],
       ]);
       if (exp.shopName) {
         sheet.getRange(found.row, SCHEDULE_COL.sklep).setValue(exp.shopName);
@@ -3361,9 +3374,9 @@ function syncZestawienieHarmonogram_(body) {
     line[SCHEDULE_COL.rodzajZbiorki - 1] = exp.rodzajZbiorki || '';
     line[SCHEDULE_COL.iloscWorkow - 1] = exp.bagCount;
     line[SCHEDULE_COL.trasa - 1] = exp.routeName || '';
-    line[SCHEDULE_COL.stawkaTrasy - 1] = exp.routeRate;
-    line[SCHEDULE_COL.stawkaPodjazdu - 1] = exp.pickupRate;
-    line[SCHEDULE_COL.stawkaWorka - 1] = exp.bagRate;
+    line[SCHEDULE_COL.stawkaTrasy - 1] = sheetRateWriteValue_(exp.routeRate);
+    line[SCHEDULE_COL.stawkaPodjazdu - 1] = sheetRateWriteValue_(exp.pickupRate);
+    line[SCHEDULE_COL.stawkaWorka - 1] = sheetRateWriteValue_(exp.bagRate);
     sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
     created += 1;
   }
@@ -3378,7 +3391,7 @@ function syncZestawienieHarmonogram_(body) {
   };
 }
 
-/** Indeks istniejących wierszy zestawienia: klucz → { row, settled }. Bez clear. */
+/** Indeks istniejących wierszy zestawienia: klucz → { row, settled, bagCount }. Bez clear. */
 function scheduleRegisterIndex_(sheet) {
   var byKey = {};
   if (!sheet) {
@@ -3397,7 +3410,11 @@ function scheduleRegisterIndex_(sheet) {
       continue;
     }
     var key = scheduleSyncRowKey_(mapped.address, mapped.pickupDate, mapped.contractor);
-    byKey[key] = { row: i + 2, settled: mapped.settled };
+    byKey[key] = {
+      row: i + 2,
+      settled: mapped.settled,
+      bagCount: mapped.bagCount != null ? mapped.bagCount : 0,
+    };
   }
   return { byKey: byKey };
 }
@@ -3464,12 +3481,29 @@ function parseBagWrite_(value) {
   return { empty: false, value: count };
 }
 
+
+/** Sheets: liczba → komórka liczbowa (bez apostrofu tekstowego). Puste → ''. */
+function sheetRateWriteValue_(raw) {
+  if (raw == null || raw === '') {
+    return '';
+  }
+  if (typeof raw === 'number') {
+    return isFinite(raw) ? raw : '';
+  }
+  var s = String(raw).trim().replace(/\s/g, '').replace(',', '.');
+  if (s === '') {
+    return '';
+  }
+  var n = Number(s);
+  return isFinite(n) ? n : String(raw).trim();
+}
+
 /** Pusta stawka to pusty string, nie null. Zero zostaje zerem. */
 function routeRateWriteValue_(parsed) {
   if (parsed.empty) {
     return '';
   }
-  return parsed.value;
+  return sheetRateWriteValue_(parsed.value);
 }
 
 function patchBags_(body) {

@@ -1,6 +1,8 @@
 /**
  * Zakładka „zestawienie z harmonogramu” — rejestr jak Arkusz1, bez nr zlecenia.
  * Sync po „odebrane”: uzupełnia braki / aktualizuje nierozliczone; NIGDY nie czyści zakładki.
+ * Ilość worków przy update: tylko w górę (max z istniejącej i z odebrane) — usunięcie worków
+ * z „odebrane” nie cofa sumy w zestawieniu.
  */
 
 import {
@@ -60,6 +62,8 @@ export interface ScheduleRegisterExistingRow {
   sheetRow: number;
   key: string;
   settled: boolean;
+  /** Aktualna Ilość worków w zestawieniu (do max przy sync). */
+  bagCount: number;
 }
 
 export interface ScheduleSyncPlan {
@@ -458,6 +462,40 @@ export function buildScheduleSyncExpected(
   return order.map((k) => expected.get(k)!);
 }
 
+function parseBagCountCell(raw: string): number {
+  const s = String(raw ?? '')
+    .trim()
+    .replace(/\s/g, '')
+    .replace(',', '.');
+  if (!s) {
+    return 0;
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Sheets API RAW: liczba → komórka liczbowa (bez apostrofu tekstowego).
+ * Puste zostaje pustym stringiem.
+ */
+export function sheetRateWriteValue(raw: string | number | null | undefined): string | number {
+  if (raw == null || raw === '') {
+    return '';
+  }
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : '';
+  }
+  const s = String(raw)
+    .trim()
+    .replace(/\s/g, '')
+    .replace(',', '.');
+  if (s === '') {
+    return '';
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : String(raw).trim();
+}
+
 export function parseScheduleRegisterRows(
   headers: string[],
   rows: string[][],
@@ -466,6 +504,7 @@ export function parseScheduleRegisterRows(
   const ixData = headerIndex(headers, 'Data odbioru');
   const ixKto = headerIndex(headers, 'Kto odbiera');
   const ixRoz = headerIndex(headers, 'Rozliczony');
+  const ixBags = headerIndex(headers, 'Ilość worków');
   const existing: ScheduleRegisterExistingRow[] = [];
   if (ixAdres < 0 || ixData < 0 || ixKto < 0) {
     return existing;
@@ -479,11 +518,16 @@ export function parseScheduleRegisterRows(
       sheetRow: index + 2,
       key: scheduleRowKey(address, pickupDate, contractor),
       settled: ixRoz >= 0 && foldScheduleKeyPart(cell(row, ixRoz)) === 'tak',
+      bagCount: ixBags >= 0 ? parseBagCountCell(cell(row, ixBags)) : 0,
     });
   });
   return existing;
 }
 
+/**
+ * Plan sync: create / update nierozliczonych.
+ * Przy update Ilość worków = max(istniejąca, oczekiwana) — nie cofamy sumy po usunięciu worków z odebrane.
+ */
 export function planScheduleSync(
   expected: ScheduleSyncExpectedRow[],
   existing: ScheduleRegisterExistingRow[],
@@ -499,7 +543,11 @@ export function planScheduleSync(
         skippedSettled += 1;
         continue;
       }
-      update.push({ sheetRow: found.sheetRow, row });
+      const bagCount = Math.max(found.bagCount || 0, row.bagCount || 0);
+      update.push({
+        sheetRow: found.sheetRow,
+        row: bagCount === row.bagCount ? row : { ...row, bagCount },
+      });
       continue;
     }
     create.push(row);
@@ -507,11 +555,14 @@ export function planScheduleSync(
   return { create, update, skippedSettled };
 }
 
-export function zestawienieRowValues(row: ScheduleSyncExpectedRow, headers: string[]): string[] {
-  const values = headers.map(() => '');
+export function zestawienieRowValues(
+  row: ScheduleSyncExpectedRow,
+  headers: string[],
+): Array<string | number> {
+  const values: Array<string | number> = headers.map(() => '');
   const put = (name: string, value: string | number) => {
     const index = headerIndex(headers, name);
-    if (index >= 0) values[index] = String(value);
+    if (index >= 0) values[index] = value;
   };
   put('Adres odbioru', row.address);
   put('Nazwa kontrahenta / podmiot handlowy', row.podmiot);
@@ -521,9 +572,9 @@ export function zestawienieRowValues(row: ScheduleSyncExpectedRow, headers: stri
   put('Rodzaj zbiórki', row.rodzajZbiorki);
   put('Ilość worków', row.bagCount);
   put('Trasa', row.routeName);
-  put('Stawka za trasę', row.routeRate);
-  put('Stawka za podjazd', row.pickupRate);
-  put('Stawka za worek', row.bagRate);
+  put('Stawka za trasę', sheetRateWriteValue(row.routeRate));
+  put('Stawka za podjazd', sheetRateWriteValue(row.pickupRate));
+  put('Stawka za worek', sheetRateWriteValue(row.bagRate));
   return values;
 }
 
@@ -717,17 +768,20 @@ export async function syncZestawienieHarmonogram(
   }
 
   if (plan.update.length > 0) {
-    const fields: Array<{ name: string; value: (r: ScheduleSyncExpectedRow) => string }> = [
-      { name: 'Ilość worków', value: (r) => String(r.bagCount) },
+    const fields: Array<{
+      name: string;
+      value: (r: ScheduleSyncExpectedRow) => string | number;
+    }> = [
+      { name: 'Ilość worków', value: (r) => r.bagCount },
       { name: 'Rodzaj zbiórki', value: (r) => r.rodzajZbiorki },
       { name: 'Trasa', value: (r) => r.routeName },
-      { name: 'Stawka za trasę', value: (r) => r.routeRate },
-      { name: 'Stawka za podjazd', value: (r) => r.pickupRate },
-      { name: 'Stawka za worek', value: (r) => r.bagRate },
+      { name: 'Stawka za trasę', value: (r) => sheetRateWriteValue(r.routeRate) },
+      { name: 'Stawka za podjazd', value: (r) => sheetRateWriteValue(r.pickupRate) },
+      { name: 'Stawka za worek', value: (r) => sheetRateWriteValue(r.bagRate) },
       { name: 'Nazwa punktu / nazwa skrócona', value: (r) => r.shopName },
       { name: 'Nazwa kontrahenta / podmiot handlowy', value: (r) => r.podmiot },
     ];
-    const data: Array<{ range: string; values: string[][] }> = [];
+    const data: Array<{ range: string; values: Array<Array<string | number>> }> = [];
     for (const item of plan.update) {
       for (const field of fields) {
         const ix = headerIndex(headers, field.name);

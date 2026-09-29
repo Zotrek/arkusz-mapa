@@ -5,7 +5,9 @@ import {
   buildScheduleSyncExpected,
   defaultSyncWindow,
   planScheduleSync,
+  sheetRateWriteValue,
   syncZestawienieHarmonogram,
+  zestawienieRowValues,
   ZESTAWIENIE_HARMONOGRAM_HEADERS,
 } from './syncZestawienieHarmonogram.js';
 
@@ -122,11 +124,95 @@ describe('planScheduleSync', () => {
       [odebraneRow()],
     );
     const plan = planScheduleSync(expected, [
-      { sheetRow: 2, key: expected[0]!.key, settled: true },
+      { sheetRow: 2, key: expected[0]!.key, settled: true, bagCount: 1 },
     ]);
     expect(plan.skippedSettled).toBe(1);
     expect(plan.create).toHaveLength(0);
     expect(plan.update).toHaveLength(0);
+  });
+
+  it('test_planScheduleSync_when_odebrane_bags_drop_should_keep_existing_count', () => {
+    const expected = buildScheduleSyncExpected(
+      '15.09.2026',
+      '15.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Numer plomby': 'P1' })],
+    );
+    expect(expected[0]!.bagCount).toBe(1);
+    const plan = planScheduleSync(expected, [
+      { sheetRow: 2, key: expected[0]!.key, settled: false, bagCount: 5 },
+    ]);
+    expect(plan.update).toHaveLength(1);
+    expect(plan.update[0]!.row.bagCount).toBe(5);
+  });
+
+  it('test_planScheduleSync_when_odebrane_bags_rise_should_increase_count', () => {
+    const expected = buildScheduleSyncExpected(
+      '15.09.2026',
+      '15.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({ 'Numer plomby': 'P1' }),
+        odebraneRow({ 'Numer plomby': 'P2' }),
+        odebraneRow({ 'Numer plomby': 'P3' }),
+      ],
+    );
+    expect(expected[0]!.bagCount).toBe(3);
+    const plan = planScheduleSync(expected, [
+      { sheetRow: 2, key: expected[0]!.key, settled: false, bagCount: 1 },
+    ]);
+    expect(plan.update).toHaveLength(1);
+    expect(plan.update[0]!.row.bagCount).toBe(3);
+  });
+});
+
+describe('sheetRateWriteValue', () => {
+  it('test_sheetRateWriteValue_when_numeric_string_should_return_number', () => {
+    expect(sheetRateWriteValue('175')).toBe(175);
+    expect(sheetRateWriteValue('20,5')).toBe(20.5);
+    expect(sheetRateWriteValue(' 40 ')).toBe(40);
+    expect(sheetRateWriteValue(0)).toBe(0);
+    expect(sheetRateWriteValue('0')).toBe(0);
+  });
+
+  it('test_sheetRateWriteValue_when_empty_should_stay_empty_string', () => {
+    expect(sheetRateWriteValue('')).toBe('');
+    expect(sheetRateWriteValue('   ')).toBe('');
+    expect(sheetRateWriteValue(null)).toBe('');
+    expect(sheetRateWriteValue(undefined)).toBe('');
+  });
+});
+
+describe('zestawienieRowValues', () => {
+  it('test_zestawienieRowValues_writes_rate_columns_as_numbers_not_text', () => {
+    const values = zestawienieRowValues(
+      {
+        key: 'k',
+        address: 'A',
+        shopName: 'S',
+        podmiot: 'P',
+        contractor: 'THOR',
+        pickupDate: '15.09.2026',
+        bagCount: 2,
+        rodzajZbiorki: 'ręczna',
+        routeName: 'T1',
+        routeRate: '100',
+        pickupRate: '175',
+        bagRate: '5',
+      },
+      [...ZESTAWIENIE_HARMONOGRAM_HEADERS],
+    );
+    const ixRoute = ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf('Stawka za trasę');
+    const ixPickup = ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf('Stawka za podjazd');
+    const ixBag = ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf('Stawka za worek');
+    expect(values[ixRoute]).toBe(100);
+    expect(values[ixPickup]).toBe(175);
+    expect(values[ixBag]).toBe(5);
+    expect(typeof values[ixPickup]).toBe('number');
   });
 });
 
