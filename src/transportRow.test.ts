@@ -546,7 +546,7 @@ describe('appendTransportRow_', () => {
     loadGas(sheet, rates).appendTransportRow_('16c', protocolBody());
 
     expect(sheet.cell(2, 12)).toBe(20);
-    expect(sheet.cell(2, 13)).toBe('1,5');
+    expect(sheet.cell(2, 13)).toBe(1.5);
   });
 
   it('test_appendTransportRow_snapshots_rate_when_shop_has_al_vs_map_form', () => {
@@ -719,7 +719,7 @@ describe('appendTransportRow_', () => {
 
     expect(sheet.cell(2, 11)).toBe('10');
     expect(sheet.cell(3, 10)).toBe('');
-    expect(sheet.cell(3, 11)).toBe('5');
+    expect(sheet.cell(3, 11)).toBe(5);
   });
 
   it('test_TRANSPORT_SHEET_should_describe_columns_10_to_20_and_body_fields', () => {
