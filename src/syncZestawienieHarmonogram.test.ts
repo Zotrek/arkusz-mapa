@@ -59,10 +59,28 @@ describe('buildScheduleSyncExpected', () => {
     expect(rows.every((r) => r.rodzajZbiorki === '')).toBe(true);
   });
 
+  it('test_buildScheduleSyncExpected_when_zero_bags_should_fill_names_from_any_odebrane_row', () => {
+    const rows = buildScheduleSyncExpected(
+      '14.09.2026',
+      '16.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '100', '0', '', '01.01.2026', 'wt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '08.09.2026' })],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      bagCount: 0,
+      pickupDate: '15.09.2026',
+      podmiot: 'Firma X',
+      shopName: 'Sklep A',
+    });
+  });
+
   it('test_buildScheduleSyncExpected_aggregates_rodzaj_from_tryb_zbiorki', () => {
     const rows = buildScheduleSyncExpected(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [...BAZA_CEN_HEADERS],
       [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
       ODEBRANE_HEADERS,
@@ -81,7 +99,7 @@ describe('buildScheduleSyncExpected', () => {
   it('test_buildScheduleSyncExpected_joins_bags_when_baza_healed_odebrane_has_al', () => {
     const rows = buildScheduleSyncExpected(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [...BAZA_CEN_HEADERS],
       [['51-602 Wrocław Kochanowskiego 33', 'THOR', 'T1', '40', '5', '100', '', 'wt']],
       ODEBRANE_HEADERS,
@@ -111,13 +129,41 @@ describe('buildScheduleSyncExpected', () => {
       routeName: 'T1',
     });
   });
+
+  it('test_buildScheduleSyncExpected_when_as_of_pickup_day_should_omit_row', () => {
+    const rows = buildScheduleSyncExpected(
+      '15.09.2026',
+      '15.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow()],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('test_buildScheduleSyncExpected_when_day_after_pickup_should_include_theoretical_date', () => {
+    const rows = buildScheduleSyncExpected(
+      '01.10.2026',
+      '02.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'cz']],
+      ODEBRANE_HEADERS,
+      [],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      pickupDate: '01.10.2026',
+      bagCount: 0,
+    });
+  });
 });
 
 describe('planScheduleSync', () => {
   it('test_planScheduleSync_skips_settled_never_deletes', () => {
     const expected = buildScheduleSyncExpected(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [...BAZA_CEN_HEADERS],
       [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
       ODEBRANE_HEADERS,
@@ -134,7 +180,7 @@ describe('planScheduleSync', () => {
   it('test_planScheduleSync_when_odebrane_bags_drop_should_keep_existing_count', () => {
     const expected = buildScheduleSyncExpected(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [...BAZA_CEN_HEADERS],
       [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
       ODEBRANE_HEADERS,
@@ -151,7 +197,7 @@ describe('planScheduleSync', () => {
   it('test_planScheduleSync_when_odebrane_bags_rise_should_increase_count', () => {
     const expected = buildScheduleSyncExpected(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [...BAZA_CEN_HEADERS],
       [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
       ODEBRANE_HEADERS,
@@ -275,7 +321,7 @@ describe('syncZestawienieHarmonogram', () => {
     const result = await syncZestawienieHarmonogram(api, {
       spreadsheetId: 'ewid-id',
       dataOd: '15.09.2026',
-      dataDo: '15.09.2026',
+      dataDo: '16.09.2026',
     });
 
     expect(result.sheetCreated).toBe(true);

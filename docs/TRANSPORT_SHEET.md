@@ -12,7 +12,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   - `Arkusz1` — rejestr transportów (Na zgłoszenie)
   - `odebrane z harmonogramu` — 1 wiersz = 1 worek (źródło sync)
-  - `zestawienie z harmonogramu` — rejestr odbiorów Harmonogram (bez nr zlecenia; Rodzaj zbiórki z Tryb zbiórki; sync uzupełnia, nigdy nie czyści)
+  - `zestawienie z harmonogramu` — rejestr odbiorów Harmonogram (bez nr zlecenia; Rodzaj zbiórki z Tryb zbiórki; sync uzupełnia, nigdy nie czyści; nazwy kontrahenta/punktu także przy 0 workach z odebrane)
 
 - **Wiersz 1 — nagłówki rejestru Arkusz1 (kolejność kolumn):**
 
@@ -56,7 +56,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   20. Komentarz 2
 
-- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” ma listę tak/nie. Sync nigdy nie czyści zakładki. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (bez czekania na pipeline).
+- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” ma listę tak/nie. Sync nigdy nie czyści zakładki. Przy 0 workach **Nazwa kontrahenta** i **Nazwa punktu** biorą się z dowolnego wiersza `odebrane` tego adresu. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (bez czekania na pipeline). Sync dopisuje wiersz **dzień po** teoretycznej dacie odbioru (odbiór 01.10 → zestawienie od 02.10; kolumna Data odbioru zostaje 01.10).
 
 
 

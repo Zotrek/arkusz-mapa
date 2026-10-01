@@ -18,6 +18,9 @@ describe('buildMapManualAdmin', () => {
     expect(script).toContain('wojewodztwo:');
     expect(script).toContain('setPoprawWojewodztwoSelect');
     expect(script).toContain('manual-admin-popraw-wojewodztwo');
+    expect(script).toContain('setManualAdminBusy');
+    expect(script).toContain('setTransportDatesLoading');
+    expect(script).toContain('formatRateSaveOkMessage');
   });
 
   it('test_manualAdminHtml_when_built_should_offer_rate_tab_without_free_text_or_route_rate', () => {

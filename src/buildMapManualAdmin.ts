@@ -64,8 +64,9 @@ export function manualAdminCss(): string {
     }
     .manual-admin-coords-row { display: flex; gap: 10px; }
     .manual-admin-coords-row > div { flex: 1; }
-    .manual-admin-status { font-size: 12px; margin: 12px 0 0; min-height: 1.2em; color: var(--map-accent-deep); }
+    .manual-admin-status { font-size: 12px; margin: 12px 0 0; min-height: 1.2em; color: var(--map-accent-deep); white-space: pre-line; line-height: 1.45; }
     .manual-admin-status.is-error { color: #b02a37; }
+    .manual-admin-status.is-ok { color: #0f766e; }
     .manual-admin-submit {
       width: 100%; margin-top: 14px; padding: 10px 14px; font-size: 13px; font-weight: 600;
       border-radius: 10px; border: 1px solid var(--map-accent-deep); background: var(--map-accent); color: #fff; cursor: pointer;
@@ -201,8 +202,37 @@ ${referenceFormatsBrowserScript()}
       var el = document.getElementById('manual-admin-status');
       if (!el) return;
       el.textContent = msg || '';
-      el.classList.remove('is-error');
+      el.classList.remove('is-error', 'is-ok');
       if (kind === 'error') el.classList.add('is-error');
+      if (kind === 'ok') el.classList.add('is-ok');
+    }
+
+    function setManualAdminBusy(btn, busy, message) {
+      if (btn) {
+        btn.disabled = !!busy;
+        btn.classList.toggle('is-busy', !!busy);
+      }
+      if (typeof setTransportDatesLoading === 'function') {
+        setTransportDatesLoading(!!busy, busy ? (message || 'Zapisuję…') : '');
+      }
+    }
+
+    function formatRateSaveOkMessage(resp, harmonogram) {
+      var lines = [harmonogram ? 'Zapisano stawkę harmonogramu.' : 'Zapisano stawkę.'];
+      if (!resp) return lines.join('\\n');
+      if (resp.action === 'overwrite') {
+        var detail = 'Nadpisano istniejący wiersz';
+        if (resp.rows != null) detail += ' (' + resp.rows + ')';
+        detail += '.';
+        lines.push(detail);
+      } else if (resp.action === 'append') {
+        lines.push('Dodano nowy wiersz.');
+      }
+      if (harmonogram) {
+        if (resp.daysUpdated) lines.push('Zaktualizowano dni odbiorów.');
+        if (resp.scheduleUpdated) lines.push('Zaktualizowano harmonogram.');
+      }
+      return lines.join('\\n');
     }
 
     function postReferencePayload(payload) {
@@ -244,6 +274,7 @@ ${referenceFormatsBrowserScript()}
     function loadReferenceDataFromWebApp() {
       if (!TRANSPORT_WEBAPP_URL) return Promise.resolve();
       var sep = TRANSPORT_WEBAPP_URL.indexOf('?') >= 0 ? '&' : '?';
+      setManualAdminBusy(null, true, 'Ładowanie słowników…');
       return fetch(TRANSPORT_WEBAPP_URL + sep + 'action=listReferenceData')
         .then(function(r) { return r.json(); })
         .then(function(resp) {
@@ -261,7 +292,10 @@ ${referenceFormatsBrowserScript()}
           }
           fillRateContractorOptions();
         })
-        .catch(function() {});
+        .catch(function() {})
+        .then(function() {
+          setManualAdminBusy(null, false);
+        });
     }
 
     function parseManualLatLon(latId, lonId) {
@@ -584,7 +618,7 @@ ${referenceFormatsBrowserScript()}
             nip: nip,
             bdo: bdo
           });
-          listaSubmit.disabled = true;
+          setManualAdminBusy(listaSubmit, true, 'Zapisuję na liście…');
           postReferencePayload({
             mode: 'addReferencePodwyko',
             nazwa: nazwa,
@@ -594,7 +628,6 @@ ${referenceFormatsBrowserScript()}
             bdo: bdo,
             dane: dane
           }).then(function(resp) {
-            listaSubmit.disabled = false;
             if (!resp || !resp.ok) {
               setManualAdminStatus(resp && resp.error === 'duplicate' ? 'Duplikat na liście.' : 'Zapis nieudany.', 'error');
               return;
@@ -606,6 +639,10 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-lista-adres').value = '';
             document.getElementById('manual-admin-lista-nip').value = '';
             document.getElementById('manual-admin-lista-bdo').value = '';
+          }).catch(function() {
+            setManualAdminStatus('Zapis nieudany.', 'error');
+          }).then(function() {
+            setManualAdminBusy(listaSubmit, false);
           });
         });
       }
@@ -618,7 +655,7 @@ ${referenceFormatsBrowserScript()}
           var coords = parseManualLatLon('manual-admin-popraw-lat', 'manual-admin-popraw-lon');
           if (coords.error) { setManualAdminStatus(coords.error, 'error'); return; }
           var wojewodztwo = String((document.getElementById('manual-admin-popraw-wojewodztwo') || {}).value || '').trim();
-          poprawSubmit.disabled = true;
+          setManualAdminBusy(poprawSubmit, true, 'Zapisuję poprawkę…');
           postReferencePayload({
             mode: 'addPoprawAdres',
             podmiotHandlowy: String((document.getElementById('manual-admin-popraw-podmiot') || {}).value || '').trim(),
@@ -629,12 +666,15 @@ ${referenceFormatsBrowserScript()}
             wojewodztwo: wojewodztwo,
             uwagi: String((document.getElementById('manual-admin-popraw-uwagi') || {}).value || '').trim()
           }).then(function(resp) {
-            poprawSubmit.disabled = false;
             if (!resp || !resp.ok) {
               setManualAdminStatus('Zapis poprawki nieudany.', 'error');
               return;
             }
             setManualAdminStatus('Zapisano poprawkę — odśwież mapę (npm run generate), aby zobaczyć pinezkę.', 'ok');
+          }).catch(function() {
+            setManualAdminStatus('Zapis poprawki nieudany.', 'error');
+          }).then(function() {
+            setManualAdminBusy(poprawSubmit, false);
           });
         });
       }
@@ -648,7 +688,7 @@ ${referenceFormatsBrowserScript()}
             setManualAdminStatus('Wybierz sklep i podwykonawcę.', 'error');
             return;
           }
-          stawkiSubmit.disabled = true;
+          setManualAdminBusy(stawkiSubmit, true, 'Zapisuję stawkę…');
           postReferencePayload({
             mode: 'saveRate',
             sklep: sklep,
@@ -657,7 +697,6 @@ ${referenceFormatsBrowserScript()}
             kwotaWorek: String((document.getElementById('manual-admin-stawki-worek') || {}).value || ''),
             odKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-stawki-od-kiedy') || {}).value)
           }).then(function(resp) {
-            stawkiSubmit.disabled = false;
             if (!resp || !resp.ok) {
               var code = resp && resp.error;
               var msg = 'Zapis nieudany.';
@@ -669,13 +708,14 @@ ${referenceFormatsBrowserScript()}
               setManualAdminStatus(msg, 'error');
               return;
             }
-            setManualAdminStatus('Zapisano stawkę.', 'ok');
+            setManualAdminStatus(formatRateSaveOkMessage(resp, false), 'ok');
             document.getElementById('manual-admin-stawki-podjazd').value = '';
             document.getElementById('manual-admin-stawki-worek').value = '';
             document.getElementById('manual-admin-stawki-od-kiedy').value = '';
           }).catch(function() {
-            stawkiSubmit.disabled = false;
             setManualAdminStatus('Zapis nieudany.', 'error');
+          }).then(function() {
+            setManualAdminBusy(stawkiSubmit, false);
           });
         });
       }
@@ -689,7 +729,7 @@ ${referenceFormatsBrowserScript()}
             setManualAdminStatus('Wybierz sklep i podwykonawcę.', 'error');
             return;
           }
-          harmonogramSubmit.disabled = true;
+          setManualAdminBusy(harmonogramSubmit, true, 'Zapisuję stawkę harmonogramu…');
           postReferencePayload({
             mode: 'saveRateHarmonogram',
             sklep: sklep,
@@ -699,7 +739,6 @@ ${referenceFormatsBrowserScript()}
             odKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-harmonogram-od-kiedy') || {}).value),
             dniOdbiorow: String((document.getElementById('manual-admin-harmonogram-dni') || {}).value || '').trim()
           }).then(function(resp) {
-            harmonogramSubmit.disabled = false;
             if (!resp || !resp.ok) {
               var code = resp && resp.error;
               var msg = 'Zapis nieudany.';
@@ -711,14 +750,15 @@ ${referenceFormatsBrowserScript()}
               setManualAdminStatus(msg, 'error');
               return;
             }
-            setManualAdminStatus('Zapisano stawkę harmonogramu.', 'ok');
+            setManualAdminStatus(formatRateSaveOkMessage(resp, true), 'ok');
             document.getElementById('manual-admin-harmonogram-podjazd').value = '';
             document.getElementById('manual-admin-harmonogram-worek').value = '';
             setDayMultiValue('manual-admin-harmonogram-dni', '');
             document.getElementById('manual-admin-harmonogram-od-kiedy').value = '';
           }).catch(function() {
-            harmonogramSubmit.disabled = false;
             setManualAdminStatus('Zapis nieudany.', 'error');
+          }).then(function() {
+            setManualAdminBusy(harmonogramSubmit, false);
           });
         });
       }

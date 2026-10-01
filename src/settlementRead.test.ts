@@ -806,10 +806,53 @@ describe('buildScheduleSyncExpected_', () => {
     expect(rows.filter((r) => r.pickupDate === '22.09.2026')).toHaveLength(3);
   });
 
+  it('test_buildScheduleSyncExpected_when_zero_bags_should_fill_names_from_any_odebrane_row', () => {
+    const rows = gas.buildScheduleSyncExpected_(
+      '14.09.2026',
+      '16.09.2026',
+      [
+        {
+          sheetRow: 2,
+          cells: ['31-342 Kraków Radzikowskiego 138', 'THOR', '', 100, 0, '', '01.01.2026', 'wt'],
+        },
+      ],
+      {
+        headers: odebraneHeaders,
+        rows: [
+          [
+            '',
+            'Firma X',
+            'Sklep A',
+            'Tak',
+            'wt',
+            'THOR',
+            '31-342',
+            'Kraków',
+            'Radzikowskiego',
+            '138',
+            '',
+            '',
+            '1',
+            '',
+            '',
+            '08.09.2026',
+          ],
+        ],
+      },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      bagCount: 0,
+      pickupDate: '15.09.2026',
+      podmiot: 'Firma X',
+      shopName: 'Sklep A',
+    });
+  });
+
   it('test_buildScheduleSyncExpected_counts_odebrane_bags_on_matching_day', () => {
     const rows = gas.buildScheduleSyncExpected_(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [
         {
           sheetRow: 2,
@@ -869,7 +912,7 @@ describe('buildScheduleSyncExpected_', () => {
   it('test_buildScheduleSyncExpected_joins_bags_when_baza_healed_odebrane_has_al', () => {
     const rows = gas.buildScheduleSyncExpected_(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [
         {
           sheetRow: 2,
@@ -931,7 +974,7 @@ describe('buildScheduleSyncExpected_', () => {
   it('test_buildScheduleSyncExpected_includes_shops_only_in_odebrane', () => {
     const rows = gas.buildScheduleSyncExpected_(
       '15.09.2026',
-      '15.09.2026',
+      '16.09.2026',
       [],
       {
         headers: odebraneHeaders,
@@ -963,5 +1006,42 @@ describe('buildScheduleSyncExpected_', () => {
       shopName: 'Sklep X',
       contractor: 'THOR',
     });
+  });
+
+  it('test_buildScheduleSyncExpected_when_as_of_pickup_day_should_omit_row', () => {
+    const rows = gas.buildScheduleSyncExpected_(
+      '15.09.2026',
+      '15.09.2026',
+      [
+        {
+          sheetRow: 2,
+          cells: ['31-342 Kraków Radzikowskiego 138', 'THOR', '', 50, 10, '', '', 'wt'],
+        },
+      ],
+      {
+        headers: odebraneHeaders,
+        rows: [
+          [
+            '',
+            '',
+            'Radzikowskiego',
+            'Tak',
+            'wt',
+            'THOR',
+            '31-342',
+            'Kraków',
+            'Radzikowskiego',
+            '138',
+            '',
+            '',
+            '1',
+            '',
+            '',
+            '15.09.2026',
+          ],
+        ],
+      },
+    );
+    expect(rows).toHaveLength(0);
   });
 });

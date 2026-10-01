@@ -151,6 +151,28 @@ export function dateInRange(pickup: string, dataOd: string, dataDo: string): boo
   return true;
 }
 
+/** Dzień po dacie dd.mm.yyyy (UTC). */
+export function addOneDayDdMmYyyy(date: string): string | null {
+  const p = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+  if (!p) {
+    return null;
+  }
+  const next = new Date(Date.UTC(Number(p[3]), Number(p[2]) - 1, Number(p[1]) + 1));
+  return formatDdMmYyyy(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+}
+
+/**
+ * Do zestawienia wiersz trafia dzień po teoretycznej / faktycznej dacie odbioru.
+ * np. odbiór 01.10 → dopisanie gdy asOf ≥ 02.10 (Data odbioru zostaje 01.10).
+ */
+export function pickupReadyForZestawienie(pickupDate: string, asOfDate: string): boolean {
+  const appearOn = addOneDayDdMmYyyy(pickupDate);
+  if (!appearOn) {
+    return false;
+  }
+  return compareDdMmYyyy(appearOn, asOfDate) <= 0;
+}
+
 export function datesMatchingWeekdays(
   dataOd: string,
   dataDo: string,
@@ -238,6 +260,8 @@ type BazaRate = {
 
 /**
  * Oczekiwane wiersze: dni z Bazy cen + worki z odebrane.
+ * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
+ * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
  * Rodzaj zbiórki = agregat Tryb zbiórki z worków grupy.
  */
 export function buildScheduleSyncExpected(
@@ -360,6 +384,30 @@ export function buildScheduleSyncExpected(
     }
   }
 
+  const namesByAddress = new Map<string, { shopName: string; podmiot: string }>();
+  if (ixKod >= 0 && ixMiasto >= 0 && ixUlica >= 0 && ixNumer >= 0) {
+    for (const row of odebraneRows) {
+      const adres = buildAddress({
+        kodPocztowy: cell(row, ixKod),
+        miasto: cell(row, ixMiasto),
+        ulica: cell(row, ixUlica),
+        numerBudynku: cell(row, ixNumer),
+      });
+      if (!adres) continue;
+      const shopName = ixSklep >= 0 ? cell(row, ixSklep) : '';
+      const podmiot = ixPodmiot >= 0 ? cell(row, ixPodmiot) : '';
+      if (!shopName && !podmiot) continue;
+      const key = foldScheduleKeyPart(adres);
+      const prev = namesByAddress.get(key);
+      if (!prev) {
+        namesByAddress.set(key, { shopName, podmiot });
+      } else {
+        if (!prev.shopName && shopName) prev.shopName = shopName;
+        if (!prev.podmiot && podmiot) prev.podmiot = podmiot;
+      }
+    }
+  }
+
   const expected = new Map<string, ScheduleSyncExpectedRow>();
   const order: string[] = [];
 
@@ -404,7 +452,17 @@ export function buildScheduleSyncExpected(
     const weekdays = parseWeekdaysFromDniHarmonogramu(meta.days);
     if (weekdays.length === 0) continue;
     for (const day of datesMatchingWeekdays(start, end, weekdays)) {
-      const row = ensure(meta.address, meta.contractor, day, '', '', 0, '');
+      if (!pickupReadyForZestawienie(day, end)) continue;
+      const names = namesByAddress.get(foldScheduleKeyPart(meta.address));
+      const row = ensure(
+        meta.address,
+        meta.contractor,
+        day,
+        names?.shopName ?? '',
+        names?.podmiot ?? '',
+        0,
+        '',
+      );
       let best: BazaRate | null = null;
       for (const rate of rateRows) {
         if (foldScheduleKeyPart(rate.shop) !== foldScheduleKeyPart(meta.address)) continue;
@@ -442,6 +500,7 @@ export function buildScheduleSyncExpected(
   }
 
   for (const g of bagGroups.values()) {
+    if (!pickupReadyForZestawienie(g.pickupDate, end)) continue;
     ensure(
       g.address,
       g.contractor,

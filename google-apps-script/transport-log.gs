@@ -2387,6 +2387,30 @@ function settlementDateInRange_(pickup, dataOd, dataDo) {
   return true;
 }
 
+/** Dzień po dacie dd.mm.yyyy (UTC). */
+function settlementAddOneDay_(dateText) {
+  var match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(dateText);
+  if (!match) {
+    return null;
+  }
+  var next = new Date(
+    Date.UTC(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10) + 1),
+  );
+  return settlementFormatDate_(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+}
+
+/**
+ * Do zestawienia wiersz trafia dzień po dacie odbioru.
+ * np. odbiór 01.10 → dopisanie gdy asOf ≥ 02.10 (Data odbioru zostaje 01.10).
+ */
+function settlementPickupReadyForZestawienie_(pickupDate, asOfDate) {
+  var appearOn = settlementAddOneDay_(pickupDate);
+  if (!appearOn) {
+    return false;
+  }
+  return settlementCompareDate_(appearOn, asOfDate) <= 0;
+}
+
 function settlementAmountToGrosze_(value) {
   if (value == null || value === '') {
     return null;
@@ -3035,6 +3059,8 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
 
 /**
  * Buduje oczekiwane wiersze sync (adres+data+firma).
+ * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
+ * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
  * bazaCen = { sheetRow, cells }[]; odebrane = { headers, rows }.
  */
 function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
@@ -3134,6 +3160,37 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
       if (!bagGroups[gkey].shopName && ixSklep >= 0) {
         bagGroups[gkey].shopName = settlementText_(orow[ixSklep]);
       }
+      if (!bagGroups[gkey].podmiot && ixPodmiot >= 0) {
+        bagGroups[gkey].podmiot = settlementText_(orow[ixPodmiot]);
+      }
+    }
+  }
+
+  var namesByAddress = {};
+  if (ixKod >= 0 && ixMiasto >= 0 && ixUlica >= 0 && ixNumer >= 0) {
+    var ni;
+    for (ni = 0; ni < odebraneRows.length; ni++) {
+      var nrow = odebraneRows[ni];
+      var namesAdres = settlementBuildAddressParts_(nrow[ixKod], nrow[ixMiasto], nrow[ixUlica], nrow[ixNumer]);
+      if (!namesAdres) {
+        continue;
+      }
+      var namesShop = ixSklep >= 0 ? settlementText_(nrow[ixSklep]) : '';
+      var namesPodmiot = ixPodmiot >= 0 ? settlementText_(nrow[ixPodmiot]) : '';
+      if (!namesShop && !namesPodmiot) {
+        continue;
+      }
+      var namesKey = settlementFoldPl_(namesAdres);
+      if (!namesByAddress[namesKey]) {
+        namesByAddress[namesKey] = { shopName: namesShop, podmiot: namesPodmiot };
+      } else {
+        if (!namesByAddress[namesKey].shopName && namesShop) {
+          namesByAddress[namesKey].shopName = namesShop;
+        }
+        if (!namesByAddress[namesKey].podmiot && namesPodmiot) {
+          namesByAddress[namesKey].podmiot = namesPodmiot;
+        }
+      }
     }
   }
 
@@ -3187,7 +3244,18 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
     var di;
     for (di = 0; di < dates.length; di++) {
       var day = dates[di];
-      var row = ensureExpected(meta.address, meta.contractor, day, '', '', 0);
+      if (!settlementPickupReadyForZestawienie_(day, end)) {
+        continue;
+      }
+      var names = namesByAddress[settlementFoldPl_(meta.address)] || {};
+      var row = ensureExpected(
+        meta.address,
+        meta.contractor,
+        day,
+        names.shopName || '',
+        names.podmiot || '',
+        0,
+      );
       var best = null;
       var ri;
       for (ri = 0; ri < rateRows.length; ri++) {
@@ -3236,6 +3304,9 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
       continue;
     }
     var g = bagGroups[bk];
+    if (!settlementPickupReadyForZestawienie_(g.pickupDate, end)) {
+      continue;
+    }
     ensureExpected(
       g.address,
       g.contractor,

@@ -1101,6 +1101,16 @@ ${
     .map-transport-loader-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 22px; background: var(--map-surface); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 14px; box-shadow: var(--map-shadow); font-size: 13px; font-weight: 600; color: var(--map-muted); border: 1px solid rgba(255,255,255,0.7); text-align: center; }
     .map-transport-loader-logo { width: 64px; height: 64px; flex-shrink: 0; animation: map-logo-pulse 1.2s ease-in-out infinite; }
     @keyframes map-logo-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: 0.55; } }
+    .map-app-notice {
+      position: fixed; z-index: 26000; left: 50%; bottom: 28px; transform: translateX(-50%);
+      max-width: min(420px, calc(100vw - 24px)); padding: 14px 18px; border-radius: 12px;
+      background: rgba(255,255,255,0.97); border: 1px solid rgba(13,148,136,0.35);
+      box-shadow: 0 10px 28px rgba(15,23,42,0.18); font-size: 13px; font-weight: 600;
+      color: var(--map-ink); line-height: 1.45; white-space: pre-line; text-align: left;
+    }
+    .map-app-notice[hidden] { display: none !important; }
+    .map-app-notice.is-ok { border-color: rgba(15,118,110,0.45); color: #0f766e; }
+    .map-app-notice.is-error { border-color: rgba(176,42,55,0.4); color: #b02a37; }
 `
     : ''
 }${referenceAdminEnabled ? manualAdminCss() : ''}${docStyles}  </style>
@@ -1115,6 +1125,7 @@ ${
       <span id="map-transport-loader-label">Pobieranie danych transportu…</span>
     </div>
   </div>
+  <div id="map-app-notice" class="map-app-notice" role="status" aria-live="polite" hidden></div>
 `
     : ''
 }${wordModal}${bulkRatesModal}${referenceAdminEnabled ? manualAdminHtml() : ''}  <script>
@@ -1784,6 +1795,25 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (loading) mapLoaderDepth += 1;
       else mapLoaderDepth = Math.max(0, mapLoaderDepth - 1);
       syncMapLoaderUi(message || null);
+    }
+    var mapNoticeHideTimer = 0;
+    function showMapNotice(message, kind) {
+      var el = document.getElementById('map-app-notice');
+      if (!el) {
+        window.alert(message);
+        return;
+      }
+      el.textContent = message || '';
+      el.classList.remove('is-ok', 'is-error');
+      if (kind === 'ok') el.classList.add('is-ok');
+      if (kind === 'error') el.classList.add('is-error');
+      el.hidden = !message;
+      if (mapNoticeHideTimer) window.clearTimeout(mapNoticeHideTimer);
+      if (!message) return;
+      mapNoticeHideTimer = window.setTimeout(function () {
+        el.hidden = true;
+        mapNoticeHideTimer = 0;
+      }, 6000);
     }
     function loadBulkTransportDates() {
       window.__transportDateByKey = {};
@@ -2731,7 +2761,11 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         var savedCount = shops.length;
         closeBulkRatesModal();
         clearBulkSelection();
-        alert('Zapisano stawki dla ' + savedCount + ' sklepów.');
+        showMapNotice(
+          'Zapisano stawki dla ' + savedCount + ' sklepów.\\nPodwykonawca: ' + podwykonawca +
+            (target === 'harmonogram' ? '\\nŹródło: baza cen harmonogram' : '\\nŹródło: baza stawek'),
+          'ok'
+        );
       }
       function saveNext() {
         if (done >= shops.length) {
@@ -2972,6 +3006,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (!trimmed || !transportApiEnabled) return;
       routeRateRequest += 1;
       var ticket = routeRateRequest;
+      setTransportDatesLoading(true, 'Pobieranie stawki trasy…');
       fetchTransportGet({ action: 'routeRateByName', name: trimmed }).then(function (resp) {
         if (ticket !== routeRateRequest) return;
         var current = document.getElementById('doc-inp-trasa');
@@ -2982,7 +3017,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           routeRateBaseline = looked;
         }
         rateEl.value = routeRateToKeep(rateEl.value, resp && resp.stawka, routeRateTouched);
-      }).catch(function () {});
+      }).catch(function () {}).then(function () {
+        setTransportDatesLoading(false);
+      });
     }
     function applyShownRouteName(shown) {
       var nameEl = document.getElementById('doc-inp-trasa');
@@ -3385,14 +3422,17 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           clearBulkSelection();
           closeDocModal();
           if (failed > 0) {
-            alert('Wygenerowano ' + generated + ' protokołów. Nie udało się: ' + failed + '.');
+            showMapNotice(
+              'Wygenerowano ' + generated + ' protokołów.\\nNie udało się: ' + failed + '.',
+              'error'
+            );
           } else {
-            alert('Wygenerowano ' + generated + ' protokołów.');
+            showMapNotice('Wygenerowano ' + generated + ' protokołów.', 'ok');
           }
         });
       }).catch(function (err) {
         console.error(err);
-        alert('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.');
+        showMapNotice('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.', 'error');
       }).then(function () {
         if (okBtn) okBtn.disabled = false;
         setTransportDatesLoading(false);
@@ -3432,26 +3472,30 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       setTransportDatesLoading(true, 'Generowanie dokumentu…');
       rebuildDocPreparedLists(filteredSeals);
       var preparedLists = window.__docPreparedLists;
-      function finishWithNumber(numerZlecenia) {
-        ensureDocxLibrariesLoaded().then(function () {
+      function finishWithNumber(numerZlecenia, keepLoading) {
+        return ensureDocxLibrariesLoaded().then(function () {
           try {
             if (!numerZlecenia) {
-              alert('Brak numeru zlecenia transportowego.');
+              showMapNotice('Brak numeru zlecenia transportowego.', 'error');
               return;
             }
             renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists);
           } catch (err) {
             console.error(err);
-            alert('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.');
+            showMapNotice('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.', 'error');
           } finally {
-            if (okBtn) okBtn.disabled = false;
-            setTransportDatesLoading(false);
+            if (!keepLoading) {
+              if (okBtn) okBtn.disabled = false;
+              setTransportDatesLoading(false);
+            }
           }
         }).catch(function (err) {
           console.error(err);
-          alert('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.');
-          if (okBtn) okBtn.disabled = false;
-          setTransportDatesLoading(false);
+          showMapNotice('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.', 'error');
+          if (!keepLoading) {
+            if (okBtn) okBtn.disabled = false;
+            setTransportDatesLoading(false);
+          }
         });
       }
       if (transportApiEnabled) {
@@ -3473,10 +3517,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         };
         assignRouteBody(transportPayload, form.routeFields);
         if (manualNumer) {
-          finishWithNumber(numerWpisany);
+          finishWithNumber(numerWpisany, true);
           appendTransportRow(transportPayload).then(function (resp) {
             if (!resp || !resp.ok) {
-              alert('Dokument pobrany, ale zapis w arkuszu nie powiódł się: ' + (resp && resp.error ? resp.error : 'błąd API'));
+              showMapNotice(
+                'Dokument pobrany, ale zapis w arkuszu nie powiódł się.\\n' +
+                  (resp && resp.error ? resp.error : 'błąd API'),
+                'error'
+              );
               return;
             }
             rememberRouteAfterSuccessfulSave(form.routeFields);
@@ -3486,15 +3534,23 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
                 if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
               });
             }
+            showMapNotice('Dokument pobrany.\\nZapisano transport: ' + numerWpisany, 'ok');
           }).catch(function (err) {
             console.error(err);
-            alert('Dokument pobrany, ale nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App.');
+            showMapNotice('Dokument pobrany, ale nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App.', 'error');
+          }).then(function () {
+            if (okBtn) okBtn.disabled = false;
+            setTransportDatesLoading(false);
           });
           return;
         }
         appendTransportRow(transportPayload).then(function (resp) {
           if (!resp || !resp.ok) {
-            alert('Nie udało się zapisać transportu w arkuszu: ' + (resp && resp.error ? resp.error : 'błąd API'));
+            showMapNotice(
+              'Nie udało się zapisać transportu w arkuszu.\\n' +
+                (resp && resp.error ? resp.error : 'błąd API'),
+              'error'
+            );
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
             return;
@@ -3509,7 +3565,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           finishWithNumber(String(resp.numer || ''));
         }).catch(function (err) {
           console.error(err);
-          alert('Nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App (TRANSPORT_WEBAPP_URL).');
+          showMapNotice('Nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App (TRANSPORT_WEBAPP_URL).', 'error');
           if (okBtn) okBtn.disabled = false;
           setTransportDatesLoading(false);
         });
@@ -3571,6 +3627,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
 
     var wojBoundsByKey = {};
+    if (typeof setTransportDatesLoading === 'function') {
+      setTransportDatesLoading(true, 'Ładowanie granic województw…');
+    }
     fetch(${JSON.stringify(geoJsonUrl)})
       .then(function(res) { return res.json(); })
       .then(function(geojson) {
@@ -3587,6 +3646,11 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       })
       .catch(function() {
         console.warn('Nie załadowano granic województw.');
+      })
+      .then(function() {
+        if (typeof setTransportDatesLoading === 'function') {
+          setTransportDatesLoading(false);
+        }
       });
 
     var markersCluster = L.markerClusterGroup({

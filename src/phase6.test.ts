@@ -847,7 +847,8 @@ describe('phase6', () => {
       expect(html).toContain('closeBulkRatesModal');
       expect(html).toContain("setTransportDatesLoading(true, 'Zapisuję stawki…')");
       expect(html).toContain('finishBulkRatesSave');
-      expect(html).toContain("alert('Zapisano stawki dla ' + savedCount + ' sklepów.')");
+      expect(html).toContain("showMapNotice(");
+      expect(html).toContain("Zapisano stawki dla ' + savedCount + ' sklepów.");
       expect(html).toContain("mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate'");
       expect(html).toContain('appendTransportRow');
       expect(html).toContain('filterSealRowsByMinDate');
@@ -2021,6 +2022,7 @@ var routeRateTouched = false;
 var routeRateBaseline = '';
 var routeRateBaselineName = '';
 var transportApiEnabled = true;
+function setTransportDatesLoading() {}
 ${sliceHtml(html, 'function lookupRouteRateNow(', 'function applyShownRouteName(')}
 __api = {
   lookupRouteRateNow: lookupRouteRateNow,
