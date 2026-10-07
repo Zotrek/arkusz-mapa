@@ -769,7 +769,7 @@ describe("approve", () => {
     expect(register.cell(2, 16)).toBe("FV/12");
     expect(register.cell(2, 17)).toBe(30);
     expect(register.cell(2, 18)).toBe(15);
-    expect(register.cell(2, 10)).toBe("");
+    expect(register.cell(2, 10)).toBe("tak");
     expect(register.cell(2, 9)).toBe(2);
     expect(register.cell(2, 11)).toBe("trasa-a");
     expect(register.cell(2, 12)).toBe("150");
@@ -778,7 +778,10 @@ describe("approve", () => {
     expect(register.cell(3, 17)).toBe("999");
     expect(register.cell(3, 18)).toBe("111");
     expect(register.cell(3, 10)).toBe("");
-    expect(register.writes).toEqual([{ row: 2, col: 15, numRows: 1, numCols: 4 }]);
+    expect(register.writes).toEqual([
+      { row: 2, col: 10, numRows: 1, numCols: 1 },
+      { row: 2, col: 15, numRows: 1, numCols: 4 },
+    ]);
   });
 
   it("test_approve_zero_cost_stays_and_empty_or_zero_bags_divide_by_one", () => {
@@ -883,7 +886,7 @@ describe("approve", () => {
     expect(register.cell(2, 16)).toBe("FV/9");
     expect(register.cell(2, 17)).toBe(75);
     expect(register.cell(2, 18)).toBe(75);
-    expect(register.cell(2, 10)).toBe("");
+    expect(register.cell(2, 10)).toBe("tak");
     expect(register.cell(3, 10)).toBe("nie");
     expect(register.cell(3, 15)).toBe("");
     expect(register.cell(3, 17)).toBe("999");
@@ -1106,9 +1109,11 @@ describe("approve", () => {
       zapisane: [{ sheetRow: 2, transportNumber: "" }],
       pominiete: [],
     });
+    expect(schedule.cell(2, 9)).toBe("tak");
     expect(schedule.cell(2, 14)).toBe("tak");
     expect(schedule.cell(2, 15)).toBe("FV/H1");
     expect(schedule.cell(2, 16)).toBe(30);
+    expect(register.cell(2, 10)).toBe("");
     expect(register.cell(2, 15)).toBe("");
   });
 

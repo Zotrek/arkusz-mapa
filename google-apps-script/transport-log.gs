@@ -33,7 +33,9 @@
  *   approve — jedyny zapis kolumn 15–18. Bez numeru faktury albo bez zaznaczenia odmawia całości.
  *   Zła para i wiersz już `tak` pomija, resztę zaznaczenia zapisuje. Koszt bierze z body, nie z bazy.
  *   Remisu z Bazy stawek nie blokuje (koszt ze snapshotu kolumn 13–14).
- *   Sklep z „nie odbył się” dostaje samo `nie` w kolumnie 10. Wiersza spoza zaznaczenia nie rusza.
+ *   Sklep z „nie odbył się” dostaje samo `nie` w kolumnie 10 (Arkusz1) / 9 (zestawienie).
+ *   Zwykłe rozliczenie (bez tej flagi) dopisuje też `tak` w „transport się odbył” obok Rozliczony.
+ *   Wiersza spoza zaznaczenia nie rusza.
  *   Na żywy arkusz approve wchodzi w W1, nie w M6. Nagłówków rejestru nie wpisuje.
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
@@ -3085,6 +3087,7 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
  * Buduje oczekiwane wiersze sync (adres+data+firma).
  * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
  * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
+ * Rodzaj zbiórki: z Tryb zbiórki na workach; przy 0 workach = „brak worków”.
  * bazaCen = { sheetRow, cells }[]; odebrane = { headers, rows }.
  */
 function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
@@ -3279,6 +3282,7 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
         names.shopName || '',
         names.podmiot || '',
         0,
+        'brak worków',
       );
       var best = null;
       var ri;
@@ -3835,6 +3839,8 @@ function approveSaved_(sheet, row, schedule) {
 /**
  * Jedyny zapis kolumn rozliczenia. Koszt jest już policzony (`koszt` w groszach).
  * tryb=harmonogram → kolumny SCHEDULE_COL; inaczej Arkusz1 COL.
+ * Bez flagi nieOdbył: transport się odbył = tak + Rozliczony = tak (i koszty).
+ * Z flagą nieOdbył: tylko transport się odbył = nie (bez kolumn rozliczenia).
  */
 function approve_(body) {
   var invoice = cellStr_(body && body.numerFaktury);
@@ -3887,6 +3893,7 @@ function approve_(body) {
     }
     var bags = settlementBagCount_(sheet.getRange(target.row, c.iloscWorkow).getValue());
     var perBag = approvePerBagGrosze_(cost, bags);
+    sheet.getRange(target.row, c.transportOdbył).setValue('tak');
     sheet.getRange(target.row, c.rozliczony, 1, 4).setValues([
       ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(perBag)],
     ]);

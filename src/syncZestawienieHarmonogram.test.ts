@@ -56,7 +56,7 @@ describe('buildScheduleSyncExpected', () => {
     );
     expect(rows).toHaveLength(4);
     expect(rows.every((r) => r.bagCount === 0)).toBe(true);
-    expect(rows.every((r) => r.rodzajZbiorki === '')).toBe(true);
+    expect(rows.every((r) => r.rodzajZbiorki === 'brak worków')).toBe(true);
   });
 
   it('test_buildScheduleSyncExpected_when_zero_bags_should_fill_names_from_any_odebrane_row', () => {
@@ -74,6 +74,7 @@ describe('buildScheduleSyncExpected', () => {
       pickupDate: '15.09.2026',
       podmiot: 'Firma X',
       shopName: 'Sklep A',
+      rodzajZbiorki: 'brak worków',
     });
   });
 

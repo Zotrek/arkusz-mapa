@@ -295,7 +295,7 @@ type BazaRate = {
  * Oczekiwane wiersze: dni z Bazy cen + worki z odebrane.
  * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
  * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
- * Rodzaj zbiórki = agregat Tryb zbiórki z worków grupy.
+ * Rodzaj zbiórki = agregat Tryb zbiórki z worków grupy; przy 0 workach = „brak worków”.
  */
 export function buildScheduleSyncExpected(
   dataOd: string,
@@ -494,7 +494,7 @@ export function buildScheduleSyncExpected(
         names?.shopName ?? '',
         names?.podmiot ?? '',
         0,
-        '',
+        'brak worków',
       );
       let best: BazaRate | null = null;
       for (const rate of rateRows) {
