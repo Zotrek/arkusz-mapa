@@ -17,7 +17,7 @@ import { normalizeRateShopKey } from './saveRate.js';
 import { buildAddress } from './sheets.js';
 import { aggregateRodzajZbiorkiFromSealRows, parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 
-/** Bez „Nr zlecenia transportowego”. Kolumna 17 = transport się odbył. */
+/** Bez „Nr zlecenia transportowego”. Kolumna 9 = transport się odbył (po Ilość worków). */
 export const ZESTAWIENIE_HARMONOGRAM_HEADERS = [
   'Adres odbioru',
   'Nazwa kontrahenta / podmiot handlowy',
@@ -27,6 +27,7 @@ export const ZESTAWIENIE_HARMONOGRAM_HEADERS = [
   'Miejsce zrzutu',
   'Rodzaj zbiórki',
   'Ilość worków',
+  'transport się odbył',
   'Trasa',
   'Stawka za trasę',
   'Stawka za podjazd',
@@ -35,13 +36,45 @@ export const ZESTAWIENIE_HARMONOGRAM_HEADERS = [
   'Numer faktury',
   'Koszt odbioru',
   'Koszt odbioru per worek',
-  'transport się odbył',
   'Komentarz 1',
   'Komentarz 2',
 ] as const;
 
 /** 1-based index of „transport się odbył” in {@link ZESTAWIENIE_HARMONOGRAM_HEADERS}. */
-export const SCHEDULE_COL_TRANSPORT_ODBYL = 17;
+export const SCHEDULE_COL_TRANSPORT_ODBYL = 9;
+
+/** 1-based last data column (Komentarz 2) — zakres przekreślenia wiersza. */
+export const SCHEDULE_COL_KOMENTARZ2 = 19;
+
+/** V2: kolumna 9 = Trasa (przed przesunięciem „transport się odbył”). */
+export function isScheduleHeadersV2(headers: string[]): boolean {
+  const h9 = String(headers[8] ?? '').trim();
+  const h11 = String(headers[10] ?? '').trim();
+  return h9 === 'Trasa' && h11 === 'Stawka za podjazd';
+}
+
+/** Przesuwa „transport się odbył” z kol. 17 → 9; trasa…koszt o +1. */
+export function migrateScheduleValuesV2toV3(values: string[][]): string[][] {
+  if (values.length === 0) {
+    return [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]];
+  }
+  const oldHeader = values[0] ?? [];
+  const newHeader = [
+    ...oldHeader.slice(0, 8).map((h) => String(h ?? '')),
+    ...ZESTAWIENIE_HARMONOGRAM_HEADERS.slice(8),
+  ];
+  const rows = values.slice(1).map((src) => {
+    const cell = (i: number) => (src.length > i && src[i] != null ? String(src[i]) : '');
+    return [
+      ...Array.from({ length: 8 }, (_, i) => cell(i)),
+      cell(16),
+      ...Array.from({ length: 8 }, (_, i) => cell(8 + i)),
+      cell(17),
+      cell(18),
+    ];
+  });
+  return [newHeader, ...rows];
+}
 
 export interface ScheduleSyncExpectedRow {
   key: string;
@@ -712,13 +745,13 @@ async function ensureTransportOdbyłValidation(
               startRowIndex: 1,
               endRowIndex: rowCount,
               startColumnIndex: 0,
-              endColumnIndex: SCHEDULE_COL_TRANSPORT_ODBYL,
+              endColumnIndex: SCHEDULE_COL_KOMENTARZ2,
             },
           ],
           booleanRule: {
             condition: {
               type: 'CUSTOM_FORMULA',
-              values: [{ userEnteredValue: '=$Q2="nie"' }],
+              values: [{ userEnteredValue: '=$I2="nie"' }],
             },
             format: { textFormat: { strikethrough: true } },
           },
@@ -791,8 +824,23 @@ export async function syncZestawienieHarmonogram(
     sheetCreated = true;
   }
 
-  const currentValues = exists ? await readValues(api, spreadsheetId, sheetName) : [];
-  const currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
+  let currentValues = exists ? await readValues(api, spreadsheetId, sheetName) : [];
+  let currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
+
+  if (isScheduleHeadersV2(currentHeaders)) {
+    currentValues = migrateScheduleValuesV2toV3(
+      currentValues.map((r) => r.map((c) => String(c ?? ''))),
+    );
+    currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
+    await api.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${quoteSheet(sheetName)}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: currentValues },
+    });
+    logger?.info?.('zestawienie: migrated layout V2→V3 (transport się odbył → col 9)');
+  }
+
   const headers = currentHeaders.some((h) => h.trim().length > 0)
     ? currentHeaders
     : [...ZESTAWIENIE_HARMONOGRAM_HEADERS];

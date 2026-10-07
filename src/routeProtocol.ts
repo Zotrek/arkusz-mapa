@@ -19,7 +19,7 @@ export type RouteNameShowInput = {
 
 /**
  * Checkbox wyłączony: body bez trasy.
- * Zaznaczony: kolumny 10–11, także gdy stawka jest pusta albo równa 0. To nie blokuje Worda.
+ * Zaznaczony: kolumny 11–12, także gdy stawka jest pusta albo równa 0. To nie blokuje Worda.
  * Pusta stawka nie zapisuje tylko nowej trasy po odpięciu — to nie to okno.
  */
 export function routeBodyFields(
@@ -124,7 +124,7 @@ export function routeRateConflictsWithExisting(
   return next !== existing;
 }
 
-/** Dokleja kolumny 10–11 albo nie rusza body, gdy trasy nie ma. */
+/** Dokleja kolumny 11–12 albo nie rusza body, gdy trasy nie ma. */
 export function assignRouteBody(
   payload: Record<string, unknown> | null,
   fields: RouteBodyFields | null,

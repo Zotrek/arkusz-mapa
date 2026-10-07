@@ -395,10 +395,10 @@ describe('doGet reference and list actions', () => {
 
   it('test_routeNameProposal_lists_occupied_route_names', () => {
     reset();
-    seedRegisterRow(2, { 10: 'trasa-z' });
-    seedRegisterRow(3, { 10: 'trasa-a' });
-    seedRegisterRow(4, { 10: 'trasa-z' });
-    seedRegisterRow(5, { 10: '' });
+    seedRegisterRow(2, { 11: 'trasa-z' });
+    seedRegisterRow(3, { 11: 'trasa-a' });
+    seedRegisterRow(4, { 11: 'trasa-z' });
+    seedRegisterRow(5, { 11: '' });
     expect(get('routeNameProposal')).toEqual({
       ok: true,
       names: ['trasa-z', 'trasa-a'],
@@ -462,8 +462,8 @@ describe('doGet reference and list actions', () => {
 
   it('test_routeRateByName_via_doGet', () => {
     reset();
-    seedRegisterRow(2, { 10: 't1', 11: 55, 14: '' });
-    seedRegisterRow(3, { 10: 't1', 11: 99, 14: 'tak' });
+    seedRegisterRow(2, { 11: 't1', 12: 55, 15: '' });
+    seedRegisterRow(3, { 11: 't1', 12: 99, 15: 'tak' });
     expect(get('routeRateByName', { name: 't1' })).toEqual({ ok: true, stawka: '55' });
   });
 });

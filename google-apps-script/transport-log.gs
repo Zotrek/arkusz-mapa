@@ -9,7 +9,7 @@
  * GET ?action=previewNumber
  * GET ?action=lastTransportDate&podmiot=…&adres=…  (data + kto odbiera)
  * GET ?action=listReferenceData  → { ok, data: { podwykoLista, poprawAdres } }
- * GET ?action=routeNameProposal  → { ok, names }  (kolumna 10, zajęte nazwy; propozycję liczy strona)
+ * GET ?action=routeNameProposal  → { ok, names }  (kolumna 11, zajęte nazwy; propozycję liczy strona)
  * GET ?action=routeRateByName&name=…  → { ok, stawka }  (stawka z nierozliczonego wiersza, pusta gdy nazwy nie było)
  * GET ?action=listContractors  → { ok, data: [ { nazwa, dane } ] }  (odczyt, bez zapisu)
  * GET ?action=listStoreAddresses → { ok, data: [ { adres, sklep }, … ] }
@@ -28,34 +28,34 @@
  *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
  *   tryb=harmonogram|schedule → zapis na „zestawienie z harmonogramu”; inaczej Arkusz1.
  *   Rejestr: sheetRow + transportNumber. Odpada, gdy w tym wierszu kolumna 1 jest inna.
- *   Kolumn 16 i 17 nie ruszają patchBags, patchRouteRate, detachRoute, attachRoute.
+ *   Kolumn 17 i 18 nie ruszają patchBags, patchRouteRate, detachRoute, attachRoute.
  *   resolveRateTie pisze tylko w Bazie stawek.
- *   approve — jedyny zapis kolumn 14–17. Bez numeru faktury albo bez zaznaczenia odmawia całości.
+ *   approve — jedyny zapis kolumn 15–18. Bez numeru faktury albo bez zaznaczenia odmawia całości.
  *   Zła para i wiersz już `tak` pomija, resztę zaznaczenia zapisuje. Koszt bierze z body, nie z bazy.
- *   Remisu z Bazy stawek nie blokuje (koszt ze snapshotu kolumn 12–13).
- *   Sklep z „nie odbył się” dostaje samo `nie` w kolumnie 18. Wiersza spoza zaznaczenia nie rusza.
+ *   Remisu z Bazy stawek nie blokuje (koszt ze snapshotu kolumn 13–14).
+ *   Sklep z „nie odbył się” dostaje samo `nie` w kolumnie 10. Wiersza spoza zaznaczenia nie rusza.
  *   Na żywy arkusz approve wchodzi w W1, nie w M6. Nagłówków rejestru nie wpisuje.
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
- *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 10–11). Bez klucza `trasa` te kolumny zostają puste.
+ *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 11–12). Bez klucza `trasa` te kolumny zostają puste.
  *   Pusta `stawkaTrasy` zostaje pusta tylko na nowym wierszu i nie czyści stawki innych wierszy tej nazwy.
- *   Kwota, także 0, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 10.
- *   Kolumny 12–13 (Stawka za podjazd / Stawka za worek) zawsze ze snapshotu Bazy stawek
+ *   Kwota, także 0, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 11.
+ *   Kolumny 13–14 (Stawka za podjazd / Stawka za worek) zawsze ze snapshotu Bazy stawek
  *   (adres po normalizacji al./pl./Św. + kto odbiera + data odbioru). Remis albo brak pary → puste.
- *   Komentarze 1–2 na kolumnach 19–20.
+ *   Kolumna 10 = transport się odbył. Komentarze 1–2 na kolumnach 19–20.
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate | saveRateHarmonogram
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
  *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
  *   Klucz: adres (po normalizacji al./pl./Św.) + podwykonawca + data. Trafione wiersze nadpisuje
  *   (także kilka wariantów tego samego adresu); adres w arkuszu ustawia na kanoniczny z mapy.
- *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 14–17) nie rusza.
+ *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 15–18) nie rusza.
  *   Brak zakładki Baza stawek: ten zapis ją zakłada, z nagłówkami w wierszu 1.
  *   saveRateHarmonogram — Baza cen harmonogram. Body jak saveRate + dniOdbiorow + opcjonalnie nazwaTrasy, kwotaTrasy.
  *   Ceny: ten sam klucz co saveRate. Nazwa+cena trasy razem albo obie puste (pusta para przy overwrite nie czyści).
  *   Dni: przy istniejącym połączeniu sklep + podwykonawca aktualizuje tylko gdy się zmieniły (wszystkie wiersze pary).
  *   Po zapisie: stawki/trasa na nierozliczonych wierszach „zestawienie z harmonogramu” tej pary (jak sync).
  *   Brak zakładki: zakłada z nagłówkami jak sync pipeline.
- * migrateRegisterLayoutRates_ — jednorazowa migracja układu V2 (wywołanie ręczne z edytora).
+ * migrateRegisterLayoutRates_ — V1→V3 (wywołanie ręczne). V2→V3: migrateRegisterLayoutTransportOdbył.
  *
  * Bezpieczeństwo: doGet/doPost wymagają Script property GAS_SHARED_SECRET
  * (Cloudflare Worker dokleja secret= / body.secret). Bez property = błąd.
@@ -81,21 +81,22 @@ var COL = {
   miejsceZrzutu: 7,
   rodzajZbiorki: 8,
   iloscWorkow: 9,
-  trasa: 10,
-  stawkaTrasy: 11,
-  stawkaPodjazdu: 12,
-  stawkaWorka: 13,
-  rozliczony: 14,
-  numerFaktury: 15,
-  kosztOdbioru: 16,
-  kosztPerWorek: 17,
-  transportOdbył: 18,
+  transportOdbył: 10,
+  trasa: 11,
+  stawkaTrasy: 12,
+  stawkaPodjazdu: 13,
+  stawkaWorka: 14,
+  rozliczony: 15,
+  numerFaktury: 16,
+  kosztOdbioru: 17,
+  kosztPerWorek: 18,
   komentarz1: 19,
   komentarz2: 20,
 };
 
 /** Tekst nagłówka, nie pusta komórka. Kolumn 1–9 to nie rusza. Aplikacja rozliczeń tego nie wpisuje. */
 var REGISTER_HEADERS_10_20 = [
+  'transport się odbył',
   'Trasa',
   'Stawka za trasę',
   'Stawka za podjazd',
@@ -104,16 +105,15 @@ var REGISTER_HEADERS_10_20 = [
   'Numer faktury',
   'Koszt odbioru',
   'Koszt odbioru per worek',
-  'transport się odbył',
   'Komentarz 1',
   'Komentarz 2',
 ];
 
-/** Marker migracji V2 — nagłówek kolumny 12 po przełożeniu komentarzy. */
+/** Marker migracji V2 — nagłówek kolumny 12 przy układzie Trasa@10. */
 var REGISTER_LAYOUT_V2_MARKER = 'Stawka za podjazd';
 
-/** R to kolumna 18. Reguła arkusza, nie klasa w przeglądarce. */
-var TRANSPORT_HAPPENED_STRIKE_FORMULA = '=$R2="nie"';
+/** J to kolumna 10 (transport się odbył). Reguła arkusza, nie klasa w przeglądarce. */
+var TRANSPORT_HAPPENED_STRIKE_FORMULA = '=$J2="nie"';
 
 var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
 var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
@@ -149,6 +149,7 @@ var SCHEDULE_REGISTER_HEADERS = [
   'Miejsce zrzutu',
   'Rodzaj zbiórki',
   'Ilość worków',
+  'transport się odbył',
   'Trasa',
   'Stawka za trasę',
   'Stawka za podjazd',
@@ -157,7 +158,6 @@ var SCHEDULE_REGISTER_HEADERS = [
   'Numer faktury',
   'Koszt odbioru',
   'Koszt odbioru per worek',
-  'transport się odbył',
   'Komentarz 1',
   'Komentarz 2',
 ];
@@ -172,15 +172,15 @@ var SCHEDULE_COL = {
   miejsceZrzutu: 6,
   rodzajZbiorki: 7,
   iloscWorkow: 8,
-  trasa: 9,
-  stawkaTrasy: 10,
-  stawkaPodjazdu: 11,
-  stawkaWorka: 12,
-  rozliczony: 13,
-  numerFaktury: 14,
-  kosztOdbioru: 15,
-  kosztPerWorek: 16,
-  transportOdbył: 17,
+  transportOdbył: 9,
+  trasa: 10,
+  stawkaTrasy: 11,
+  stawkaPodjazdu: 12,
+  stawkaWorka: 13,
+  rozliczony: 14,
+  numerFaktury: 15,
+  kosztOdbioru: 16,
+  kosztPerWorek: 17,
   komentarz1: 18,
   komentarz2: 19,
 };
@@ -381,12 +381,18 @@ function getDataSheet_() {
 
 function getOrCreateScheduleRegisterSheet_() {
   var sheet = getOrCreateRefSheet_(SCHEDULE_REGISTER_SHEET_NAME, SCHEDULE_REGISTER_HEADERS);
-  ensureRefSheetHeader_(sheet, SCHEDULE_REGISTER_HEADERS);
+  if (isScheduleLayoutV2_(sheet)) {
+    migrateScheduleTransportOdbyłColumn_();
+    sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SCHEDULE_REGISTER_SHEET_NAME);
+  }
+  if (!isScheduleLayoutV2_(sheet)) {
+    ensureRefSheetHeader_(sheet, SCHEDULE_REGISTER_HEADERS);
+  }
   ensureScheduleTransportHappenedRules_(sheet);
   return sheet;
 }
 
-/** Lista tak/nie na kolumnie „transport się odbył” (Q). */
+/** Lista tak/nie na kolumnie „transport się odbył” (I). */
 function ensureScheduleTransportHappenedRules_(sheet) {
   var gridRows = sheet.getMaxRows() < 2 ? 1 : sheet.getMaxRows() - 1;
   if (!dataValidationHasTakNie_(sheet.getRange(2, SCHEDULE_COL.transportOdbył).getDataValidation())) {
@@ -396,7 +402,7 @@ function ensureScheduleTransportHappenedRules_(sheet) {
       .build();
     sheet.getRange(2, SCHEDULE_COL.transportOdbył, gridRows, 1).setDataValidation(validation);
   }
-  var formula = '=$Q2="nie"';
+  var formula = '=$I2="nie"';
   var rules = sheet.getConditionalFormatRules();
   var hasStrike = false;
   var expected = formula.replace(/\s/g, '');
@@ -421,7 +427,7 @@ function ensureScheduleTransportHappenedRules_(sheet) {
     var strike = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied(formula)
       .setStrikethrough(true)
-      .setRanges([sheet.getRange(2, 1, gridRows, SCHEDULE_COL.transportOdbył)])
+      .setRanges([sheet.getRange(2, 1, gridRows, SCHEDULE_COL.komentarz2)])
       .build();
     rules.push(strike);
     sheet.setConditionalFormatRules(rules);
@@ -436,7 +442,7 @@ function settlementRegisterSheetForWrite_(body) {
   return getDataSheet_();
 }
 
-/** Kolumna 10, bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */
+/** Kolumna 11 (Trasa), bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */
 function listOccupiedRouteNames_() {
   var sheet = getDataSheet_();
   var lastRow = sheet.getLastRow();
@@ -682,15 +688,15 @@ function cellIsEmpty_(value) {
 /**
  * Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy.
  * Puste komórki 10–20 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
- * Na starym układzie (komentarze w 10–11) nie dopisuje nagłówków V2 — to psuje arkusz.
- * W tym samym kroku, raz: lista `tak` / `nie` na kolumnie 18 i przekreślenie wiersza z `nie`.
+ * Na układzie V1/V2 nie dopisuje nagłówków V3 — to psuje arkusz.
+ * W tym samym kroku, raz: lista `tak` / `nie` na kolumnie 10 i przekreślenie wiersza z `nie`.
  */
 function ensureTransportRegisterColumns_(sheet) {
-  if (isRegisterLayoutV1_(sheet)) {
+  if (isRegisterLayoutV1_(sheet) || isRegisterLayoutV2_(sheet)) {
     return;
   }
   var width = REGISTER_HEADERS_10_20.length;
-  var range = sheet.getRange(1, COL.trasa, 1, width);
+  var range = sheet.getRange(1, COL.transportOdbył, 1, width);
   var current = range.getValues()[0];
   var next = [];
   var changed = false;
@@ -709,20 +715,33 @@ function ensureTransportRegisterColumns_(sheet) {
   ensureTransportHappenedRules_(sheet);
 }
 
-/** V2: kolumna 10 = Trasa, kolumna 12 = Stawka za podjazd. */
-function isRegisterLayoutV2_(sheet) {
+/** V3: kolumna 10 = transport się odbył, kolumna 11 = Trasa. */
+function isRegisterLayoutV3_(sheet) {
   return (
-    settlementText_(sheet.getRange(1, COL.trasa).getValue()) === 'Trasa' &&
-    settlementText_(sheet.getRange(1, COL.stawkaPodjazdu).getValue()) === REGISTER_LAYOUT_V2_MARKER
+    settlementText_(sheet.getRange(1, COL.transportOdbył).getValue()) === 'transport się odbył' &&
+    settlementText_(sheet.getRange(1, COL.trasa).getValue()) === 'Trasa'
+  );
+}
+
+/**
+ * V2: kolumna 10 = Trasa, kolumna 12 = Stawka za podjazd (pozycje historyczne, nie COL).
+ */
+function isRegisterLayoutV2_(sheet) {
+  if (isRegisterLayoutV3_(sheet)) {
+    return false;
+  }
+  return (
+    settlementText_(sheet.getRange(1, 10).getValue()) === 'Trasa' &&
+    settlementText_(sheet.getRange(1, 12).getValue()) === REGISTER_LAYOUT_V2_MARKER
   );
 }
 
 /**
  * V1 / stan pośredni: komentarze nadal w 10–11 albo Trasa nadal w 12.
- * Dopisane puste nagłówki komentarzy w 19–20 nie oznaczają V2.
+ * Dopisane puste nagłówki komentarzy w 19–20 nie oznaczają V2/V3.
  */
 function isRegisterLayoutV1_(sheet) {
-  if (isRegisterLayoutV2_(sheet)) {
+  if (isRegisterLayoutV3_(sheet) || isRegisterLayoutV2_(sheet)) {
     return false;
   }
   var h10 = settlementText_(sheet.getRange(1, 10).getValue());
@@ -793,7 +812,7 @@ function ensureTransportHappenedRules_(sheet) {
     var rule = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied(TRANSPORT_HAPPENED_STRIKE_FORMULA)
       .setStrikethrough(true)
-      .setRanges([sheet.getRange(2, 1, gridRows, COL.transportOdbył)])
+      .setRanges([sheet.getRange(2, 1, gridRows, COL.komentarz2)])
       .build();
     var rules = sheet.getConditionalFormatRules();
     rules.push(rule);
@@ -802,8 +821,8 @@ function ensureTransportHappenedRules_(sheet) {
 }
 
 /**
- * Ten sam tekst w kolumnie 10, bez filtra podwykonawcy i dat.
- * Rozliczony `tak` pomija. Kolumny 16 i 17 nie są w tym zapisie.
+ * Ten sam tekst w kolumnie 11 (Trasa), bez filtra podwykonawcy i dat.
+ * Rozliczony `tak` pomija. Kolumny 17 i 18 nie są w tym zapisie.
  * Lock trzyma `doPost`, tak jak przy numerze protokołu.
  */
 function applyRouteRateToUnsettled_(sheet, name, rate) {
@@ -890,7 +909,12 @@ function appendTransportRow_(numer, body) {
   var sheet = getDataSheet_();
   if (isRegisterLayoutV1_(sheet)) {
     throw new Error(
-      'Rejestr ma stary układ kolumn (komentarze w J/K). Uruchom migrateRegisterLayoutRates_ w Apps Script, potem wdróż Web App.',
+      'Rejestr ma stary układ kolumn (komentarze w J/K). Uruchom migrateRegisterLayoutRates w Apps Script, potem wdróż Web App.',
+    );
+  }
+  if (isRegisterLayoutV2_(sheet)) {
+    throw new Error(
+      'Rejestr ma układ V2 (Trasa w J). Uruchom migrateRegisterLayoutTransportOdbył w Apps Script, potem wdróż Web App.',
     );
   }
   ensureTransportRegisterColumns_(sheet);
@@ -915,11 +939,11 @@ function appendTransportRow_(numer, body) {
     body.miejsceZrzutu || '',
     body.rodzajZbiorki || '',
     body.iloscWorkow != null ? body.iloscWorkow : '',
+    '',
     routeName,
     routeRate,
     sheetRateWriteValue_(snapshot.pickup),
     sheetRateWriteValue_(snapshot.bag),
-    '',
     '',
     '',
     '',
@@ -947,7 +971,7 @@ function rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres) {
 }
 
 /**
- * Od adresu do kolumny 18. Komórki poza siatką nie ma w wierszu: to samo co pusta.
+ * Od adresu do kolumny 10 (transport się odbył). Komórki poza siatką nie ma w wierszu: to samo co pusta.
  * `nie` nie wchodzi w ostatnią datę. Inna wartość, także pusta, zostaje odbiorem.
  */
 function readTransportPickupRows_(sheet, lastRow) {
@@ -964,7 +988,7 @@ function transportDidNotHappen_(row) {
 /**
  * Jednorazowy skan arkusza: klucz sklepu → { ms, ktoOdbiera } z wiersza o max dacie odbioru.
  * Przy tej samej dacie wygrywa późniejszy wiersz (kolejność w arkuszu).
- * Wiersz z kolumną 18 = `nie` nie ustawia daty odcięcia.
+ * Wiersz z kolumną 10 = `nie` nie ustawia daty odcięcia.
  */
 function buildBulkLastTransportDatesMap_() {
   var sheet = getDataSheet_();
@@ -1019,7 +1043,7 @@ function buildBulkLastTransportDatesResponse_() {
   return { ok: true, shops: shops };
 }
 
-/** @returns {{ ms: number, ktoOdbiera: string }|null} Wiersz z kolumną 18 = `nie` nie jest ostatnim odbiorem. */
+/** @returns {{ ms: number, ktoOdbiera: string }|null} Wiersz z kolumną 10 = `nie` nie jest ostatnim odbiorem. */
 function findLastTransportInfo_(podmiot, adres) {
   if (!normalizeTransportKeyPart_(adres)) {
     return null;
@@ -2171,7 +2195,7 @@ function settlementSearch_(query) {
   var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
   return buildSettlementRead_(
     query,
-    readSettlementCells_(getDataSheet_(), COL.transportOdbył),
+    readSettlementCells_(getDataSheet_(), COL.kosztPerWorek),
     readSettlementCells_(rateSheet, 5),
   );
 }
@@ -2185,7 +2209,7 @@ function settlementSearchHarmonogram_(query) {
   var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
   return buildSettlementHarmonogramRead_(
     query,
-    readSettlementCells_(sheet, SCHEDULE_COL.transportOdbył),
+    readSettlementCells_(sheet, SCHEDULE_COL.kosztPerWorek),
     readSettlementCells_(baza, 8),
   );
 }
@@ -2237,13 +2261,13 @@ function settlementStats_(query) {
   var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
   return buildSettlementStats_(
     query,
-    readSettlementCells_(getDataSheet_(), COL.transportOdbył),
+    readSettlementCells_(getDataSheet_(), COL.kosztPerWorek),
     readSettlementCells_(rateSheet, 5),
     readOdebraneSheetRows_(odebrane),
   );
 }
 
-/** Czyta istniejące kolumny i dopina puste. Nie woła setValue. Brak kolumny 18 = transport się odbył. */
+/** Czyta istniejące kolumny i dopina puste. Nie woła setValue. Brak flagi „nie” = transport się odbył. */
 function readSettlementCells_(sheet, width) {
   if (!sheet) {
     return [];
@@ -2513,14 +2537,14 @@ function mapSettlementRegisterRow_(sheetRow, cells) {
     pickupDate: pickupDate,
     contractor: settlementText_(settlementCell_(cells, 5)),
     bagCount: settlementBagCount_(settlementCell_(cells, 8)),
-    routeName: settlementText_(settlementCell_(cells, 9)),
-    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 10)),
-    pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 11)),
-    bagRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
-    settled: settlementFlag_(settlementCell_(cells, 13)) === 'tak',
-    didNotHappen: settlementFlag_(settlementCell_(cells, 17)) === 'nie',
-    receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 15)),
-    costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 16)),
+    didNotHappen: settlementFlag_(settlementCell_(cells, 9)) === 'nie',
+    routeName: settlementText_(settlementCell_(cells, 10)),
+    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 11)),
+    pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
+    bagRate: settlementAmountToGrosze_(settlementCell_(cells, 13)),
+    settled: settlementFlag_(settlementCell_(cells, 14)) === 'tak',
+    receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 16)),
+    costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 17)),
   };
 }
 
@@ -2538,14 +2562,14 @@ function mapSettlementScheduleRegisterRow_(sheetRow, cells) {
     pickupDate: pickupDate,
     contractor: settlementText_(settlementCell_(cells, 4)),
     bagCount: settlementBagCount_(settlementCell_(cells, 7)),
-    routeName: settlementText_(settlementCell_(cells, 8)),
-    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 9)),
-    pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 10)),
-    bagRate: settlementAmountToGrosze_(settlementCell_(cells, 11)),
-    settled: settlementFlag_(settlementCell_(cells, 12)) === 'tak',
-    didNotHappen: settlementFlag_(settlementCell_(cells, 16)) === 'nie',
-    receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 14)),
-    costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 15)),
+    didNotHappen: settlementFlag_(settlementCell_(cells, 8)) === 'nie',
+    routeName: settlementText_(settlementCell_(cells, 9)),
+    routeRate: settlementAmountToGrosze_(settlementCell_(cells, 10)),
+    pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 11)),
+    bagRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
+    settled: settlementFlag_(settlementCell_(cells, 13)) === 'tak',
+    receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 15)),
+    costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 16)),
   };
 }
 
@@ -2988,7 +3012,7 @@ function settlementBuildAddressParts_(kod, miasto, ulica, numer) {
 
 /**
  * Odczyt Harmonogram z rejestru „zestawienie z harmonogramu”.
- * register = cells jak Arkusz1 (do kolumny 18).
+ * register = cells jak Arkusz1 (do kolumny kosztu / transport się odbył).
  * bazaCen = cells Bazy cen (8 kolumn) — tylko do rates w odpowiedzi.
  */
 function buildSettlementHarmonogramRead_(query, register, bazaCen) {
@@ -3472,7 +3496,7 @@ function scheduleRegisterIndex_(sheet) {
   if (lastRow < 2) {
     return { byKey: byKey };
   }
-  var width = Math.max(sheet.getLastColumn(), SCHEDULE_COL.transportOdbył);
+  var width = Math.max(sheet.getLastColumn(), SCHEDULE_COL.kosztPerWorek);
   var values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
   var i;
   for (i = 0; i < values.length; i++) {
@@ -3901,24 +3925,35 @@ function migrateRegisterLayoutRates() {
   return migrateRegisterLayoutRates_();
 }
 
+function migrateRegisterLayoutTransportOdbył() {
+  return migrateRegisterLayoutTransportOdbył_();
+}
+
 /**
- * Jednorazowa migracja układu rejestru V2.
- * Stare / stan pośredni: komentarze 10–11, trasa 12–13, rozliczenie 14–18
- *   (ew. puste nagłówki komentarzy już w 19–20 — to NIE jest V2).
- * Nowe: trasa 10–11, podjazd/worek 12–13, rozliczenie 14–18, komentarze 19–20.
- * Backfill 12–13 z Bazy stawek (jedno wczytanie listy stawek).
- * Idempotentna: gdy układ jest już V2, nic nie robi.
- * Wywołanie: z listy Uruchom wybierz migrateRegisterLayoutRates (bez _).
- * Po sukcesie: Wdróż → Nowa wersja Web App.
+ * Jednorazowa migracja układu rejestru V1 → V3.
+ * V1: komentarze 10–11, trasa 12–13, rozliczenie 14–18.
+ * V3: transport@10, trasa 11–12, podjazd/worek 13–14, rozliczenie 15–18, komentarze 19–20.
+ * Przy V2: uruchom migrateRegisterLayoutTransportOdbył.
+ * Idempotentna: gdy układ jest już V3, nic nie robi.
  */
 function migrateRegisterLayoutRates_() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var sheet = getDataSheet_();
+    if (isRegisterLayoutV3_(sheet)) {
+      Logger.log(JSON.stringify({ ok: true, skipped: true, reason: 'already-v3' }));
+      return { ok: true, skipped: true, reason: 'already-v3' };
+    }
     if (isRegisterLayoutV2_(sheet)) {
-      Logger.log(JSON.stringify({ ok: true, skipped: true, reason: 'already-v2' }));
-      return { ok: true, skipped: true, reason: 'already-v2' };
+      var v2msg = {
+        ok: false,
+        error: 'use-migrateRegisterLayoutTransportOdbył',
+        h10: settlementText_(sheet.getRange(1, 10).getValue()),
+        h12: settlementText_(sheet.getRange(1, 12).getValue()),
+      };
+      Logger.log(JSON.stringify(v2msg));
+      return v2msg;
     }
     if (!isRegisterLayoutV1_(sheet)) {
       var msg = {
@@ -3961,12 +3996,13 @@ function migrateRegisterLayoutRates_() {
       for (c = 0; c < 9; c++) {
         next.push(cellAt(c));
       }
-      // V1: 10–11 komentarze, 12–13 trasa/stawka, 14–18 rozliczenie
+      // V1: 10–11 komentarze, 12–13 trasa/stawka, 14–18 rozliczenie (+ transport w 18)
+      next.push(cellAt(17));
       next.push(cellAt(11));
       next.push(cellAt(12));
       next.push(snapshot.pickup);
       next.push(snapshot.bag);
-      for (c = 13; c <= 17; c++) {
+      for (c = 13; c <= 16; c++) {
         next.push(cellAt(c));
       }
       next.push(cellAt(9));
@@ -3986,7 +4022,8 @@ function migrateRegisterLayoutRates_() {
       rows: newRows.length,
       ratesLoaded: rateList.length,
       h10: settlementText_(sheet.getRange(1, 10).getValue()),
-      h12: settlementText_(sheet.getRange(1, 12).getValue()),
+      h11: settlementText_(sheet.getRange(1, 11).getValue()),
+      h13: settlementText_(sheet.getRange(1, 13).getValue()),
       h19: settlementText_(sheet.getRange(1, 19).getValue()),
     };
     Logger.log(JSON.stringify(result));
@@ -3994,4 +4031,170 @@ function migrateRegisterLayoutRates_() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * V2 → V3: „transport się odbył” z kolumny 18 → 10 (Arkusz1) oraz 17 → 9 (zestawienie).
+ * Idempotentna. Wywołanie: migrateRegisterLayoutTransportOdbył (bez _).
+ */
+function migrateRegisterLayoutTransportOdbył_() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var arkusz = migrateArkusz1TransportOdbyłColumn_();
+    var zestawienie = migrateScheduleTransportOdbyłColumn_();
+    var result = { ok: true, arkusz1: arkusz, zestawienie: zestawienie };
+    Logger.log(JSON.stringify(result));
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function migrateArkusz1TransportOdbyłColumn_() {
+  var sheet = getDataSheet_();
+  if (isRegisterLayoutV3_(sheet)) {
+    return { ok: true, skipped: true, reason: 'already-v3' };
+  }
+  if (!isRegisterLayoutV2_(sheet)) {
+    return {
+      ok: false,
+      error: isRegisterLayoutV1_(sheet) ? 'use-migrateRegisterLayoutRates' : 'unknown-layout',
+      h10: settlementText_(sheet.getRange(1, 10).getValue()),
+      h12: settlementText_(sheet.getRange(1, 12).getValue()),
+    };
+  }
+  var lastRow = sheet.getLastRow();
+  var width = Math.max(sheet.getLastColumn(), 20);
+  var oldHeader = sheet.getRange(1, 1, 1, width).getValues()[0];
+  var oldData = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
+  var newHeader = [];
+  var c;
+  for (c = 0; c < 9; c++) {
+    newHeader.push(oldHeader.length > c ? oldHeader[c] : '');
+  }
+  for (c = 0; c < REGISTER_HEADERS_10_20.length; c++) {
+    newHeader.push(REGISTER_HEADERS_10_20[c]);
+  }
+  var newRows = [];
+  var i;
+  for (i = 0; i < oldData.length; i++) {
+    var src = oldData[i];
+    var cellAt = function (idx) {
+      return src.length > idx && src[idx] != null ? src[idx] : '';
+    };
+    var next = [];
+    for (c = 0; c < 9; c++) {
+      next.push(cellAt(c));
+    }
+    // V2: 10–17 trasa…koszt/worek, 18 transport, 19–20 komentarze
+    next.push(cellAt(17));
+    for (c = 9; c <= 16; c++) {
+      next.push(cellAt(c));
+    }
+    next.push(cellAt(18));
+    next.push(cellAt(19));
+    newRows.push(next);
+  }
+  var clearRows = Math.max(lastRow, 1);
+  sheet.getRange(1, 1, clearRows, Math.max(width, COL.komentarz2)).clearContent();
+  sheet.getRange(1, 1, 1, newHeader.length).setValues([newHeader]);
+  if (newRows.length > 0) {
+    sheet.getRange(2, 1, newRows.length, COL.komentarz2).setValues(newRows);
+  }
+  ensureTransportHappenedRules_(sheet);
+  return {
+    ok: true,
+    rows: newRows.length,
+    h10: settlementText_(sheet.getRange(1, 10).getValue()),
+    h11: settlementText_(sheet.getRange(1, 11).getValue()),
+  };
+}
+
+function isScheduleLayoutV3_(sheet) {
+  return (
+    settlementText_(sheet.getRange(1, SCHEDULE_COL.transportOdbył).getValue()) ===
+      'transport się odbył' &&
+    settlementText_(sheet.getRange(1, SCHEDULE_COL.trasa).getValue()) === 'Trasa'
+  );
+}
+
+function isScheduleLayoutV2_(sheet) {
+  if (isScheduleLayoutV3_(sheet)) {
+    return false;
+  }
+  return (
+    settlementText_(sheet.getRange(1, 9).getValue()) === 'Trasa' &&
+    settlementText_(sheet.getRange(1, 11).getValue()) === REGISTER_LAYOUT_V2_MARKER
+  );
+}
+
+function migrateScheduleTransportOdbyłColumn_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SCHEDULE_REGISTER_SHEET_NAME);
+  if (!sheet) {
+    return { ok: true, skipped: true, reason: 'no-sheet' };
+  }
+  if (isScheduleLayoutV3_(sheet)) {
+    return { ok: true, skipped: true, reason: 'already-v3' };
+  }
+  if (!isScheduleLayoutV2_(sheet)) {
+    var h9 = settlementText_(sheet.getRange(1, 9).getValue());
+    if (!h9) {
+      sheet.getRange(1, 1, 1, SCHEDULE_REGISTER_HEADERS.length).setValues([SCHEDULE_REGISTER_HEADERS]);
+      ensureScheduleTransportHappenedRules_(sheet);
+      return { ok: true, rows: 0, reason: 'headers-written' };
+    }
+    return {
+      ok: false,
+      error: 'unknown-layout',
+      h9: h9,
+      h11: settlementText_(sheet.getRange(1, 11).getValue()),
+    };
+  }
+  var lastRow = sheet.getLastRow();
+  var width = Math.max(sheet.getLastColumn(), 19);
+  var oldHeader = sheet.getRange(1, 1, 1, width).getValues()[0];
+  var oldData = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
+  var newHeader = [];
+  var c;
+  for (c = 0; c < 8; c++) {
+    newHeader.push(oldHeader.length > c ? oldHeader[c] : '');
+  }
+  for (c = 8; c < SCHEDULE_REGISTER_HEADERS.length; c++) {
+    newHeader.push(SCHEDULE_REGISTER_HEADERS[c]);
+  }
+  var newRows = [];
+  var i;
+  for (i = 0; i < oldData.length; i++) {
+    var src = oldData[i];
+    var cellAt = function (idx) {
+      return src.length > idx && src[idx] != null ? src[idx] : '';
+    };
+    var next = [];
+    for (c = 0; c < 8; c++) {
+      next.push(cellAt(c));
+    }
+    // V2 schedule: 9–16 trasa…koszt/worek, 17 transport, 18–19 komentarze
+    next.push(cellAt(16));
+    for (c = 8; c <= 15; c++) {
+      next.push(cellAt(c));
+    }
+    next.push(cellAt(17));
+    next.push(cellAt(18));
+    newRows.push(next);
+  }
+  var clearRows = Math.max(lastRow, 1);
+  sheet.getRange(1, 1, clearRows, Math.max(width, SCHEDULE_COL.komentarz2)).clearContent();
+  sheet.getRange(1, 1, 1, newHeader.length).setValues([newHeader]);
+  if (newRows.length > 0) {
+    sheet.getRange(2, 1, newRows.length, SCHEDULE_COL.komentarz2).setValues(newRows);
+  }
+  ensureScheduleTransportHappenedRules_(sheet);
+  return {
+    ok: true,
+    rows: newRows.length,
+    h9: settlementText_(sheet.getRange(1, 9).getValue()),
+    h10: settlementText_(sheet.getRange(1, 10).getValue()),
+  };
 }

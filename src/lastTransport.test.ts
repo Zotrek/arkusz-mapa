@@ -124,7 +124,7 @@ function seed(
   sheet.put(row, 5, data);
   sheet.put(row, 6, kto);
   if (flag !== undefined) {
-    sheet.put(row, 18, flag);
+    sheet.put(row, 10, flag);
   }
 }
 
@@ -137,12 +137,12 @@ describe('transportDidNotHappen_', () => {
 
   it('test_transportDidNotHappen_when_nie_with_case_or_space_should_skip', () => {
     const skipped = loadGas(new FakeSheet()).transportDidNotHappen_;
-    const row = new Array(16).fill('');
+    const row = new Array(8).fill('');
     row.push('nie');
     expect(skipped(row)).toBe(true);
-    row[16] = 'NIE';
+    row[8] = 'NIE';
     expect(skipped(row)).toBe(true);
-    row[16] = ' nie ';
+    row[8] = ' nie ';
     expect(skipped(row)).toBe(true);
   });
 
@@ -151,9 +151,9 @@ describe('transportDidNotHappen_', () => {
     const row = new Array(16).fill('');
     row.push('');
     expect(skipped(row)).toBe(false);
-    row[16] = 'tak';
+    row[8] = 'tak';
     expect(skipped(row)).toBe(false);
-    row[16] = 'xyz';
+    row[8] = 'xyz';
     expect(skipped(row)).toBe(false);
   });
 });
@@ -170,7 +170,7 @@ describe('findLastTransportInfo_', () => {
     });
   });
 
-  it('test_findLastTransportInfo_when_column18_empty_should_keep_newer_pickup', () => {
+  it('test_findLastTransportInfo_when_column10_empty_should_keep_newer_pickup', () => {
     const sheet = new FakeSheet();
     seed(sheet, 2, '10.06.2026', 'Janex');
     seed(sheet, 3, '20.06.2026', 'Nowy', '');
@@ -181,7 +181,7 @@ describe('findLastTransportInfo_', () => {
     });
   });
 
-  it('test_findLastTransportInfo_when_column18_missing_should_keep_newer_pickup', () => {
+  it('test_findLastTransportInfo_when_column10_missing_should_keep_newer_pickup', () => {
     const sheet = new FakeSheet();
     seed(sheet, 2, '10.06.2026', 'Janex', 'tak');
     seed(sheet, 3, '20.06.2026', 'Nowy');
@@ -192,7 +192,7 @@ describe('findLastTransportInfo_', () => {
     });
   });
 
-  it('test_findLastTransportInfo_when_column18_is_tak_or_other_should_keep_newer_pickup', () => {
+  it('test_findLastTransportInfo_when_column10_is_tak_or_other_should_keep_newer_pickup', () => {
     const sheet = new FakeSheet();
     seed(sheet, 2, '10.06.2026', 'Janex', 'nie');
     seed(sheet, 3, '20.06.2026', 'Tak', 'tak');
@@ -244,7 +244,7 @@ describe('buildBulkLastTransportDatesMap_', () => {
     });
   });
 
-  it('test_buildBulkLastTransportDatesMap_when_column18_empty_should_set_cutoff', () => {
+  it('test_buildBulkLastTransportDatesMap_when_column10_empty_should_set_cutoff', () => {
     const sheet = new FakeSheet();
     seed(sheet, 2, '20.06.2026', 'Nowy', '  ');
     seed(sheet, 3, '10.06.2026', 'Inny', 'nie', 'Inny adres', 'Inna');

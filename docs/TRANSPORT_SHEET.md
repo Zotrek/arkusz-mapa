@@ -34,29 +34,29 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   9. Ilość worków
 
-  10. Trasa
+  10. transport się odbył
 
-  11. Stawka za trasę
+  11. Trasa
 
-  12. Stawka za podjazd
+  12. Stawka za trasę
 
-  13. Stawka za worek
+  13. Stawka za podjazd
 
-  14. Rozliczony
+  14. Stawka za worek
 
-  15. Numer faktury
+  15. Rozliczony
 
-  16. Koszt odbioru
+  16. Numer faktury
 
-  17. Koszt odbioru per worek
+  17. Koszt odbioru
 
-  18. transport się odbył
+  18. Koszt odbioru per worek
 
   19. Komentarz 1
 
   20. Komentarz 2
 
-- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” ma listę tak/nie. Sync nigdy nie czyści zakładki. Przy 0 workach **Nazwa kontrahenta** i **Nazwa punktu** biorą się z dowolnego wiersza `odebrane` tego adresu. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (bez czekania na pipeline). Sync dopisuje wiersz **dzień po** teoretycznej dacie odbioru (odbiór 01.10 → zestawienie od 02.10; kolumna Data odbioru zostaje 01.10).
+- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” (po Ilość worków) ma listę tak/nie. Sync nigdy nie czyści zakładki. Przy 0 workach **Nazwa kontrahenta** i **Nazwa punktu** biorą się z dowolnego wiersza `odebrane` tego adresu. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (bez czekania na pipeline). Sync dopisuje wiersz **dzień po** teoretycznej dacie odbioru (odbiór 01.10 → zestawienie od 02.10; kolumna Data odbioru zostaje 01.10).
 
 
 
@@ -145,21 +145,20 @@ Przykład POST (body):
 
 ```
 
-Klucze `trasa` i `stawkaTrasy` są opcjonalne. Są w body tylko przy odbiorze z trasy. Bez klucza `trasa` nowy wiersz nie wypełnia kolumn 10 i 11. Pusta `stawkaTrasy` zostaje pusta na nowym wierszu i nie czyści stawki na pozostałych wierszach tej nazwy. Kwota, także `0`, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 10.
+Klucze `trasa` i `stawkaTrasy` są opcjonalne. Są w body tylko przy odbiorze z trasy. Bez klucza `trasa` nowy wiersz nie wypełnia kolumn 11 i 12. Pusta `stawkaTrasy` zostaje pusta na nowym wierszu i nie czyści stawki na pozostałych wierszach tej nazwy. Kwota, także `0`, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 11.
 
-Kolumny 12 i 13 (**Stawka za podjazd**, **Stawka za worek**) wypełnia makro ze snapshotu **Bazy stawek** (adres z kolumny 2 + **Kto odbiera** + **Data odbioru**). Remis albo brak pary → puste. Komentarze trafiają na kolumny 19–20.
+Kolumny 13 i 14 (**Stawka za podjazd**, **Stawka za worek**) wypełnia makro ze snapshotu **Bazy stawek** (adres z kolumny 2 + **Kto odbiera** + **Data odbioru**). Remis albo brak pary → puste. Kolumna 10 = **transport się odbył**. Komentarze trafiają na kolumny 19–20.
 
-Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy, makro wpisuje nagłówki 10–20, jeśli te komórki są puste. To tekst nagłówka, nie pusta komórka. Kolumn 1–9 nie rusza i nie przesuwa. W tym samym kroku, raz, zakłada na kolumnie 18 listę `tak` / `nie` (inne wartości też da się wpisać, także z Excela) i przekreślenie całego wiersza, gdy komórka ma `nie`. Przekreślenie jest regułą formatowania arkusza, nie klasą na stronie. Aplikacja rozliczeń tych nagłówków nie wpisuje. Dopóki po wdrożeniu nie zapisze się żadnego nowego protokołu, kolumny 18 nie ma. Brak kolumny znaczy to samo co pusta: transport się odbył.
+Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy, makro wpisuje nagłówki 10–20, jeśli te komórki są puste. To tekst nagłówka, nie pusta komórka. Kolumn 1–9 nie rusza i nie przesuwa. W tym samym kroku, raz, zakłada na kolumnie 10 listę `tak` / `nie` (inne wartości też da się wpisać, także z Excela) i przekreślenie całego wiersza, gdy komórka ma `nie`. Przekreślenie jest regułą formatowania arkusza, nie klasą na stronie. Aplikacja rozliczeń tych nagłówków nie wpisuje. Brak kolumny / pusta wartość = transport się odbył.
 
-Nowa kwota trasy, także zero, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 10. Pusta stawka z protokołu tego nie robi. Zapis nie patrzy na **Kto odbiera** ani na datę. Wiersz z **Rozliczony** `tak` jest pomijany. Kolumn 16 i 17 ten zapis nie rusza. Lock jest ten sam co przy numerze protokołu.
+Nowa kwota trasy, także zero, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 11. Pusta stawka z protokołu tego nie robi. Zapis nie patrzy na **Kto odbiera** ani na datę. Wiersz z **Rozliczony** `tak` jest pomijany. Kolumn 17 i 18 ten zapis nie rusza. Lock jest ten sam co przy numerze protokołu.
 
-### Migracja układu V2
+### Migracja układu V3 (transport się odbył po Ilość worków)
 
-Jednorazowa funkcja `migrateRegisterLayoutRates_` w Apps Script (wywołanie ręczne po wdrożeniu skryptu): przenosi komentarze z 10–11 na 19–20, trasę na 10–11, dopisuje snapshot podjazdu/worka w 12–13, zostawia rozliczenie na 14–18. Idempotentna (V2 = nagłówek J = `Trasa` i L = `Stawka za podjazd`).
+- **V1 → V3:** `migrateRegisterLayoutRates` — komentarze z 10–11 na 19–20, transport@10, trasa 11–12, snapshot 13–14, rozliczenie 15–18.
+- **V2 → V3:** `migrateRegisterLayoutTransportOdbył` — przesuwa „transport się odbył” z kol. 18→10 (Arkusz1) i 17→9 (zestawienie); trasa i stawki o +1.
 
-**Stan pośredni (bug):** gdy J/K nadal mają komentarze, a R/S też mają nagłówki „Komentarz” — to nadal V1. Migracja to naprawia. Do czasu migracji nowe protokoły są blokowane (błąd w logu).
-
-Po sukcesie w dzienniku powinno być m.in. `"h10":"Trasa","h12":"Stawka za podjazd","h19":"Komentarz 1"`. Potem: **Wdróż → Nowa wersja** Web App.
+Idempotentne. Po sukcesie: **Wdróż → Nowa wersja** Web App.
 
 Runbook: [MIGRATE_REGISTER_RATES.md](./MIGRATE_REGISTER_RATES.md).
 
@@ -197,13 +196,13 @@ Bez `TRANSPORT_WEBAPP_URL` mapa generuje protokoły **bez** zapisu do arkusza (n
 
 1. **Otwarcie modala** — pobranie ostatniej daty transportu (podmiot + adres) i podglądu numeru.
 
-2. **Popup pinezki** — po `bulkLastTransportDates` pokazuje **Ostatni transport** (data) oraz **Ostatni odbiór** (skrócona nazwa z kolumny F „Kto odbiera” z wiersza o najnowszej dacie). Wiersz z kolumną 18 = `nie` nie jest tym odbiorem. Pusta komórka, inna wartość i brak kolumny 18 nadal są.
+2. **Popup pinezki** — po `bulkLastTransportDates` pokazuje **Ostatni transport** (data) oraz **Ostatni odbiór** (skrócona nazwa z kolumny F „Kto odbiera” z wiersza o najnowszej dacie). Wiersz z kolumną 10 = `nie` nie jest tym odbiorem. Pusta komórka, inna wartość i brak kolumny nadal są.
 
-3. **Filtrowanie plomb** — z protokołu usuwane są worki ze datą zamknięcia **wcześniejszą** niż ostatni transport (kolumna E), z pominięciem wierszy, w których kolumna 18 ma `nie`. Taki wiersz nie ustawia daty odcięcia. Przy dacie transportu 20.06.2026 zostają plomby z 20.06, 25.06 itd., a znikają np. 10.06, 15.06. **Rodzaj zbiórki** (Word `{{rodzaj_zbiorki}}` i kolumna H arkusza) liczy się tylko z tych pozostawionych worków, nie z całej historii pinezki.
+3. **Filtrowanie plomb** — z protokołu usuwane są worki ze datą zamknięcia **wcześniejszą** niż ostatni transport (kolumna E), z pominięciem wierszy, w których kolumna 10 ma `nie`. Taki wiersz nie ustawia daty odcięcia. Przy dacie transportu 20.06.2026 zostają plomby z 20.06, 25.06 itd., a znikają np. 10.06, 15.06. **Rodzaj zbiórki** (Word `{{rodzaj_zbiorki}}` i kolumna H arkusza) liczy się tylko z tych pozostawionych worków, nie z całej historii pinezki.
 
 4. **Bez listy plomb** — checkbox w modalu Word. Zamiast numerów plomb w dokumencie trafia **10 wierszy kropek**; liczba kropek w wierszu = (maks. długość numeru plomby wśród worków w protokole) × 2. Rejestr transportu i `{{rodzaj_zbiorki}}` nadal bazują na rzeczywistych workach.
 
-5. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera. Pola **Komentarz 1** / **Komentarz 2** w modalu trafiają tylko do arkusza (kolumny J/K), nie do protokołu Word.
+5. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera. Pola **Komentarz 1** / **Komentarz 2** w modalu trafiają tylko do arkusza (kolumny 19–20), nie do protokołu Word.
 
 
 

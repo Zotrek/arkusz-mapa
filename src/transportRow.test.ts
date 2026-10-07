@@ -338,7 +338,7 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
   };
 }
 
-/** Wiersz danych: kolumna 10 = trasa, 11 = stawka, 14 = rozliczony. */
+/** Wiersz danych: kolumna 11 = trasa, 12 = stawka, 15 = rozliczony. */
 function seedRouteRow(
   sheet: FakeSheet,
   row: number,
@@ -347,14 +347,14 @@ function seedRouteRow(
   settled: Cell = '',
 ): void {
   sheet.put(row, 1, String(row - 1));
-  sheet.put(row, 10, name);
-  sheet.put(row, 11, rate);
-  sheet.put(row, 14, settled);
+  sheet.put(row, 11, name);
+  sheet.put(row, 12, rate);
+  sheet.put(row, 15, settled);
 }
 
 /**
  * Pełniejszy wiersz rejestru pod zapisy settlement (klucz: sheetRow + numer kol. 1).
- * Kolumny 16–17 = koszt — settlement write nie może ich ruszyć.
+ * Kolumny 17–18 = koszt — settlement write nie może ich ruszyć.
  */
 function seedSettlementRow(
   sheet: FakeSheet,
@@ -371,6 +371,7 @@ function seedSettlementRow(
     '',
     '',
     2,
+    '',
     'trasa-a',
     '150',
     '',
@@ -379,7 +380,6 @@ function seedSettlementRow(
     '',
     '999',
     '111',
-    '',
   ];
   for (let i = 0; i < cols.length; i += 1) {
     sheet.put(row, i + 1, cols[i]);
@@ -391,16 +391,17 @@ function seedSettlementRow(
 
 function expectCostsUntouched(sheet: FakeSheet, rows: number[]): void {
   for (const row of rows) {
-    expect(sheet.cell(row, 16)).toBe('999');
-    expect(sheet.cell(row, 17)).toBe('111');
+    expect(sheet.cell(row, 17)).toBe('999');
+    expect(sheet.cell(row, 18)).toBe('111');
   }
   for (const write of sheet.writes) {
     const end = write.col + write.numCols - 1;
-    expect(end < 16 || write.col > 17).toBe(true);
+    expect(end < 17 || write.col > 18).toBe(true);
   }
 }
 
 const HEADERS_10_20 = [
+  'transport się odbył',
   'Trasa',
   'Stawka za trasę',
   'Stawka za podjazd',
@@ -409,7 +410,6 @@ const HEADERS_10_20 = [
   'Numer faktury',
   'Koszt odbioru',
   'Koszt odbioru per worek',
-  'transport się odbył',
   'Komentarz 1',
   'Komentarz 2',
 ];
@@ -491,9 +491,9 @@ describe('appendTransportRow_', () => {
     loadGas(sheet).appendTransportRow_('12', protocolBody());
 
     expect(sheet.cell(1, 10)).toBe('Zostaw');
-    expect(sheet.cell(1, 11)).toBe('Stawka za trasę');
-    expect(sheet.cell(1, 12)).toBe('Stawka za podjazd');
-    expect(sheet.cell(1, 18)).toBe('transport się odbył');
+    expect(sheet.cell(1, 11)).toBe('Trasa');
+    expect(sheet.cell(1, 12)).toBe('Stawka za trasę');
+    expect(sheet.cell(1, 18)).toBe('Koszt odbioru per worek');
     expect(sheet.cell(1, 20)).toBe('Komentarz 2');
   });
 
@@ -501,11 +501,12 @@ describe('appendTransportRow_', () => {
     const sheet = new FakeSheet();
     loadGas(sheet).appendTransportRow_('13', protocolBody());
 
-    expect(sheet.cell(1, 10)).toBe('Trasa');
+    expect(sheet.cell(1, 10)).toBe('transport się odbył');
     expect(sheet.cell(2, 10)).toBe('');
     expect(sheet.cell(2, 11)).toBe('');
-    expect(sheet.cell(2, 12)).toBe('');
     expect(sheet.cell(2, 13)).toBe('');
+    expect(sheet.cell(2, 14)).toBe('');
+    expect(sheet.cell(2, 14)).toBe('');
     expect(sheet.cell(2, 20)).toBe('k2');
   });
 
@@ -516,27 +517,27 @@ describe('appendTransportRow_', () => {
       protocolBody({ trasa: '  gpw-18.09.26-01  ', stawkaTrasy: '  150  ' }),
     );
 
-    expect(sheet.cell(2, 10)).toBe('gpw-18.09.26-01');
-    expect(sheet.cell(2, 11)).toBe('150');
+    expect(sheet.cell(2, 11)).toBe('gpw-18.09.26-01');
+    expect(sheet.cell(2, 12)).toBe('150');
   });
 
   it('test_appendTransportRow_when_rate_is_zero_should_keep_zero', () => {
     const sheet = new FakeSheet();
     loadGas(sheet).appendTransportRow_('15', protocolBody({ trasa: 'trasa', stawkaTrasy: '0' }));
 
-    expect(sheet.cell(2, 10)).toBe('trasa');
-    expect(sheet.cell(2, 11)).toBe('0');
+    expect(sheet.cell(2, 11)).toBe('trasa');
+    expect(sheet.cell(2, 12)).toBe('0');
   });
 
-  it('test_appendTransportRow_when_rate_empty_should_keep_column_11_empty', () => {
+  it('test_appendTransportRow_when_rate_empty_should_keep_column_12_empty', () => {
     const sheet = new FakeSheet();
     loadGas(sheet).appendTransportRow_(
       '16',
       protocolBody({ trasa: 'trasa', stawkaTrasy: '   ' }),
     );
 
-    expect(sheet.cell(2, 10)).toBe('trasa');
-    expect(sheet.cell(2, 11)).toBe('');
+    expect(sheet.cell(2, 11)).toBe('trasa');
+    expect(sheet.cell(2, 12)).toBe('');
   });
 
   it('test_appendTransportRow_snapshots_pickup_and_bag_from_baza_stawek', () => {
@@ -545,8 +546,8 @@ describe('appendTransportRow_', () => {
     seedRate(rates, 2, 'ul. Testowa 1', 'Janex', 20, '1,5', '');
     loadGas(sheet, rates).appendTransportRow_('16c', protocolBody());
 
-    expect(sheet.cell(2, 12)).toBe(20);
-    expect(sheet.cell(2, 13)).toBe(1.5);
+    expect(sheet.cell(2, 13)).toBe(20);
+    expect(sheet.cell(2, 14)).toBe(1.5);
   });
 
   it('test_appendTransportRow_snapshots_rate_when_shop_has_al_vs_map_form', () => {
@@ -558,8 +559,8 @@ describe('appendTransportRow_', () => {
       protocolBody({ adresSklepu: '51-602 Wrocław Kochanowskiego 33' }),
     );
 
-    expect(sheet.cell(2, 12)).toBe(25);
-    expect(sheet.cell(2, 13)).toBe(3);
+    expect(sheet.cell(2, 13)).toBe(25);
+    expect(sheet.cell(2, 14)).toBe(3);
   });
 
   it('test_appendTransportRow_when_rate_tie_leaves_snapshot_empty', () => {
@@ -569,8 +570,8 @@ describe('appendTransportRow_', () => {
     seedRate(rates, 3, 'ul. Testowa 1', 'Janex', 30, 15, '');
     loadGas(sheet, rates).appendTransportRow_('16d', protocolBody());
 
-    expect(sheet.cell(2, 12)).toBe('');
     expect(sheet.cell(2, 13)).toBe('');
+    expect(sheet.cell(2, 14)).toBe('');
   });
 
   it('test_appendTransportRow_when_rate_empty_should_not_clear_same_route', () => {
@@ -578,18 +579,18 @@ describe('appendTransportRow_', () => {
     for (let col = 1; col <= 20; col += 1) {
       sheet.put(1, col, 'h');
     }
-    sheet.put(2, 10, 'GPW Iława-22.09.26-01');
-    sheet.put(2, 11, '150');
-    sheet.put(2, 14, '');
+    sheet.put(2, 11, 'GPW Iława-22.09.26-01');
+    sheet.put(2, 12, '150');
+    sheet.put(2, 15, '');
 
     loadGas(sheet).appendTransportRow_(
       '16b',
       protocolBody({ trasa: 'GPW Iława-22.09.26-01', stawkaTrasy: '' }),
     );
 
-    expect(sheet.cell(2, 11)).toBe('150');
-    expect(sheet.cell(3, 10)).toBe('GPW Iława-22.09.26-01');
-    expect(sheet.cell(3, 11)).toBe('');
+    expect(sheet.cell(2, 12)).toBe('150');
+    expect(sheet.cell(3, 11)).toBe('GPW Iława-22.09.26-01');
+    expect(sheet.cell(3, 12)).toBe('');
   });
 
   it('test_appendTransportRow_when_first_protocol_should_add_tak_nie_list_and_row_strike_once', () => {
@@ -600,7 +601,7 @@ describe('appendTransportRow_', () => {
 
     expect(sheet.validations).toHaveLength(1);
     const list = sheet.validations[0];
-    expect(list.col).toBe(18);
+    expect(list.col).toBe(10);
     expect(list.numCols).toBe(1);
     expect(list.row).toBe(2);
     expect(list.validation.list).toEqual(['tak', 'nie']);
@@ -609,10 +610,10 @@ describe('appendTransportRow_', () => {
 
     expect(sheet.rules).toHaveLength(1);
     const rule = sheet.rules[0];
-    expect(rule.formula).toBe('=$R2="nie"');
+    expect(rule.formula).toBe('=$J2="nie"');
     expect(rule.strikethrough).toBe(true);
     expect(rule.ranges[0]?.col).toBe(1);
-    expect(rule.ranges[0]?.numCols).toBe(18);
+    expect(rule.ranges[0]?.numCols).toBe(20);
     expect(rule.ranges[0]?.row).toBe(2);
   });
 
@@ -620,7 +621,7 @@ describe('appendTransportRow_', () => {
     const sheet = new FakeSheet();
     sheet.validations.push({
       row: 2,
-      col: 18,
+      col: 10,
       numRows: 99,
       numCols: 1,
       validation: {
@@ -633,13 +634,13 @@ describe('appendTransportRow_', () => {
       },
     });
     sheet.rules.push({
-      formula: '=$R2="nie"',
+      formula: '=$J2="nie"',
       strikethrough: true,
       ranges: [],
       getBooleanCondition() {
         return {
           getCriteriaValues() {
-            return ['=$R2="nie"'];
+            return ['=$J2="nie"'];
           },
         };
       },
@@ -667,11 +668,11 @@ describe('appendTransportRow_', () => {
     for (const item of rows) {
       sheet.put(item.row, 5, item.date);
       sheet.put(item.row, 6, item.who);
-      sheet.put(item.row, 10, item.name);
-      sheet.put(item.row, 11, item.rate);
-      sheet.put(item.row, 14, item.settled);
-      sheet.put(item.row, 16, item.c16);
-      sheet.put(item.row, 17, item.c17);
+      sheet.put(item.row, 11, item.name);
+      sheet.put(item.row, 12, item.rate);
+      sheet.put(item.row, 15, item.settled);
+      sheet.put(item.row, 17, item.c16);
+      sheet.put(item.row, 18, item.c17);
     }
 
     loadGas(sheet).appendTransportRow_(
@@ -684,20 +685,20 @@ describe('appendTransportRow_', () => {
       }),
     );
 
-    expect(sheet.cell(2, 11)).toBe('150');
-    expect(sheet.cell(3, 11)).toBe('10');
-    expect(sheet.cell(4, 11)).toBe('150');
-    expect(sheet.cell(5, 11)).toBe('99');
-    expect(sheet.cell(6, 10)).toBe('trasa-a');
-    expect(sheet.cell(6, 11)).toBe('150');
-    expect(sheet.cell(2, 16)).toBe('KEEP16');
-    expect(sheet.cell(2, 17)).toBe('KEEP17');
-    expect(sheet.cell(3, 16)).toBe('S16');
-    expect(sheet.cell(4, 17)).toBe('T17');
-    expect(sheet.cell(5, 16)).toBe('I16');
+    expect(sheet.cell(2, 12)).toBe('150');
+    expect(sheet.cell(3, 12)).toBe('10');
+    expect(sheet.cell(4, 12)).toBe('150');
+    expect(sheet.cell(5, 12)).toBe('99');
+    expect(sheet.cell(6, 11)).toBe('trasa-a');
+    expect(sheet.cell(6, 12)).toBe('150');
+    expect(sheet.cell(2, 17)).toBe('KEEP16');
+    expect(sheet.cell(2, 18)).toBe('KEEP17');
+    expect(sheet.cell(3, 17)).toBe('S16');
+    expect(sheet.cell(4, 18)).toBe('T17');
+    expect(sheet.cell(5, 17)).toBe('I16');
     const dataWrites = sheet.writes.filter((write) => write.row >= 2);
     for (const write of dataWrites) {
-      expect(write.col).toBe(11);
+      expect(write.col).toBe(12);
       expect(write.numCols).toBe(1);
     }
     expect(dataWrites.map((write) => write.row).sort()).toEqual([2, 4, 6]);
@@ -708,8 +709,8 @@ describe('appendTransportRow_', () => {
     for (let col = 1; col <= 20; col += 1) {
       sheet.put(1, col, 'h');
     }
-    sheet.put(2, 10, '');
-    sheet.put(2, 11, '10');
+    sheet.put(2, 11, '');
+    sheet.put(2, 12, '10');
     sheet.put(2, 1, '1');
 
     loadGas(sheet).appendTransportRow_(
@@ -717,9 +718,9 @@ describe('appendTransportRow_', () => {
       protocolBody({ trasa: '   ', stawkaTrasy: '5' }),
     );
 
-    expect(sheet.cell(2, 11)).toBe('10');
-    expect(sheet.cell(3, 10)).toBe('');
-    expect(sheet.cell(3, 11)).toBe(5);
+    expect(sheet.cell(2, 12)).toBe('10');
+    expect(sheet.cell(3, 11)).toBe('');
+    expect(sheet.cell(3, 12)).toBe(5);
   });
 
   it('test_TRANSPORT_SHEET_should_describe_columns_10_to_20_and_body_fields', () => {
@@ -727,9 +728,9 @@ describe('appendTransportRow_', () => {
     for (const header of HEADERS_10_20) {
       expect(doc).toContain(header);
     }
-    expect(doc).toContain('10. Trasa');
-    expect(doc).toContain('12. Stawka za podjazd');
-    expect(doc).toContain('18. transport się odbył');
+    expect(doc).toContain('10. transport się odbył');
+    expect(doc).toContain('11. Trasa');
+    expect(doc).toContain('13. Stawka za podjazd');
     expect(doc).toContain('19. Komentarz 1');
     expect(doc).toContain('"trasa"');
     expect(doc).toContain('"stawkaTrasy"');
@@ -741,12 +742,12 @@ describe('appendTransportRow_', () => {
 describe('listOccupiedRouteNames_', () => {
   it('test_listOccupiedRouteNames_when_no_data_rows_should_return_empty', () => {
     const sheet = new FakeSheet();
-    sheet.put(1, 10, 'Trasa');
+    sheet.put(1, 11, 'Trasa');
 
     expect(loadGas(sheet).listOccupiedRouteNames_()).toEqual([]);
   });
 
-  it('test_listOccupiedRouteNames_when_names_in_column_10_should_return_unique_in_order', () => {
+  it('test_listOccupiedRouteNames_when_names_in_column_11_should_return_unique_in_order', () => {
     const sheet = new FakeSheet();
     seedRouteRow(sheet, 2, 'gpw-18.09.26-01');
     seedRouteRow(sheet, 3, '  gpw-18.09.26-02  ');
@@ -754,9 +755,9 @@ describe('listOccupiedRouteNames_', () => {
     seedRouteRow(sheet, 5, '');
     seedRouteRow(sheet, 6, '   ');
     seedRouteRow(sheet, 7, 'inna');
-    // Fałszywa „trasa” w innej kolumnie — odczyt musi brać tylko kolumnę 10
-    sheet.put(2, 9, 'nie-ta-kolumna');
-    sheet.put(2, 11, 'nie-ta-kolumna');
+    // Fałszywa „trasa” w innej kolumnie — odczyt musi brać tylko kolumnę 11
+    sheet.put(2, 10, 'nie-ta-kolumna');
+    sheet.put(2, 12, 'nie-ta-kolumna');
 
     expect(loadGas(sheet).listOccupiedRouteNames_()).toEqual([
       'gpw-18.09.26-01',
@@ -777,7 +778,7 @@ describe('listOccupiedRouteNames_', () => {
 describe('routeRateByName_', () => {
   it('test_routeRateByName_when_name_blank_or_sheet_empty_should_return_empty', () => {
     const sheet = new FakeSheet();
-    sheet.put(1, 10, 'Trasa');
+    sheet.put(1, 11, 'Trasa');
     const gas = loadGas(sheet);
 
     expect(gas.routeRateByName_('')).toBe('');
@@ -830,13 +831,12 @@ describe('routeRateByName_', () => {
     expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('20');
   });
 
-  it('test_routeRateByName_reads_rate_from_column_11_not_neighbors', () => {
+  it('test_routeRateByName_reads_rate_from_column_12_not_neighbors', () => {
     const sheet = new FakeSheet();
     seedRouteRow(sheet, 2, 'trasa-a', '150', '');
-    sheet.put(2, 10, 'trasa-a');
-    sheet.put(2, 9, 'WRONG9');
-    sheet.put(2, 12, 'WRONG12');
-    sheet.put(2, 14, '');
+    sheet.put(2, 10, 'WRONG10');
+    sheet.put(2, 13, 'WRONG13');
+    sheet.put(2, 15, '');
 
     expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('150');
   });
@@ -846,9 +846,9 @@ describe('patchRouteRate_', () => {
   it('test_patchRouteRate_when_same_name_should_update_unsettled_skip_settled', () => {
     const sheet = new FakeSheet();
     seedSettlementRow(sheet, 2);
-    seedSettlementRow(sheet, 3, { 1: 16, 5: '01.01.2026', 6: 'inny', 11: '10' });
-    seedSettlementRow(sheet, 4, { 1: 17, 11: '77', 14: 'tak' });
-    seedSettlementRow(sheet, 5, { 1: 18, 10: 'inna', 11: '5' });
+    seedSettlementRow(sheet, 3, { 1: 16, 5: '01.01.2026', 6: 'inny', 12: '10' });
+    seedSettlementRow(sheet, 4, { 1: 17, 12: '77', 15: 'tak' });
+    seedSettlementRow(sheet, 5, { 1: 18, 11: 'inna', 12: '5' });
 
     const result = loadGas(sheet).patchRouteRate_({
       sheetRow: 2,
@@ -858,11 +858,11 @@ describe('patchRouteRate_', () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(sheet.cell(2, 11)).toBe('200');
-    expect(sheet.cell(3, 11)).toBe('200');
-    expect(sheet.cell(4, 11)).toBe('77');
-    expect(sheet.cell(5, 11)).toBe('5');
-    expect(sheet.cell(2, 10)).toBe('trasa-a');
+    expect(sheet.cell(2, 12)).toBe('200');
+    expect(sheet.cell(3, 12)).toBe('200');
+    expect(sheet.cell(4, 12)).toBe('77');
+    expect(sheet.cell(5, 12)).toBe('5');
+    expect(sheet.cell(2, 11)).toBe('trasa-a');
     expectCostsUntouched(sheet, [2, 3, 4, 5]);
   });
 
@@ -879,7 +879,7 @@ describe('patchRouteRate_', () => {
         stawkaTrasy: 0,
       }),
     ).toEqual({ ok: true });
-    expect(sheet.cell(2, 11)).toBe('0');
+    expect(sheet.cell(2, 12)).toBe('0');
 
     expect(
       gas.patchRouteRate_({
@@ -889,15 +889,15 @@ describe('patchRouteRate_', () => {
         stawkaTrasy: '',
       }),
     ).toEqual({ ok: true });
-    expect(sheet.cell(2, 11)).toBe('');
+    expect(sheet.cell(2, 12)).toBe('');
     expectCostsUntouched(sheet, [2]);
   });
 
   it('test_patchRouteRate_when_key_mismatch_or_settled_should_write_nothing', () => {
     const sheet = new FakeSheet();
     seedSettlementRow(sheet, 2);
-    seedSettlementRow(sheet, 3, { 1: 16, 11: '10' });
-    seedSettlementRow(sheet, 4, { 1: 17, 14: 'tak' });
+    seedSettlementRow(sheet, 3, { 1: 16, 12: '10' });
+    seedSettlementRow(sheet, 4, { 1: 17, 15: 'tak' });
     const gas = loadGas(sheet);
 
     expect(
@@ -917,8 +917,8 @@ describe('patchRouteRate_', () => {
       }),
     ).toEqual({ ok: false, error: 'settled' });
     expect(sheet.writes).toEqual([]);
-    expect(sheet.cell(2, 11)).toBe('150');
-    expect(sheet.cell(3, 11)).toBe('10');
+    expect(sheet.cell(2, 12)).toBe('150');
+    expect(sheet.cell(3, 12)).toBe('10');
   });
 });
 
@@ -931,10 +931,10 @@ describe('detachRoute_', () => {
     expect(
       loadGas(sheet).detachRoute_({ sheetRow: 2, transportNumber: '15' }),
     ).toEqual({ ok: true });
-    expect(sheet.cell(2, 10)).toBe('');
     expect(sheet.cell(2, 11)).toBe('');
-    expect(sheet.cell(3, 10)).toBe('trasa-a');
-    expect(sheet.cell(3, 11)).toBe('150');
+    expect(sheet.cell(2, 12)).toBe('');
+    expect(sheet.cell(3, 11)).toBe('trasa-a');
+    expect(sheet.cell(3, 12)).toBe('150');
     expect(sheet.cell(2, 9)).toBe(2);
     expectCostsUntouched(sheet, [2, 3]);
   });
@@ -947,7 +947,7 @@ describe('detachRoute_', () => {
       loadGas(sheet).detachRoute_({ sheetRow: 9, transportNumber: '15' }),
     ).toEqual({ ok: false, error: 'key' });
     expect(sheet.writes).toEqual([]);
-    expect(sheet.cell(2, 10)).toBe('trasa-a');
+    expect(sheet.cell(2, 11)).toBe('trasa-a');
     expectCostsUntouched(sheet, [2]);
   });
 });
@@ -955,9 +955,9 @@ describe('detachRoute_', () => {
 describe('attachRoute_', () => {
   it('test_attachRoute_when_zero_rate_should_write_and_propagate_by_name', () => {
     const sheet = new FakeSheet();
-    seedSettlementRow(sheet, 2, { 10: '', 11: '' });
-    seedSettlementRow(sheet, 3, { 1: 16, 6: 'inny', 10: 'nowa', 11: '10' });
-    seedSettlementRow(sheet, 4, { 1: 17, 10: 'nowa', 11: '77', 14: 'tak' });
+    seedSettlementRow(sheet, 2, { 11: '', 12: '' });
+    seedSettlementRow(sheet, 3, { 1: 16, 6: 'inny', 11: 'nowa', 12: '10' });
+    seedSettlementRow(sheet, 4, { 1: 17, 11: 'nowa', 12: '77', 15: 'tak' });
 
     const result = loadGas(sheet).attachRoute_({
       sheetRow: 2,
@@ -967,17 +967,17 @@ describe('attachRoute_', () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(sheet.cell(2, 10)).toBe('nowa');
-    expect(sheet.cell(2, 11)).toBe('0');
-    expect(sheet.cell(3, 10)).toBe('nowa');
-    expect(sheet.cell(3, 11)).toBe('0');
-    expect(sheet.cell(4, 11)).toBe('77');
+    expect(sheet.cell(2, 11)).toBe('nowa');
+    expect(sheet.cell(2, 12)).toBe('0');
+    expect(sheet.cell(3, 11)).toBe('nowa');
+    expect(sheet.cell(3, 12)).toBe('0');
+    expect(sheet.cell(4, 12)).toBe('77');
     expectCostsUntouched(sheet, [2, 3, 4]);
   });
 
   it('test_attachRoute_when_empty_rate_or_name_should_write_nothing', () => {
     const sheet = new FakeSheet();
-    seedSettlementRow(sheet, 2, { 10: '', 11: '' });
+    seedSettlementRow(sheet, 2, { 11: '', 12: '' });
     const gas = loadGas(sheet);
 
     expect(
@@ -997,14 +997,14 @@ describe('attachRoute_', () => {
       }),
     ).toEqual({ ok: false, error: 'name' });
     expect(sheet.writes).toEqual([]);
-    expect(sheet.cell(2, 10)).toBe('');
     expect(sheet.cell(2, 11)).toBe('');
+    expect(sheet.cell(2, 12)).toBe('');
     expectCostsUntouched(sheet, [2]);
   });
 
   it('test_attachRoute_when_key_mismatch_should_write_nothing', () => {
     const sheet = new FakeSheet();
-    seedSettlementRow(sheet, 2, { 10: '', 11: '' });
+    seedSettlementRow(sheet, 2, { 11: '', 12: '' });
 
     expect(
       loadGas(sheet).attachRoute_({
@@ -1015,6 +1015,6 @@ describe('attachRoute_', () => {
       }),
     ).toEqual({ ok: false, error: 'key' });
     expect(sheet.writes).toEqual([]);
-    expect(sheet.cell(2, 10)).toBe('');
+    expect(sheet.cell(2, 11)).toBe('');
   });
 });

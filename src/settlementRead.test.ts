@@ -240,11 +240,11 @@ function seedRegister(
     '',
     '',
     3,
+    '',
     'trasa-1',
     100,
     50,
     20,
-    '',
     '',
     '',
     '',
@@ -335,8 +335,8 @@ describe('settlementSearch_', () => {
     seedRegister(register, 3, { 1: 11, 5: '10.09.2026' });
     seedRegister(register, 4, { 1: 12, 6: 'inny' });
     seedRegister(register, 5, { 1: 13, 5: '25.09.2026' });
-    seedRegister(register, 6, { 1: 14, 14: 'tak' });
-    seedRegister(register, 7, { 1: 15, 18: 'nie' });
+    seedRegister(register, 6, { 1: 14, 15: 'tak' });
+    seedRegister(register, 7, { 1: 15, 10: 'nie' });
     seedRate(rates!, 2, 'Ul. Sklepowa 1', 'gpw', 40, 10, '01.09.2026');
     seedRate(rates!, 3, 'Ul. Sklepowa 1', 'inny', 1, 1, '01.09.2026');
 
@@ -432,11 +432,11 @@ describe('settlementStats_', () => {
 
   it('test_settlementStats_includes_settled_in_range_and_open_backlog', () => {
     const { register, rates } = fresh();
-    seedRegister(register, 2, { 1: 20, 5: '15.09.2026', 14: 'tak', 16: 200, 17: 50 });
+    seedRegister(register, 2, { 1: 20, 5: '15.09.2026', 15: 'tak', 17: 200, 18: 50 });
     seedRegister(register, 3, { 1: 21, 5: '01.08.2026' });
-    seedRegister(register, 4, { 1: 22, 5: '10.09.2026', 14: 'tak' });
-    seedRegister(register, 5, { 1: 23, 5: '15.09.2026', 18: 'nie' });
-    seedRegister(register, 6, { 1: 24, 5: '15.09.2026', 6: 'inny', 14: 'tak', 16: 1, 17: 1 });
+    seedRegister(register, 4, { 1: 22, 5: '10.09.2026', 15: 'tak' });
+    seedRegister(register, 5, { 1: 23, 5: '15.09.2026', 10: 'nie' });
+    seedRegister(register, 6, { 1: 24, 5: '15.09.2026', 6: 'inny', 15: 'tak', 17: 1, 18: 1 });
     seedRate(rates!, 2, 'Ul. Sklepowa 1', 'gpw', 40, 10, '01.09.2026');
 
     const result = gas.settlementStats_({
@@ -468,8 +468,8 @@ describe('settlementStats_', () => {
 
   it('test_settlementStats_empty_podwykonawca_includes_all_contractors', () => {
     const { register } = fresh(false);
-    seedRegister(register, 2, { 1: 30, 6: 'gpw', 14: 'tak', 5: '15.09.2026' });
-    seedRegister(register, 3, { 1: 31, 6: 'inny', 14: 'tak', 5: '15.09.2026' });
+    seedRegister(register, 2, { 1: 30, 6: 'gpw', 15: 'tak', 5: '15.09.2026' });
+    seedRegister(register, 3, { 1: 31, 6: 'inny', 15: 'tak', 5: '15.09.2026' });
 
     const result = gas.settlementStats_({
       dataOd: '01.09.2026',
@@ -485,7 +485,7 @@ describe('settlementStats_', () => {
 
   it('test_settlementStats_includes_odebrane_schedule_bags', () => {
     const { register, odebrane } = fresh(false);
-    seedRegister(register, 2, { 1: 40, 6: 'gpw', 14: 'tak', 5: '15.09.2026', 9: 1 });
+    seedRegister(register, 2, { 1: 40, 6: 'gpw', 15: 'tak', 5: '15.09.2026', 9: 1 });
     const headers = [
       'NIP',
       'Podmiot',
@@ -542,7 +542,7 @@ describe('settlementStats_', () => {
 
   it('test_settlementStats_via_doGet_returns_json', () => {
     const { register } = fresh(false);
-    seedRegister(register, 2, { 14: 'tak', 5: '15.09.2026' });
+    seedRegister(register, 2, { 15: 'tak', 5: '15.09.2026' });
     gas.doGet({
       parameter: {
         action: 'settlementStats',
@@ -579,8 +579,8 @@ describe('buildSettlementRead_ pure amounts', () => {
             '',
             '2,5',
             '',
-            '1,50 zł',
             '',
+            '1,50 zł',
             '',
             '',
             '',
@@ -621,9 +621,9 @@ describe('buildSettlementHarmonogramRead_', () => {
             0,
             '',
             '',
+            '',
             100,
             0,
-            '',
             '',
             '',
             '',
@@ -643,9 +643,9 @@ describe('buildSettlementHarmonogramRead_', () => {
             2,
             '',
             '',
+            '',
             100,
             10,
-            '',
             '',
             '',
             '',
@@ -665,9 +665,9 @@ describe('buildSettlementHarmonogramRead_', () => {
             1,
             '',
             '',
+            '',
             50,
             0,
-            '',
             '',
             '',
             '',
@@ -718,13 +718,13 @@ describe('buildSettlementHarmonogramRead_', () => {
             1,
             '',
             '',
+            '',
             50,
             0,
             'tak',
             'FV/1',
             50,
             50,
-            '',
           ],
         },
         {
@@ -738,6 +738,7 @@ describe('buildSettlementHarmonogramRead_', () => {
             '',
             '',
             1,
+            'nie',
             '',
             '',
             50,
@@ -746,7 +747,6 @@ describe('buildSettlementHarmonogramRead_', () => {
             '',
             '',
             '',
-            'nie',
           ],
         },
       ],
