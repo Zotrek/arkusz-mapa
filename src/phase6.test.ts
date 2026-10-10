@@ -622,6 +622,17 @@ describe('phase6', () => {
       expect(html).toContain('tile.openstreetmap.org/{z}/{x}/{y}.png');
     });
 
+    it('test_buildMapHtml_when_map_rendered_should_embed_search_panel_collapse', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain('id="map-search-collapse"');
+      expect(html).toContain('id="map-search-body"');
+      expect(html).toContain('setSearchPanelCollapsed');
+      expect(html).toContain('arkusz-mapa-search-panel-collapsed');
+      expect(html).toContain('.map-search-panel.is-collapsed .map-search-body');
+      expect(html).toContain('Zwiń menu');
+      expect(html).toContain('Rozwiń menu');
+    });
+
     it('test_buildMapHtml_when_zbiorka_data_present_should_embed_zbiorka_filter_controls', () => {
       const geo: GeocodedAddress[] = [
         {

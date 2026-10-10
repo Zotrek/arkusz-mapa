@@ -1015,6 +1015,22 @@ ${harmonogramDaysPickerCss()}
       font-family: system-ui, "Segoe UI", sans-serif;
       color: var(--map-ink);
     }
+    .map-search-panel-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px;
+    }
+    .map-search-panel-head .map-search-label { margin-bottom: 0; flex: 1; min-width: 0; }
+    .map-search-collapse {
+      flex-shrink: 0; width: 26px; height: 26px; padding: 0;
+      border: 1px solid rgba(148, 163, 184, 0.55); border-radius: 8px;
+      background: rgba(255, 255, 255, 0.92); color: #334155; cursor: pointer;
+      font-size: 14px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .map-search-collapse:hover { background: var(--map-accent-soft); color: var(--map-accent-deep); border-color: var(--map-accent); }
+    .map-search-panel.is-collapsed { min-width: 0; width: auto; padding: 6px; }
+    .map-search-panel.is-collapsed .map-search-body,
+    .map-search-panel.is-collapsed .map-search-label { display: none; }
+    .map-search-panel.is-collapsed .map-search-panel-head { margin-bottom: 0; }
     .map-search-label,
     .map-zbiorka-filter-title,
     .map-harmonogram-filter-title,
@@ -3949,7 +3965,11 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     searchControl.onAdd = function() {
       var wrap = L.DomUtil.create('div', 'map-search-panel');
       wrap.innerHTML =
+        '<div class="map-search-panel-head">' +
         '<label class="map-search-label" for="map-address-search">Szukaj na mapie</label>' +
+        '<button type="button" id="map-search-collapse" class="map-search-collapse" aria-expanded="true" aria-controls="map-search-body" title="Zwiń menu" aria-label="Zwiń menu">‹</button>' +
+        '</div>' +
+        '<div id="map-search-body" class="map-search-body">' +
         '<div class="map-search-input-row">' +
         '<input type="search" id="map-address-search" class="map-search-input" placeholder="Adres, podmiot handlowy lub sklep…" autocomplete="off" spellcheck="false" aria-label="Szukaj: adres, podmiot lub sklep" />' +
         '<div class="map-zoom-inline" role="toolbar" aria-label="Powiększenie mapy">' +
@@ -3965,7 +3985,8 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         '<div id="map-filter-count" class="map-filter-count" role="status" aria-live="polite">Widoczne: 0 szt.</div>' +
         manualAdminBtnHtml +
         autoBulkBtnHtml +
-        bulkPanelHtml;
+        bulkPanelHtml +
+        '</div>';
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
       var zIn = wrap.querySelector('#map-zoom-in');
@@ -4027,6 +4048,29 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       var clusterToggle = wrap.querySelector('#map-cluster-toggle');
       if (clusterToggle) clusterToggle.addEventListener('change', applyClusteringMode);
+      var collapseBtn = wrap.querySelector('#map-search-collapse');
+      var searchPanelKey = 'arkusz-mapa-search-panel-collapsed';
+      function setSearchPanelCollapsed(collapsed) {
+        if (collapsed) wrap.classList.add('is-collapsed');
+        else wrap.classList.remove('is-collapsed');
+        if (collapsed) setWojewodztwoDropdownOpen(false);
+        if (!collapseBtn) return;
+        collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        collapseBtn.setAttribute('aria-label', collapsed ? 'Rozwiń menu' : 'Zwiń menu');
+        collapseBtn.setAttribute('title', collapsed ? 'Rozwiń menu' : 'Zwiń menu');
+        collapseBtn.textContent = collapsed ? '☰' : '‹';
+      }
+      if (collapseBtn) {
+        collapseBtn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          var next = !wrap.classList.contains('is-collapsed');
+          setSearchPanelCollapsed(next);
+          try { localStorage.setItem(searchPanelKey, next ? '1' : '0'); } catch (e) {}
+        });
+        var savedCollapsed = false;
+        try { savedCollapsed = localStorage.getItem(searchPanelKey) === '1'; } catch (e) {}
+        if (savedCollapsed) setSearchPanelCollapsed(true);
+      }
       if (wordDocEnabled) {
         var autoBulkBtn = wrap.querySelector('#map-auto-bulk-toggle');
         if (autoBulkBtn) {
