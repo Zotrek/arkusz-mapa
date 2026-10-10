@@ -775,6 +775,25 @@ export function buildMapHtml(
       </div>
     </div>
   </div>
+  <div id="bolecin-aw-modal" class="doc-modal-overlay" style="display:none" aria-hidden="true">
+    <div class="doc-modal-panel" role="dialog" aria-labelledby="bolecin-aw-title">
+      <h3 id="bolecin-aw-title">Awizacja do Bolęcina</h3>
+      <p class="doc-modal-hint">Ten odbiór jedzie do Bolęcina. Dopisz wiersz do arkusza Bolęcin albo wygeneruj sam protokół.</p>
+      <label for="bolecin-aw-nr">Nr rejestracyjny <span class="doc-field-hint">(kolumna awizacja)</span></label>
+      <input type="text" id="bolecin-aw-nr" maxlength="120" autocomplete="off" spellcheck="false" />
+      <label for="bolecin-aw-okno">Okno awizacji</label>
+      <input type="text" id="bolecin-aw-okno" maxlength="120" autocomplete="off" spellcheck="false" placeholder="np. 8:00–12:00" />
+      <label for="bolecin-aw-transport">Rodzaj transportu</label>
+      <input type="text" id="bolecin-aw-transport" maxlength="80" autocomplete="off" spellcheck="false" />
+      <p class="doc-bulk-points-title">Z protokołu do arkusza Bolęcin</p>
+      <div id="bolecin-aw-summary" class="bolecin-aw-summary"></div>
+      <div class="doc-modal-actions">
+        <button type="button" id="bolecin-aw-cancel">Anuluj</button>
+        <button type="button" id="bolecin-aw-skip">Generuj bez awizacji</button>
+        <button type="button" id="bolecin-aw-add">Dodaj awizację</button>
+      </div>
+    </div>
+  </div>
 `
     : '';
 
@@ -868,6 +887,11 @@ export function buildMapHtml(
     .bulk-rates-target-options label { display: flex !important; align-items: center; gap: 6px; margin: 0 !important; font-size: 12.5px; font-weight: 500; cursor: pointer; }
     .bulk-rates-target-options input { margin: 0; }
     .doc-bulk-numer-info { font-size: 12px; color: var(--map-accent-deep); margin: 8px 0 0; min-height: 1.2em; }
+    #bolecin-aw-modal { z-index: 21000; }
+    #bolecin-aw-add { background: var(--map-accent); color: #fff; border-color: var(--map-accent-deep); }
+    #bolecin-aw-add:hover { background: var(--map-accent-deep); color: #fff; }
+    .bolecin-aw-summary { margin-top: 4px; max-height: 180px; overflow-y: auto; font-size: 12px; line-height: 1.45; color: #334155; }
+    .bolecin-aw-summary p { margin: 2px 0; }
     .popup-bulk-select { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; cursor: pointer; color: #334155; }
     .popup-bulk-select input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
     .map-bulk-panel { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--map-line); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -2466,6 +2490,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       window.__currentDocPointIdx = pointIdx;
       window.__bulkDocPointIdxs = [];
+      window.__bolecinAwizacjaChoice = null;
       setDocModalMode('single');
       resetRouteFormForOpen();
       var m = document.getElementById('doc-modal');
@@ -2495,6 +2520,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       window.__currentDocPointIdx = null;
       window.__bulkDocPointIdxs = indices.slice();
+      window.__bolecinAwizacjaChoice = null;
       setDocModalMode('bulk');
       resetRouteFormForOpen();
       var m = document.getElementById('doc-modal');
@@ -2519,6 +2545,12 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (!m) return;
       m.style.display = 'none';
       m.setAttribute('aria-hidden', 'true');
+      window.__bolecinAwizacjaChoice = null;
+      var aw = document.getElementById('bolecin-aw-modal');
+      if (aw) {
+        aw.style.display = 'none';
+        aw.setAttribute('aria-hidden', 'true');
+      }
     }
     function uniqueBulkShopEntries(indices) {
       var seen = {};
@@ -3352,6 +3384,105 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         return routeBodyFields(true, proposal, nextRate);
       });
     }
+    function isBolecinMiejsce_(text) {
+      var combined = String(text || '').toLowerCase()
+        .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e')
+        .replace(/ł/g, 'l').replace(/ń/g, 'n').replace(/ó/g, 'o')
+        .replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z');
+      if (!combined.trim()) return false;
+      return combined.indexOf('bolecin') >= 0 || combined.indexOf('biosystem') >= 0;
+    }
+    function miejsceIsBolecin_(mdOpt) {
+      if (!mdOpt) return false;
+      return isBolecinMiejsce_(mdOpt.label) || isBolecinMiejsce_(mdOpt.dane);
+    }
+    function bolecinAwizacjaNote_() {
+      var choice = window.__bolecinAwizacjaChoice;
+      if (!choice || !choice.add) return '';
+      return 'Awizacja dopisana do arkusza Bolęcin.';
+    }
+    function assignBolecinAwizacja_(payload, mdOpt) {
+      var choice = window.__bolecinAwizacjaChoice;
+      if (!choice || !choice.add || !miejsceIsBolecin_(mdOpt)) return;
+      payload.awizujBolecin = true;
+      payload.oknoAwizacji = choice.okno || '';
+      payload.awizacja = choice.nr || '';
+      payload.rodzajTransportu = choice.rodzaj || '';
+    }
+    function bolecinSummaryLine_(box, label, value) {
+      var p = document.createElement('p');
+      var strong = document.createElement('strong');
+      strong.textContent = label + ': ';
+      p.appendChild(strong);
+      p.appendChild(document.createTextNode(value || '—'));
+      box.appendChild(p);
+    }
+    function fillBolecinAwizacjaSummary_(form) {
+      var box = document.getElementById('bolecin-aw-summary');
+      if (!box) return;
+      box.innerHTML = '';
+      if (window.__docModalMode === 'bulk') {
+        (window.__docBulkPointJobs || []).forEach(function (job) {
+          var point = adresy[job.pointIdx];
+          if (!point) return;
+          var podmiot = point.podmiotHandlowy || (point.podmiotyHandlowe && point.podmiotyHandlowe[0]) || '';
+          var rodzaj = aggregateRodzajZbiorkiFromSealRows(job.filteredSeals);
+          bolecinSummaryLine_(
+            box,
+            point.sklep || point.adres,
+            (point.adres || '') + ' · ' + podmiot + ' · ' + job.filteredSeals.length + ' worków' + (rodzaj ? ' · ' + rodzaj : '')
+          );
+        });
+      } else {
+        var point = adresy[window.__currentDocPointIdx];
+        var seals = window.__docFilteredSeals || (point && point.sealRows) || [];
+        var podmiot = point ? (point.podmiotHandlowy || (point.podmiotyHandlowe && point.podmiotyHandlowe[0]) || '') : '';
+        bolecinSummaryLine_(box, 'Adres odbioru', point ? point.adres : '');
+        bolecinSummaryLine_(box, 'Nazwa kontrahenta', podmiot);
+        bolecinSummaryLine_(box, 'Rodzaj zbiórki', aggregateRodzajZbiorkiFromSealRows(seals));
+        bolecinSummaryLine_(box, 'Ile worków', String(seals.length));
+      }
+      bolecinSummaryLine_(box, 'Data odbioru', form.dz);
+      bolecinSummaryLine_(box, 'Kto odbiera', form.prOpt.label);
+      bolecinSummaryLine_(box, 'Miejsce zrzutu', form.mdOpt.label);
+    }
+    function openBolecinAwizacjaModal_(form) {
+      fillBolecinAwizacjaSummary_(form);
+      var m = document.getElementById('bolecin-aw-modal');
+      if (!m) return;
+      m.style.display = 'flex';
+      m.setAttribute('aria-hidden', 'false');
+      var nr = document.getElementById('bolecin-aw-nr');
+      if (nr) nr.focus();
+    }
+    function closeBolecinAwizacjaModal_() {
+      var m = document.getElementById('bolecin-aw-modal');
+      if (!m) return;
+      m.style.display = 'none';
+      m.setAttribute('aria-hidden', 'true');
+    }
+    function readBolecinAwizacjaInputs_() {
+      function val(id) {
+        var el = document.getElementById(id);
+        return el ? String(el.value).trim() : '';
+      }
+      return {
+        add: true,
+        nr: val('bolecin-aw-nr'),
+        okno: val('bolecin-aw-okno'),
+        rodzaj: val('bolecin-aw-transport')
+      };
+    }
+    function offerBolecinAwizacja_(form) {
+      if (!transportApiEnabled || !miejsceIsBolecin_(form.mdOpt) || window.__bolecinAwizacjaChoice) return false;
+      openBolecinAwizacjaModal_(form);
+      return true;
+    }
+    function acceptBolecinAwizacja_(add) {
+      window.__bolecinAwizacjaChoice = add ? readBolecinAwizacjaInputs_() : { add: false };
+      closeBolecinAwizacjaModal_();
+      runDocGenerate();
+    }
     function runBulkDocGenerate() {
       if (transportApiEnabled && !window.__docModalDataReady) {
         alert('Poczekaj na załadowanie danych transportu.');
@@ -3368,6 +3499,8 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         alert('Brak zaznaczonych punktów do protokołu.');
         return;
       }
+      if (offerBolecinAwizacja_(form)) return;
+      var awizacjaNote = bolecinAwizacjaNote_();
       resolveRouteFieldsBeforeSave(form.routeFields).then(function (routeFields) {
       if (form.routeFields && !routeFields) return;
       form.routeFields = routeFields;
@@ -3401,6 +3534,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
               komentarz2: form.komentarz2
             };
             assignRouteBody(transportPayload, form.routeFields);
+            assignBolecinAwizacja_(transportPayload, form.mdOpt);
             return appendTransportRow(transportPayload).then(function (resp) {
               if (!resp || !resp.ok) {
                 throw new Error(resp && resp.error ? resp.error : 'błąd API');
@@ -3428,11 +3562,15 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           closeDocModal();
           if (failed > 0) {
             showMapNotice(
-              'Wygenerowano ' + generated + ' protokołów.\\nNie udało się: ' + failed + '.',
+              'Wygenerowano ' + generated + ' protokołów.\\nNie udało się: ' + failed + '.' +
+                (generated > 0 && awizacjaNote ? '\\n' + awizacjaNote : ''),
               'error'
             );
           } else {
-            showMapNotice('Wygenerowano ' + generated + ' protokołów.', 'ok');
+            showMapNotice(
+              'Wygenerowano ' + generated + ' protokołów.' + (awizacjaNote ? '\\n' + awizacjaNote : ''),
+              'ok'
+            );
           }
         });
       }).catch(function (err) {
@@ -3460,6 +3598,8 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       var form = parseDocFormValues();
       if (!form) return;
+      if (offerBolecinAwizacja_(form)) return;
+      var awizacjaNote = bolecinAwizacjaNote_();
       resolveRouteFieldsBeforeSave(form.routeFields).then(function (routeFields) {
       if (form.routeFields && !routeFields) return;
       form.routeFields = routeFields;
@@ -3521,6 +3661,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           komentarz2: form.komentarz2
         };
         assignRouteBody(transportPayload, form.routeFields);
+        assignBolecinAwizacja_(transportPayload, form.mdOpt);
         if (manualNumer) {
           finishWithNumber(numerWpisany, true);
           appendTransportRow(transportPayload).then(function (resp) {
@@ -3539,7 +3680,10 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
                 if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
               });
             }
-            showMapNotice('Dokument pobrany.\\nZapisano transport: ' + numerWpisany, 'ok');
+            showMapNotice(
+              'Dokument pobrany.\\nZapisano transport: ' + numerWpisany + (awizacjaNote ? '\\n' + awizacjaNote : ''),
+              'ok'
+            );
           }).catch(function (err) {
             console.error(err);
             showMapNotice('Dokument pobrany, ale nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App.', 'error');
@@ -3567,6 +3711,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
               if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
             });
           }
+          if (awizacjaNote) showMapNotice(awizacjaNote, 'ok');
           finishWithNumber(String(resp.numer || ''));
         }).catch(function (err) {
           console.error(err);
@@ -3585,6 +3730,18 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       initDocComboboxes();
       document.getElementById('doc-btn-cancel').onclick = closeDocModal;
       document.getElementById('doc-btn-ok').onclick = runDocGenerate;
+      var bolecinAwCancel = document.getElementById('bolecin-aw-cancel');
+      var bolecinAwSkip = document.getElementById('bolecin-aw-skip');
+      var bolecinAwAdd = document.getElementById('bolecin-aw-add');
+      var bolecinAwModal = document.getElementById('bolecin-aw-modal');
+      if (bolecinAwCancel) bolecinAwCancel.onclick = closeBolecinAwizacjaModal_;
+      if (bolecinAwSkip) bolecinAwSkip.onclick = function () { acceptBolecinAwizacja_(false); };
+      if (bolecinAwAdd) bolecinAwAdd.onclick = function () { acceptBolecinAwizacja_(true); };
+      if (bolecinAwModal) {
+        bolecinAwModal.onclick = function (ev) {
+          if (ev.target.id === 'bolecin-aw-modal') closeBolecinAwizacjaModal_();
+        };
+      }
       var bezListyChk = document.getElementById('doc-chk-bez-listy-plomb');
       if (bezListyChk) {
         bezListyChk.onchange = function () { refreshAllDocPreparedLists(); };

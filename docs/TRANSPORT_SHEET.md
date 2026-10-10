@@ -111,6 +111,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 | POST | `mode=saveHarmonogram` | Cena za trasę, miejsce zrzutu, a przy Bolęcinie okno awizacji, awizacja, rodzaj zbiórki, rodzaj transportu, spodziewane worki |
 | POST | `mode=ungroupHarmonogram` | Czyści id sklepu. Nagłówka harmonogramu nie usuwa |
 | POST | `mode=awizujBolecin` | Dopisuje daty bieżącego miesiąca (od 22. także następnego) do arkusza Bolęcin. Jeden wiersz na harmonogram + data. Ta sama trójka adres + data + kto nie wchodzi drugi raz. Puste worki zostają puste. Wymaga Script property `BOLECIN_SHEETS_ID` |
+| POST | protokół z `awizujBolecin: true` | Gdy miejsce zrzutu to Bolęcin/Biosystem, po zapisie rejestru dopisuje **jeden** wiersz tego odbioru do arkusza Bolęcin. Nr rejestracyjny trafia do kolumny `awizacja`, plus okno awizacji i rodzaj transportu. Reszta (adres, nazwa, data, kto, miejsce, rodzaj zbiórki, worki) idzie z protokołu. Ta sama trójka adres + data + kto **nadpisuje** istniejący wiersz. |
 
 | POST | JSON w body (`Content-Type: text/plain`) | Atomowy zapis wiersza (`LockService`) + zwraca `numer`. Opcjonalne `numer` w body — jeśli użytkownik wpisał ręcznie, ten numer trafia do arkusza zamiast automatycznego |
 
@@ -222,6 +223,8 @@ Bez `TRANSPORT_WEBAPP_URL` mapa generuje protokoły **bez** zapisu do arkusza (n
 4. **Bez listy plomb** — checkbox w modalu Word. Zamiast numerów plomb w dokumencie trafia **10 wierszy kropek**; liczba kropek w wierszu = (maks. długość numeru plomby wśród worków w protokole) × 2. Rejestr transportu i `{{rodzaj_zbiorki}}` nadal bazują na rzeczywistych workach.
 
 5. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera. Pola **Komentarz 1** / **Komentarz 2** w modalu trafiają tylko do arkusza (kolumny 19–20), nie do protokołu Word.
+
+6. **Bolęcin** — gdy miejsce dostawy to Bolęcin lub Biosystem, przed generowaniem otwiera się okno awizacji. **Generuj bez awizacji** robi sam protokół. **Dodaj awizację** dopisuje wiersz do arkusza Bolęcin: nr rejestracyjny, okno awizacji, rodzaj transportu oraz dane już zebrane w protokole (adres, nazwa, data, kto odbiera, miejsce zrzutu, rodzaj zbiórki, liczba worków).
 
 
 

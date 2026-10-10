@@ -851,6 +851,15 @@ describe('phase6', () => {
       expect(html).toContain("Zapisano stawki dla ' + savedCount + ' sklepów.");
       expect(html).toContain("mode: target === 'harmonogram' ? 'saveRateHarmonogram' : 'saveRate'");
       expect(html).toContain('appendTransportRow');
+      expect(html).toContain('id="bolecin-aw-modal"');
+      expect(html).toContain('Nr rejestracyjny');
+      expect(html).toContain('Okno awizacji');
+      expect(html).toContain('Rodzaj transportu');
+      expect(html).toContain('Generuj bez awizacji');
+      expect(html).toContain('Dodaj awizację');
+      expect(html).toContain('awizujBolecin');
+      expect(html).toContain('function isBolecinMiejsce_');
+      expect(html).toContain('function offerBolecinAwizacja_');
       expect(html).toContain('filterSealRowsByMinDate');
       expect(html).toContain('buildDocListsFromSealRows');
       expect(html).toContain('function aggregateRodzajZbiorkiFromSealRows');

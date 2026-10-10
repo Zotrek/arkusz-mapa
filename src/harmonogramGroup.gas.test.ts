@@ -51,6 +51,8 @@ const NAMES = [
   'harmonogramProposalDates_',
   'joinHarmonogramLabels_',
   'bolecinRowIdentity_',
+  'wantsProtocolBolecin_',
+  'protocolBolecinFields_',
   'harmonogramBucketKey_',
   'harmonogramSiblingKey_',
   'memberMatchesHarmonogram_',
@@ -74,6 +76,14 @@ type GasRules = {
     shops: HarmonogramShopRow[],
     rows: number[],
   ) => ReturnType<typeof selectedShopsForGroup>;
+  wantsProtocolBolecin_: (body: Record<string, unknown> | null) => boolean;
+  protocolBolecinFields_: (body: Record<string, unknown>) => {
+    awizacja: string;
+    oknoAwizacji: string;
+    rodzajTransportu: string;
+    adres: string;
+    worki: string;
+  };
 };
 
 function loadGas(): GasRules {
@@ -90,6 +100,8 @@ function loadGas(): GasRules {
         'joinHarmonogramLabels_',
         'buildHarmonogramList_',
         'selectedShopsForGroup_',
+        'wantsProtocolBolecin_',
+        'protocolBolecinFields_',
       ].includes(name),
     )
       .map((name) => `${name}`)
@@ -139,5 +151,38 @@ describe('harmonogramGroup gas parity', () => {
       buildHarmonogramList(shops, groups, today),
     );
     expect(gas.selectedShopsForGroup_(shops, [2, 3])).toEqual(selectedShopsForGroup(shops, [2, 3]));
+  });
+
+  it('test_protocolBolecinFields_when_flag_and_bolecin_should_map_registration_to_awizacja', () => {
+    expect(gas.wantsProtocolBolecin_(null)).toBe(false);
+    expect(gas.wantsProtocolBolecin_({ awizujBolecin: true, miejsceZrzutu: 'Magazyn' })).toBe(false);
+    expect(gas.wantsProtocolBolecin_({ awizujBolecin: true, miejsceZrzutu: 'Biosystem Bolęcin' })).toBe(
+      true,
+    );
+    expect(
+      gas.protocolBolecinFields_({
+        oknoAwizacji: ' 8:00–12:00 ',
+        adresSklepu: 'ul. Testowa 1',
+        podmiotHandlowy: 'Firma',
+        dataOdbioru: '10.10.2026',
+        ktoOdbiera: 'Janex',
+        miejsceZrzutu: 'Bolęcin',
+        rodzajZbiorki: 'ręczna',
+        iloscWorkow: 4,
+        rodzajTransportu: 'bus',
+        awizacja: 'WX12345',
+      }),
+    ).toMatchObject({
+      oknoAwizacji: '8:00–12:00',
+      adres: 'ul. Testowa 1',
+      nazwa: 'Firma',
+      data: '10.10.2026',
+      kto: 'Janex',
+      miejsce: 'Bolęcin',
+      rodzajZbiorki: 'ręczna',
+      worki: '4',
+      rodzajTransportu: 'bus',
+      awizacja: 'WX12345',
+    });
   });
 });

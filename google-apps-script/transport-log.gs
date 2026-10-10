@@ -69,6 +69,10 @@
  *   od 22. także następny). Adresy i nazwy sklepów sklejone. Ta sama trójka adres+data+kto
  *   nie dopisuje drugi raz. Puste „Spodziewane worki” zostają puste.
  *   Wymaga Script property BOLECIN_SHEETS_ID (arkusz Bolęcin, edycja konta Web App).
+ * POST protokołu z awizujBolecin: true (miejsce Bolęcin/Biosystem) dopisuje jeden wiersz
+ *   tego odbioru do arkusza Bolęcin: okno awizacji, nr rejestracyjny w kolumnie awizacja,
+ *   rodzaj transportu oraz adres, nazwa, data, kto, miejsce, rodzaj zbiórki i worki.
+ *   Ta sama trójka adres+data+kto nadpisuje istniejący wiersz.
  * migrateRegisterLayoutRates_ — V1→V3 (wywołanie ręczne). V2→V3: migrateRegisterLayoutTransportOdbył.
  *
  * Bezpieczeństwo: doGet/doPost wymagają Script property GAS_SHARED_SECRET
@@ -403,8 +407,14 @@ function doPost(e) {
     if (mode === 'awizujBolecin') {
       return handleAwizujBolecinPost_(body);
     }
+    if (wantsProtocolBolecin_(body)) {
+      getBolecinSheetsId_();
+    }
     var numer = resolveTransportNumber_(body);
     appendTransportRow_(numer, body);
+    if (wantsProtocolBolecin_(body)) {
+      upsertProtocolBolecin_(body);
+    }
     return jsonResponse({ ok: true, numer: String(numer) });
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) }, 500);
@@ -3171,6 +3181,95 @@ function appendBolecinMapped_(sheet, fields) {
     return;
   }
   sheet.appendRow(row);
+}
+
+function wantsProtocolBolecin_(body) {
+  if (!body) {
+    return false;
+  }
+  var flag = body.awizujBolecin;
+  if (!(flag === true || flag === 'true' || flag === 1 || flag === '1')) {
+    return false;
+  }
+  return isBolecinPlace_(body.miejsceZrzutu);
+}
+
+function protocolBolecinFields_(body) {
+  var worki = body.iloscWorkow != null ? String(body.iloscWorkow) : '';
+  return {
+    oknoAwizacji: collapseText_(body.oknoAwizacji),
+    adres: collapseText_(body.adresSklepu),
+    nazwa: collapseText_(body.podmiotHandlowy),
+    data: collapseText_(body.dataOdbioru),
+    kto: collapseText_(body.ktoOdbiera),
+    miejsce: collapseText_(body.miejsceZrzutu),
+    rodzajZbiorki: collapseText_(body.rodzajZbiorki),
+    worki: collapseText_(worki),
+    rodzajTransportu: collapseText_(body.rodzajTransportu),
+    awizacja: collapseText_(body.awizacja),
+  };
+}
+
+function findBolecinIdentityRow_(sheet, identity) {
+  var last = sheet.getLastRow();
+  if (last < 2) {
+    return 0;
+  }
+  var headers = sheetHeaders_(sheet);
+  var adresIx = -1;
+  var dataIx = -1;
+  var ktoIx = -1;
+  var i;
+  for (i = 0; i < headers.length; i++) {
+    var key = bolecinFieldKey_(headers[i]);
+    if (key === 'adres') adresIx = i;
+    if (key === 'data') dataIx = i;
+    if (key === 'kto') ktoIx = i;
+  }
+  if (adresIx < 0 || dataIx < 0 || ktoIx < 0) {
+    return 0;
+  }
+  var values = sheet.getRange(2, 1, last - 1, headers.length).getValues();
+  for (i = 0; i < values.length; i++) {
+    var rowIdentity = bolecinRowIdentity_(
+      cellAt_(values[i], adresIx),
+      cellAt_(values[i], dataIx),
+      cellAt_(values[i], ktoIx),
+    );
+    if (rowIdentity === identity) {
+      return i + 2;
+    }
+  }
+  return 0;
+}
+
+function writeBolecinMappedRow_(sheet, sheetRow, fields) {
+  var headers = sheetHeaders_(sheet);
+  var any = false;
+  var i;
+  for (i = 0; i < headers.length; i++) {
+    var key = bolecinFieldKey_(headers[i]);
+    if (!key) {
+      continue;
+    }
+    any = true;
+    var value = fields[key] != null ? String(fields[key]) : '';
+    sheet.getRange(sheetRow, i + 1).setValue(value);
+  }
+  return any;
+}
+
+/** Jeden wiersz protokołu. Istniejąca trójka adres + data + kto jest nadpisywana. */
+function upsertProtocolBolecin_(body) {
+  var fields = protocolBolecinFields_(body);
+  var ss = SpreadsheetApp.openById(getBolecinSheetsId_());
+  var monthSheet = getOrCreateBolecinMonthSheet_(ss, fields.data);
+  var identity = bolecinRowIdentity_(fields.adres, fields.data, fields.kto);
+  var existing = findBolecinIdentityRow_(monthSheet, identity);
+  if (existing && writeBolecinMappedRow_(monthSheet, existing, fields)) {
+    return;
+  }
+  appendBolecinMapped_(monthSheet, fields);
 }
 
 function handleAwizujBolecinPost_(body) {
