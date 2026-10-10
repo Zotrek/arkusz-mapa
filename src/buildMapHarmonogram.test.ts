@@ -23,5 +23,8 @@ describe('buildMapHarmonogram', () => {
     expect(script).toContain('map-harmonogram-open');
     expect(script).toContain('spodziewaneWorki');
     expect(script).toContain('oknoAwizacji');
+    expect(script).toContain('harmonogram-bucket-head');
+    expect(script).toContain('harmonogram-day-chip');
+    expect(script).toContain('harmonogramShopCountLabel');
   });
 });

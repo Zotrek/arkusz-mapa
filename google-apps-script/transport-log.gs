@@ -5220,6 +5220,7 @@ function migrateRegisterLayoutTransportOdbył() {
 
 /**
  * Ręczne: październik 2026 ze starych zakładek → miesięczne (po nazwie).
+ * Kopiuje wartości + format (tło, kolor/styl czcionki).
  * Przy dużych arkuszach uruchamiaj osobno report / schedule (limit 6 min GAS).
  */
 function migrateOctober2026ToMonthSheets() {
@@ -5238,7 +5239,7 @@ function migrateOctober2026ToMonthSheets() {
   }
 }
 
-/** Tylko Arkusz1 → Na zgłoszenie Październik 2026. */
+/** Tylko Arkusz1 → Na zgłoszenie Październik 2026 (wartości + format). */
 function migrateOctober2026ReportToMonthSheet() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -5251,12 +5252,35 @@ function migrateOctober2026ReportToMonthSheet() {
   }
 }
 
-/** Tylko zestawienie → Harmonogram Październik 2026. */
+/** Tylko zestawienie → Harmonogram Październik 2026 (wartości + format). */
 function migrateOctober2026ScheduleToMonthSheet() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var out = migrateOctober2026ScheduleBody_();
+    Logger.log(JSON.stringify(out));
+    return out;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Gdy wartości już są na miesięcznych: skopiuj tylko format z backupu / legacy.
+ * Źródło: zakładka `Arkusz1_backup` / `zestawienie z harmonogramu_backup` (jeśli jest),
+ * inaczej zwykłe legacy. Nie usuwa wierszy ze źródła.
+ *
+ * Workflow: Historia wersji → skopiuj starą zakładkę do pliku jako `…_backup` → uruchom to.
+ */
+function copyOctober2026FormattingToMonthSheets() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var out = {
+      ok: true,
+      report: copyOctober2026FormattingBody_('report'),
+      schedule: copyOctober2026FormattingBody_('schedule'),
+    };
     Logger.log(JSON.stringify(out));
     return out;
   } finally {
@@ -5286,12 +5310,27 @@ function migrateOctober2026ScheduleBody_() {
   );
 }
 
+function copyOctober2026FormattingBody_(kind) {
+  var legacyName = kind === 'schedule' ? SCHEDULE_REGISTER_SHEET_NAME : REGISTER_SHEET_NAME;
+  var sourceName = resolveMigrateFormatSourceName_(legacyName);
+  var dateCol = kind === 'schedule' ? SCHEDULE_COL.dataOdbioru : COL.dataOdbioru;
+  var lastCol = kind === 'schedule' ? SCHEDULE_COL.komentarz2 : COL.komentarz2;
+  return copyMonthFormattingToTarget_(kind, sourceName, 10, 2026, dateCol, lastCol);
+}
+
+/** Preferuj `nazwa_backup`, inaczej legacy. */
+function resolveMigrateFormatSourceName_(legacyName) {
+  var backup = legacyName + '_backup';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(backup)) {
+    return backup;
+  }
+  return legacyName;
+}
+
 /**
- * Batch: jeden odczyt, append na target (jeśli pusty), rewrite legacy bez wierszy miesiąca.
- * Bez deleteRow w pętli (limit czasu GAS). Re-run po timeout: gdy target już ma dane,
- * pomija append i tylko czyści pozostałe wiersze miesiąca z legacy.
- *
- * @returns {{ ok: boolean, moved: number, appended: number, stripped: number, targetSheet: string, legacySheet: string, skippedAppend: boolean }}
+ * Batch: odczyt wartości + formatów, append na target (jeśli pusty), rewrite legacy.
+ * Bez deleteRow w pętli. Re-run: gdy target ma dane — nie dubluj wartości, dociągnij format po kluczu, potem strip.
  */
 function migrateMonthRowsFromLegacy_(kind, legacyName, month, year, dateCol, lastCol) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -5300,33 +5339,32 @@ function migrateMonthRowsFromLegacy_(kind, legacyName, month, year, dateCol, las
     kind === 'schedule'
       ? SCHEDULE_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year
       : REPORT_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year;
+  var empty = {
+    ok: true,
+    moved: 0,
+    appended: 0,
+    stripped: 0,
+    formatsApplied: 0,
+    targetSheet: targetName,
+    legacySheet: legacyName,
+    skippedAppend: false,
+  };
   if (!legacy) {
-    return {
-      ok: true,
-      moved: 0,
-      appended: 0,
-      stripped: 0,
-      targetSheet: targetName,
-      legacySheet: legacyName,
-      skippedAppend: false,
-    };
+    return empty;
   }
   var lastRow = legacy.getLastRow();
   if (lastRow < 2) {
-    return {
-      ok: true,
-      moved: 0,
-      appended: 0,
-      stripped: 0,
-      targetSheet: targetName,
-      legacySheet: legacyName,
-      skippedAppend: false,
-    };
+    return empty;
   }
   var width = Math.max(legacy.getLastColumn(), lastCol);
-  var values = legacy.getRange(2, 1, lastRow - 1, width).getValues();
+  var numRows = lastRow - 1;
+  var dataRange = legacy.getRange(2, 1, numRows, width);
+  var values = dataRange.getValues();
+  var formats = readRangeFormats_(dataRange);
   var moveRows = [];
   var keepRows = [];
+  var moveFmt = emptyFormatsBundle_();
+  var keepFmt = emptyFormatsBundle_();
   var i;
   var c;
   for (i = 0; i < values.length; i++) {
@@ -5338,39 +5376,48 @@ function migrateMonthRowsFromLegacy_(kind, legacyName, month, year, dateCol, las
     var parts = parsePickupDateParts_(src[dateCol - 1]);
     if (parts && parts.month === month && parts.year === year) {
       moveRows.push(line);
+      pushFormatRow_(moveFmt, formats, i);
     } else {
       keepRows.push(line);
+      pushFormatRow_(keepFmt, formats, i);
     }
   }
   if (moveRows.length === 0) {
-    return {
-      ok: true,
-      moved: 0,
-      appended: 0,
-      stripped: 0,
-      targetSheet: targetName,
-      legacySheet: legacyName,
-      skippedAppend: false,
-    };
+    return empty;
   }
   var dateText = '01.' + (month < 10 ? '0' : '') + month + '.' + year;
   var target = getOrCreateMonthRegisterSheet_(kind, dateText);
   var targetHadData = target.getLastRow() >= 2;
   var appended = 0;
   var skippedAppend = false;
+  var formatsApplied = 0;
   if (targetHadData) {
-    // Poprzedni run zdążył skopiować — nie dubluj; tylko usuń październik z legacy.
     skippedAppend = true;
+    formatsApplied = applyFormatsByRowKey_(
+      kind,
+      target,
+      width,
+      moveRows,
+      moveFmt,
+      dateCol,
+    );
   } else {
-    target.getRange(2, 1, moveRows.length, width).setValues(moveRows);
+    var targetRange = target.getRange(2, 1, moveRows.length, width);
+    targetRange.setValues(moveRows);
+    writeRangeFormats_(targetRange, moveFmt);
     appended = moveRows.length;
+    formatsApplied = moveRows.length;
   }
-  var clearRows = lastRow - 1;
-  if (clearRows > 0) {
-    legacy.getRange(2, 1, clearRows, width).clearContent();
+  if (numRows > 0) {
+    legacy.getRange(2, 1, numRows, width).clearContent();
   }
   if (keepRows.length > 0) {
-    legacy.getRange(2, 1, keepRows.length, width).setValues(keepRows);
+    var keepRange = legacy.getRange(2, 1, keepRows.length, width);
+    keepRange.setValues(keepRows);
+    writeRangeFormats_(keepRange, keepFmt);
+  }
+  if (keepRows.length < numRows) {
+    legacy.getRange(2 + keepRows.length, 1, numRows - keepRows.length, width).clearFormat();
   }
   SpreadsheetApp.flush();
   return {
@@ -5378,10 +5425,175 @@ function migrateMonthRowsFromLegacy_(kind, legacyName, month, year, dateCol, las
     moved: moveRows.length,
     appended: appended,
     stripped: moveRows.length,
+    formatsApplied: formatsApplied,
     targetSheet: target.getName(),
     legacySheet: legacyName,
     skippedAppend: skippedAppend,
   };
+}
+
+/**
+ * Tylko format: wiersze miesiąca ze źródła → dopasowanie po kluczu na zakładce miesięcznej.
+ * Źródła nie czyści.
+ */
+function copyMonthFormattingToTarget_(kind, sourceName, month, year, dateCol, lastCol) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var source = ss.getSheetByName(sourceName);
+  var targetName =
+    kind === 'schedule'
+      ? SCHEDULE_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year
+      : REPORT_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year;
+  var target = ss.getSheetByName(targetName);
+  if (!source) {
+    return { ok: false, error: 'no-source', sourceSheet: sourceName, targetSheet: targetName };
+  }
+  if (!target || target.getLastRow() < 2) {
+    return { ok: false, error: 'no-target', sourceSheet: sourceName, targetSheet: targetName };
+  }
+  var lastRow = source.getLastRow();
+  if (lastRow < 2) {
+    return {
+      ok: true,
+      formatsApplied: 0,
+      sourceSheet: sourceName,
+      targetSheet: targetName,
+    };
+  }
+  var width = Math.max(
+    source.getLastColumn(),
+    target.getLastColumn(),
+    lastCol,
+  );
+  var numRows = lastRow - 1;
+  var dataRange = source.getRange(2, 1, numRows, width);
+  var values = dataRange.getValues();
+  var formats = readRangeFormats_(dataRange);
+  var moveRows = [];
+  var moveFmt = emptyFormatsBundle_();
+  var i;
+  var c;
+  for (i = 0; i < values.length; i++) {
+    var src = values[i];
+    var parts = parsePickupDateParts_(src[dateCol - 1]);
+    if (!(parts && parts.month === month && parts.year === year)) {
+      continue;
+    }
+    var line = [];
+    for (c = 0; c < width; c++) {
+      line.push(src[c] != null ? src[c] : '');
+    }
+    moveRows.push(line);
+    pushFormatRow_(moveFmt, formats, i);
+  }
+  var applied = applyFormatsByRowKey_(kind, target, width, moveRows, moveFmt, dateCol);
+  SpreadsheetApp.flush();
+  return {
+    ok: true,
+    formatsApplied: applied,
+    sourceRows: moveRows.length,
+    sourceSheet: sourceName,
+    targetSheet: targetName,
+  };
+}
+
+function emptyFormatsBundle_() {
+  return { backgrounds: [], fontColors: [], fontWeights: [], fontStyles: [] };
+}
+
+function readRangeFormats_(range) {
+  return {
+    backgrounds: range.getBackgrounds(),
+    fontColors: range.getFontColors(),
+    fontWeights: range.getFontWeights(),
+    fontStyles: range.getFontStyles(),
+  };
+}
+
+function pushFormatRow_(bundle, formats, rowIndex) {
+  bundle.backgrounds.push(formats.backgrounds[rowIndex]);
+  bundle.fontColors.push(formats.fontColors[rowIndex]);
+  bundle.fontWeights.push(formats.fontWeights[rowIndex]);
+  bundle.fontStyles.push(formats.fontStyles[rowIndex]);
+}
+
+function writeRangeFormats_(range, bundle) {
+  if (!bundle || !bundle.backgrounds || !bundle.backgrounds.length) {
+    return;
+  }
+  range.setBackgrounds(bundle.backgrounds);
+  range.setFontColors(bundle.fontColors);
+  range.setFontWeights(bundle.fontWeights);
+  range.setFontStyles(bundle.fontStyles);
+}
+
+/** Klucz wiersza do dopasowania formatu (report: numer+adres+data; schedule: adres+data+kto). */
+function migrateRowFormatKey_(kind, cells, dateCol) {
+  var dateText = settlementDateText_(cells[dateCol - 1]);
+  if (kind === 'schedule') {
+    return (
+      settlementFoldPl_(settlementText_(cells[0])) +
+      '\t' +
+      dateText +
+      '\t' +
+      settlementFoldPl_(settlementText_(cells[SCHEDULE_COL.ktoOdbiera - 1]))
+    );
+  }
+  return (
+    settlementTransportNumber_(cells[0]) +
+    '\t' +
+    settlementFoldPl_(settlementText_(cells[1])) +
+    '\t' +
+    dateText
+  );
+}
+
+/**
+ * Na targetcie ustawia format wierszy o tym samym kluczu co w moveRows.
+ * @returns {number} liczba wierszy targetu z ustawionym formatem
+ */
+function applyFormatsByRowKey_(kind, target, width, moveRows, moveFmt, dateCol) {
+  if (!moveRows.length) {
+    return 0;
+  }
+  var fmtByKey = {};
+  var i;
+  for (i = 0; i < moveRows.length; i++) {
+    var key = migrateRowFormatKey_(kind, moveRows[i], dateCol);
+    if (!key || key.indexOf('\t\t') === 0) {
+      continue;
+    }
+    fmtByKey[key] = {
+      backgrounds: moveFmt.backgrounds[i],
+      fontColors: moveFmt.fontColors[i],
+      fontWeights: moveFmt.fontWeights[i],
+      fontStyles: moveFmt.fontStyles[i],
+    };
+  }
+  var lastRow = target.getLastRow();
+  if (lastRow < 2) {
+    return 0;
+  }
+  var numRows = lastRow - 1;
+  var targetRange = target.getRange(2, 1, numRows, width);
+  var targetValues = targetRange.getValues();
+  var targetFmt = readRangeFormats_(targetRange);
+  var applied = 0;
+  for (i = 0; i < targetValues.length; i++) {
+    var tKey = migrateRowFormatKey_(kind, targetValues[i], dateCol);
+    var fmt = fmtByKey[tKey];
+    if (!fmt) {
+      continue;
+    }
+    targetFmt.backgrounds[i] = fmt.backgrounds;
+    targetFmt.fontColors[i] = fmt.fontColors;
+    targetFmt.fontWeights[i] = fmt.fontWeights;
+    targetFmt.fontStyles[i] = fmt.fontStyles;
+    applied += 1;
+  }
+  if (applied > 0) {
+    writeRangeFormats_(targetRange, targetFmt);
+  }
+  return applied;
 }
 
 /**

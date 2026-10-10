@@ -181,9 +181,17 @@ Ręcznie w edytorze Apps Script (po wklejeniu aktualnego `transport-log.gs`):
 
 Albo obie naraz: **`migrateOctober2026ToMonthSheets`** (przy dużych arkuszach może znów dojść do limitu 6 min — wtedy osobno).
 
-- Kopiuje wiersze z datą w **10.2026**, potem przepisuje legacy bez nich (batch, bez `deleteRow` w pętli).
-- Re-run po timeout: jeśli zakładka miesięczna już ma dane, **nie dokleja drugi raz** — tylko czyści pozostały październik z legacy.
+- Kopiuje **wartości + format** (tło, kolor czcionki, pogrubienie/kursywa) dla wierszy z datą w **10.2026**, potem przepisuje legacy bez nich (batch, bez `deleteRow` w pętli).
+- Re-run po timeout: jeśli zakładka miesięczna już ma dane, **nie dokleja wartości** — dociąga format po kluczu wiersza i czyści pozostały październik z legacy.
 - Starsze miesiące zostają w legacy. Odczyty nadal skanują obie warstwy.
+
+#### Odzyskanie formatowania (gdy wartości już są na miesięcznych)
+
+1. **Plik → Historia wersji** — otwórz stan sprzed migracji.
+2. Skopiuj starą zakładkę do **bieżącego** pliku i nazwij:
+   - `Arkusz1_backup`
+   - `zestawienie z harmonogramu_backup`
+3. Uruchom **`copyOctober2026FormattingToMonthSheets`** — ustawia tło/kolory na miesięcznych po dopasowaniu wierszy (numer+adres+data / adres+data+kto). Nie rusza wartości ani backupów.
 
 Po migracji: **Wdróż → Nowa wersja** Web App (jeśli skrypt był aktualizowany).
 

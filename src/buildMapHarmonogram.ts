@@ -32,12 +32,61 @@ export function harmonogramPanelCss(): string {
     #harmonogram-group-modal .harmonogram-hint { margin: 0 0 10px; font-size: 12px; color: #64748b; line-height: 1.4; }
     #harmonogram-group-modal .harmonogram-status { min-height: 1.2em; font-size: 12px; white-space: pre-line; color: #0f766e; }
     #harmonogram-group-modal .harmonogram-status.is-error { color: #b02a37; }
-    #harmonogram-group-modal .harmonogram-card, #harmonogram-group-modal .harmonogram-bucket {
+    #harmonogram-group-modal .harmonogram-card {
       border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 10px; padding: 10px 12px; margin: 8px 0;
     }
-    #harmonogram-group-modal .harmonogram-card h5, #harmonogram-group-modal .harmonogram-bucket h5 {
-      margin: 0 0 6px; font-size: 13px;
+    #harmonogram-group-modal .harmonogram-card h5 { margin: 0 0 6px; font-size: 13px; }
+    #harmonogram-group-modal .harmonogram-bucket {
+      border: 1px solid rgba(217, 119, 6, 0.28);
+      border-left: 4px solid #d97706;
+      border-radius: 12px;
+      margin: 10px 0;
+      padding: 0;
+      overflow: hidden;
+      background: linear-gradient(180deg, #fffbeb 0%, #fff 72px);
+      box-shadow: 0 1px 2px rgba(120, 53, 15, 0.06);
     }
+    #harmonogram-group-modal .harmonogram-bucket-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+      padding: 10px 12px 6px;
+    }
+    #harmonogram-group-modal .harmonogram-bucket h5 {
+      margin: 0; font-size: 13.5px; font-weight: 700; line-height: 1.35; color: #1c1917;
+    }
+    #harmonogram-group-modal .harmonogram-bucket-count {
+      flex-shrink: 0; padding: 3px 8px; border-radius: 999px;
+      background: rgba(217, 119, 6, 0.14); color: #92400e;
+      font-size: 11px; font-weight: 700; line-height: 1.3; white-space: nowrap;
+    }
+    #harmonogram-group-modal .harmonogram-day-chips {
+      display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 10px;
+    }
+    #harmonogram-group-modal .harmonogram-day-chip {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+      background: #fff; border: 1px solid rgba(217, 119, 6, 0.4); color: #9a3412;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+    }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-shop {
+      margin: 0; padding: 8px 12px; border-top: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(255, 255, 255, 0.72);
+    }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-shop:hover { background: #fff7ed; }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-shop:has(.harmonogram-pick:checked) {
+      background: rgba(13, 148, 136, 0.1);
+    }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-shop label {
+      display: flex; align-items: flex-start; gap: 8px; width: 100%; margin: 0;
+      font-weight: 500; cursor: pointer; line-height: 1.35;
+    }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-pick {
+      margin: 2px 0 0; flex-shrink: 0; accent-color: #0d9488;
+    }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-shop-name { min-width: 0; }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-actions {
+      margin: 0; padding: 8px 12px 12px; border-top: 1px solid rgba(148, 163, 184, 0.22);
+      background: #fff;
+    }
+    #harmonogram-group-modal .harmonogram-bucket .harmonogram-group { width: 100%; }
     #harmonogram-group-modal label { display: block; font-size: 12px; font-weight: 600; margin: 8px 0 3px; }
     #harmonogram-group-modal input[type="text"] {
       width: 100%; box-sizing: border-box; padding: 7px 9px; border-radius: 8px;
@@ -241,13 +290,54 @@ export function harmonogramPanelBrowserScript(): string {
       return wrap;
     }
 
+    function harmonogramShopCountLabel(n) {
+      var abs = Math.abs(n);
+      var mod10 = abs % 10;
+      var mod100 = abs % 100;
+      if (abs === 1) return '1 sklep';
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return n + ' sklepy';
+      return n + ' sklepów';
+    }
+
+    function harmonogramDayChips(dni) {
+      var wrap = document.createElement('div');
+      wrap.className = 'harmonogram-day-chips';
+      var parts = String(dni || '').split(',');
+      var i;
+      for (i = 0; i < parts.length; i++) {
+        var day = parts[i].trim();
+        if (!day) continue;
+        var chip = document.createElement('span');
+        chip.className = 'harmonogram-day-chip';
+        chip.textContent = day;
+        wrap.appendChild(chip);
+      }
+      return wrap;
+    }
+
+    function harmonogramSyncGroupButton(card) {
+      var button = card.querySelector('.harmonogram-group');
+      if (!button) return;
+      var n = card.querySelectorAll('.harmonogram-pick:checked').length;
+      button.textContent = n ? 'Grupuj zaznaczone (' + n + ')' : 'Grupuj zaznaczone';
+    }
+
     function harmonogramBucketCard(bucket) {
       var card = document.createElement('article');
       card.className = 'harmonogram-bucket';
-      var title = document.createElement('h5');
-      title.textContent = (bucket.podwykonawca || '') + ' · ' + (bucket.dni || '');
-      card.appendChild(title);
       var shops = bucket.sklepy || [];
+      var head = document.createElement('div');
+      head.className = 'harmonogram-bucket-head';
+      var title = document.createElement('h5');
+      title.textContent = bucket.podwykonawca || 'Bez podwykonawcy';
+      var count = document.createElement('span');
+      count.className = 'harmonogram-bucket-count';
+      count.textContent = harmonogramShopCountLabel(shops.length);
+      head.appendChild(title);
+      head.appendChild(count);
+      card.appendChild(head);
+      var chips = harmonogramDayChips(bucket.dni);
+      if (chips.childNodes.length) card.appendChild(chips);
       var s;
       for (s = 0; s < shops.length; s++) {
         var line = document.createElement('div');
@@ -258,6 +348,7 @@ export function harmonogramPanelBrowserScript(): string {
         box.className = 'harmonogram-pick';
         box.setAttribute('data-rows', (shops[s].rows || []).join(','));
         var text = document.createElement('span');
+        text.className = 'harmonogram-shop-name';
         var shopLabel = harmonogramShopLabel(shops[s].adres);
         text.textContent = shopLabel === shops[s].adres ? shopLabel : shopLabel + ' — ' + shops[s].adres;
         label.appendChild(box);
@@ -265,6 +356,7 @@ export function harmonogramPanelBrowserScript(): string {
         line.appendChild(label);
         card.appendChild(line);
       }
+      card.addEventListener('change', function() { harmonogramSyncGroupButton(card); });
       var actions = document.createElement('div');
       actions.className = 'harmonogram-actions';
       var button = document.createElement('button');
