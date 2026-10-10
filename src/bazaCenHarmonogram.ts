@@ -10,6 +10,7 @@ import {
 } from './config.js';
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
+import { canonicalHarmonogramDays, HARMONOGRAM_ID_HEADER } from './harmonogramGroup.js';
 import { normalizeRateShopKey } from './saveRate.js';
 import { buildAddress, stripTrailingHouseNumberFromStreet } from './sheets.js';
 import { normalizeCityFromSheet } from './cityNormalize.js';
@@ -24,6 +25,7 @@ export const BAZA_CEN_HEADERS = [
   'Cena za trasę',
   'Od kiedy obowiązuje cena',
   'Dni odbiorów',
+  HARMONOGRAM_ID_HEADER,
 ] as const;
 
 export interface BazaCenShop {
@@ -42,6 +44,8 @@ export interface BazaCenExistingRow {
   routeName: string;
   /** Czy którakolwiek z kolumn cen jest wypełniona. */
   hasPrices: boolean;
+  /** Puste, gdy sklep nie jest w wspólnym harmonogramie. */
+  harmonogramId: string;
 }
 
 export interface BazaCenSyncPlan {
@@ -54,6 +58,8 @@ export interface BazaCenSyncPlan {
    * i ta sama data obowiązywania) albo pusty seed bez cen przy istniejącym wierszu z cenami.
    */
   duplicateDeletes: number[];
+  /** Czyści „Id harmonogramu”, gdy kanoniczne dni odbiorów się zmieniły. */
+  idClears: number[];
 }
 
 type SheetsClient = {
@@ -251,6 +257,7 @@ export function parseBazaCenRows(headers: string[], rows: string[][]): BazaCenEx
   const bag = headerIndex(headers, 'Cena za worek');
   const routeAmount = headerIndex(headers, 'Cena za trasę');
   const validFrom = headerIndex(headers, 'Od kiedy obowiązuje cena');
+  const harmonogramId = headerIndex(headers, HARMONOGRAM_ID_HEADER);
   const parsed: BazaCenExistingRow[] = [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] ?? [];
@@ -269,6 +276,7 @@ export function parseBazaCenRows(headers: string[], rows: string[][]): BazaCenEx
       routeName: routeName >= 0 ? collapse(cell(row, routeName)) : '',
       hasPrices:
         cellHasAmount(pickupVal) || cellHasAmount(bagVal) || cellHasAmount(routeAmountVal),
+      harmonogramId: harmonogramId >= 0 ? collapse(cell(row, harmonogramId)) : '',
     });
   }
   return parsed;
@@ -297,6 +305,7 @@ export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingR
   const append: BazaCenShop[] = [];
   const dayUpdates: Array<{ sheetRow: number; dni: string }> = [];
   const addressHeals: Array<{ sheetRow: number; adres: string }> = [];
+  const idClears: number[] = [];
   for (const shop of shops) {
     const rows = rowsByKey.get(bazaCenKey(shop.adres, shop.podwykonawca));
     if (!rows) {
@@ -307,12 +316,18 @@ export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingR
       if (row.dni !== shop.dni) {
         dayUpdates.push({ sheetRow: row.sheetRow, dni: shop.dni });
       }
+      if (
+        row.harmonogramId &&
+        canonicalHarmonogramDays(row.dni) !== canonicalHarmonogramDays(shop.dni)
+      ) {
+        idClears.push(row.sheetRow);
+      }
       if (row.adres !== shop.adres) {
         addressHeals.push({ sheetRow: row.sheetRow, adres: shop.adres });
       }
     }
   }
-  return { append, dayUpdates, addressHeals, duplicateDeletes };
+  return { append, dayUpdates, addressHeals, duplicateDeletes, idClears };
 }
 
 export function bazaCenRowValues(shop: BazaCenShop, headers: string[]): string[] {
@@ -437,11 +452,21 @@ export async function syncBazaCenHarmonogram(
 
   const currentValues = exists ? await readValues(api, spreadsheetId, sheetName) : [];
   const currentHeaders = (currentValues[0] ?? []).map((header) => String(header ?? ''));
-  const headers = currentHeaders.some((header) => header.trim().length > 0)
+  let headers = currentHeaders.some((header) => header.trim().length > 0)
     ? currentHeaders
     : [...BAZA_CEN_HEADERS];
 
   if (!currentHeaders.some((header) => header.trim().length > 0)) {
+    await api.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${quoteSheet(sheetName)}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [headers] },
+    });
+  }
+
+  if (headerIndex(headers, HARMONOGRAM_ID_HEADER) < 0) {
+    headers = [...headers, HARMONOGRAM_ID_HEADER];
     await api.spreadsheets.values.update({
       spreadsheetId,
       range: `${quoteSheet(sheetName)}!A1`,
@@ -457,6 +482,7 @@ export async function syncBazaCenHarmonogram(
   const plan = planBazaCenSync(shops, existing);
   const dniColumn = requireHeader(headers, 'Dni odbiorów', sheetName);
   const adresColumn = requireHeader(headers, 'Adres sklepu', sheetName);
+  const idColumn = headerIndex(headers, HARMONOGRAM_ID_HEADER);
 
   if (plan.append.length > 0) {
     await api.spreadsheets.values.append({
@@ -477,6 +503,15 @@ export async function syncBazaCenHarmonogram(
       batchData.push({
         range: `${quoteSheet(sheetName)}!${letter}${update.sheetRow}`,
         values: [[update.dni]],
+      });
+    }
+  }
+  if (plan.idClears.length > 0 && idColumn >= 0) {
+    const letter = columnLetter(idColumn);
+    for (const sheetRow of plan.idClears) {
+      batchData.push({
+        range: `${quoteSheet(sheetName)}!${letter}${sheetRow}`,
+        values: [['']],
       });
     }
   }

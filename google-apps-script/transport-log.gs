@@ -55,8 +55,20 @@
  *   saveRateHarmonogram — Baza cen harmonogram. Body jak saveRate + dniOdbiorow + opcjonalnie nazwaTrasy, kwotaTrasy.
  *   Ceny: ten sam klucz co saveRate. Nazwa+cena trasy razem albo obie puste (pusta para przy overwrite nie czyści).
  *   Dni: przy istniejącym połączeniu sklep + podwykonawca aktualizuje tylko gdy się zmieniły (wszystkie wiersze pary).
+ *   Zmiana kanonicznych dni (pn, cz ≠ samo pn) czyści „Id harmonogramu” na tych wierszach.
  *   Po zapisie: stawki/trasa na nierozliczonych wierszach „zestawienie z harmonogramu” tej pary (jak sync).
  *   Brak zakładki: zakłada z nagłówkami jak sync pipeline.
+ * GET ?action=listHarmonogramy → { ok, harmonogramy, doZgrupowania }
+ *   Do zgrupowania: sklepy bez pasującego id, kubełki = te same dni + ten sam podwykonawca.
+ * POST mode=groupHarmonogram { rows: [nr wiersza Bazy cen, …] } → { ok, id }  (H0001…)
+ * POST mode=saveHarmonogram { id, cenaTrasy, miejsceZrzutu, oknoAwizacji, awizacja,
+ *   rodzajZbiorki, rodzajTransportu, spodziewaneWorki }
+ * POST mode=ungroupHarmonogram { rows: […] } — czyści id, nagłówka harmonogramu nie usuwa.
+ * POST mode=awizujBolecin { id, nazwy?: { adres: nazwa } }
+ *   Tylko gdy miejsce zrzutu to Bolęcin/Biosystem. Jeden wiersz na datę (bieżący miesiąc,
+ *   od 22. także następny). Adresy i nazwy sklepów sklejone. Ta sama trójka adres+data+kto
+ *   nie dopisuje drugi raz. Puste „Spodziewane worki” zostają puste.
+ *   Wymaga Script property BOLECIN_SHEETS_ID (arkusz Bolęcin, edycja konta Web App).
  * migrateRegisterLayoutRates_ — V1→V3 (wywołanie ręczne). V2→V3: migrateRegisterLayoutTransportOdbył.
  *
  * Bezpieczeństwo: doGet/doPost wymagają Script property GAS_SHARED_SECRET
@@ -68,7 +80,7 @@
  *   Arkusz1 — legacy Na zgłoszenie (historia sprzed migracji miesięcznej)
  *   zestawienie z harmonogramu — legacy Harmonogram (historia)
  *   odebrane z harmonogramu — 1 wiersz = 1 worek (źródło sync)
- *   Lista podwykonawców, Popraw adres, Baza stawek, Baza cen harmonogram
+ *   Lista podwykonawców, Popraw adres, Baza stawek, Baza cen harmonogram, Harmonogramy
  *   (legacy odczyt: Przewoźnicy, Miejsca dostawy — scalane przy listReferenceData)
  */
 
@@ -174,6 +186,35 @@ var HARMONOGRAM_RATE_HEADERS = [
   'Cena za trasę',
   'Od kiedy obowiązuje cena',
   'Dni odbiorów',
+  'Id harmonogramu',
+];
+var HARMONOGRAMY_SHEET_NAME = 'Harmonogramy';
+var HARMONOGRAM_ID_HEADER = 'Id harmonogramu';
+var INCLUDE_NEXT_MONTH_FROM_DAY = 22;
+var BOLECIN_SHEETS_ID_PROP = 'BOLECIN_SHEETS_ID';
+var HARMONOGRAMY_HEADERS = [
+  'Id',
+  'Podwykonawca',
+  'Dni odbiorów',
+  'Cena za trasę',
+  'Miejsce zrzutu',
+  'Okno awizacji',
+  'Awizacja',
+  'Rodzaj zbiórki',
+  'Rodzaj transportu',
+  'Spodziewane worki',
+];
+var BOLECIN_HEADER_ROW = [
+  'Okno awizacji',
+  'Adres odbioru',
+  'Nazwa kontrahenta / podmiot handlowy',
+  'Data odbioru',
+  'Kto odbiera',
+  'Miejsce zrzutu',
+  'Rodzaj zbiórki',
+  'Ile worków',
+  'rodzaj traportu',
+  'awizacja',
 ];
 
 /** Nagłówki zestawienia Harmonogram — bez nr zlecenia. */
@@ -289,6 +330,9 @@ function doGet(e) {
     if (action === 'listStoreAddresses') {
       return jsonResponse({ ok: true, data: listStoreAddresses_() });
     }
+    if (action === 'listHarmonogramy') {
+      return jsonResponse(listHarmonogramy_());
+    }
     if (action === 'settlementSearch') {
       return jsonResponse(settlementSearch_(e.parameter));
     }
@@ -346,6 +390,18 @@ function doPost(e) {
     }
     if (mode === 'saveRateHarmonogram') {
       return handleSaveRateHarmonogramPost_(body);
+    }
+    if (mode === 'groupHarmonogram') {
+      return handleGroupHarmonogramPost_(body);
+    }
+    if (mode === 'saveHarmonogram') {
+      return handleSaveHarmonogramPost_(body);
+    }
+    if (mode === 'ungroupHarmonogram') {
+      return handleUngroupHarmonogramPost_(body);
+    }
+    if (mode === 'awizujBolecin') {
+      return handleAwizujBolecinPost_(body);
     }
     var numer = resolveTransportNumber_(body);
     appendTransportRow_(numer, body);
@@ -2141,6 +2197,7 @@ function getOrCreateHarmonogramRateSheet_() {
   if (!hasHeader) {
     sheet.getRange(1, 1, 1, HARMONOGRAM_RATE_HEADERS.length).setValues([HARMONOGRAM_RATE_HEADERS]);
   }
+  ensureSheetColumn_(sheet, HARMONOGRAM_ID_HEADER);
   return sheet;
 }
 
@@ -2186,7 +2243,13 @@ function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days) {
     if (row.days === days) {
       continue;
     }
+    var prevDays = canonicalHarmonogramDays_(row.days);
+    var nextDays = canonicalHarmonogramDays_(days);
     sheet.getRange(row.row, 8).setValue(days);
+    if (prevDays !== nextDays) {
+      var idCol = ensureSheetColumn_(sheet, HARMONOGRAM_ID_HEADER);
+      sheet.getRange(row.row, idCol).setValue('');
+    }
     updated += 1;
   }
   return updated;
@@ -2396,6 +2459,790 @@ function handleSaveRateHarmonogramPost_(body) {
     daysUpdated: daysUpdated,
     scheduleUpdated: appendedSchedule,
   });
+}
+
+function collapseText_(value) {
+  return cellStr_(value).replace(/\s+/g, ' ');
+}
+
+function sheetHeaders_(sheet) {
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  if (sheet.getLastRow() < 1) {
+    return [];
+  }
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+}
+
+function headerIndexNamed_(headers, name) {
+  var want = String(name || '').trim().toLowerCase();
+  var i;
+  for (i = 0; i < headers.length; i++) {
+    if (String(headers[i] == null ? '' : headers[i]).trim().toLowerCase() === want) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function cellAt_(row, index) {
+  if (index < 0 || !row) {
+    return '';
+  }
+  return cellStr_(row[index]);
+}
+
+/** Dopina kolumnę po nazwie. Nie przesuwa istniejących nagłówków. */
+function ensureSheetColumn_(sheet, name) {
+  var headers = sheetHeaders_(sheet);
+  var idx = headerIndexNamed_(headers, name);
+  if (idx >= 0) {
+    return idx + 1;
+  }
+  var col = Math.max(sheet.getLastColumn(), 0) + 1;
+  sheet.getRange(1, col).setValue(name);
+  return col;
+}
+
+function canonicalHarmonogramDays_(raw) {
+  var days = settlementParseWeekdays_(raw);
+  var want = {};
+  var i;
+  for (i = 0; i < days.length; i++) {
+    want[days[i]] = true;
+  }
+  var order = [
+    { token: 'pn', jsDay: 1 },
+    { token: 'wt', jsDay: 2 },
+    { token: 'śr', jsDay: 3 },
+    { token: 'cz', jsDay: 4 },
+    { token: 'pt', jsDay: 5 },
+    { token: 'sb', jsDay: 6 },
+    { token: 'nd', jsDay: 0 },
+  ];
+  var out = [];
+  for (i = 0; i < order.length; i++) {
+    if (want[order[i].jsDay]) {
+      out.push(order[i].token);
+    }
+  }
+  return out.join(', ');
+}
+
+function nextHarmonogramId_(existingIds) {
+  var max = 0;
+  var i;
+  for (i = 0; i < existingIds.length; i++) {
+    var match = /^H(\d+)$/.exec(collapseText_(existingIds[i]));
+    if (!match) {
+      continue;
+    }
+    var value = Number(match[1]);
+    if (value > max) {
+      max = value;
+    }
+  }
+  var text = String(max + 1);
+  while (text.length < 4) {
+    text = '0' + text;
+  }
+  return 'H' + text;
+}
+
+function isBolecinPlace_(text) {
+  var combined = String(text || '')
+    .toLowerCase()
+    .replace(/ą/g, 'a')
+    .replace(/ć/g, 'c')
+    .replace(/ę/g, 'e')
+    .replace(/ł/g, 'l')
+    .replace(/ń/g, 'n')
+    .replace(/ó/g, 'o')
+    .replace(/ś/g, 's')
+    .replace(/ź/g, 'z')
+    .replace(/ż/g, 'z');
+  if (!combined.trim()) {
+    return false;
+  }
+  return combined.indexOf('bolecin') >= 0 || combined.indexOf('biosystem') >= 0;
+}
+
+function formatDotDate_(d) {
+  var day = d.getDate();
+  var month = d.getMonth() + 1;
+  var dd = day < 10 ? '0' + String(day) : String(day);
+  var mm = month < 10 ? '0' + String(month) : String(month);
+  return dd + '.' + mm + '.' + String(d.getFullYear());
+}
+
+function harmonogramProposalDates_(daysRaw, today) {
+  var tokens = canonicalHarmonogramDays_(daysRaw);
+  if (!tokens) {
+    return [];
+  }
+  var parts = tokens.split(', ');
+  var jsByToken = { pn: 1, wt: 2, 'śr': 3, cz: 4, pt: 5, sb: 6, nd: 0 };
+  var wanted = {};
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    if (jsByToken[parts[i]] !== undefined) {
+      wanted[jsByToken[parts[i]]] = true;
+    }
+  }
+  var base = today || new Date();
+  var year = base.getFullYear();
+  var month = base.getMonth();
+  var dayOfMonth = base.getDate();
+  var out = [];
+  var lastDay = new Date(year, month + 1, 0).getDate();
+  var day;
+  for (day = dayOfMonth; day <= lastDay; day++) {
+    var date = new Date(year, month, day);
+    if (wanted[date.getDay()]) {
+      out.push(formatDotDate_(date));
+    }
+  }
+  if (dayOfMonth >= INCLUDE_NEXT_MONTH_FROM_DAY) {
+    var lastNext = new Date(year, month + 2, 0).getDate();
+    for (day = 1; day <= lastNext; day++) {
+      var next = new Date(year, month + 1, day);
+      if (wanted[next.getDay()]) {
+        out.push(formatDotDate_(next));
+      }
+    }
+  }
+  return out;
+}
+
+function joinHarmonogramLabels_(values) {
+  var seen = {};
+  var unique = [];
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var label = collapseText_(values[i]);
+    if (!label) {
+      continue;
+    }
+    var key = label.toLocaleLowerCase('pl');
+    if (seen[key]) {
+      continue;
+    }
+    seen[key] = true;
+    unique.push(label);
+  }
+  unique.sort(function(a, b) {
+    return a.localeCompare(b, 'pl');
+  });
+  return unique.join('; ');
+}
+
+function bolecinRowIdentity_(adres, data, kto) {
+  return (
+    collapseText_(adres).toLocaleLowerCase('pl') +
+    '\n' +
+    collapseText_(data).toLocaleLowerCase('pl') +
+    '\n' +
+    collapseText_(kto).toLocaleLowerCase('pl')
+  );
+}
+
+function harmonogramBucketKey_(row) {
+  return canonicalHarmonogramDays_(row.dni) + '\n' + collapseText_(row.podwykonawca);
+}
+
+function harmonogramSiblingKey_(row) {
+  return normalizeRateShopKey_(row.adres) + '\n' + harmonogramBucketKey_(row);
+}
+
+function memberMatchesHarmonogram_(shop, group) {
+  if (!shop.harmonogramId || shop.harmonogramId !== group.id) {
+    return false;
+  }
+  if (collapseText_(shop.podwykonawca) !== collapseText_(group.podwykonawca)) {
+    return false;
+  }
+  var days = canonicalHarmonogramDays_(shop.dni);
+  return days.length > 0 && days === canonicalHarmonogramDays_(group.dni);
+}
+
+function collapseHarmonogramShops_(rows) {
+  var byAdres = {};
+  var order = [];
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    var adres = collapseText_(rows[i].adres);
+    if (!adres) {
+      continue;
+    }
+    if (!byAdres[adres]) {
+      byAdres[adres] = [];
+      order.push(adres);
+    }
+    byAdres[adres].push(rows[i].sheetRow);
+  }
+  order.sort(function(a, b) {
+    return a.localeCompare(b, 'pl');
+  });
+  var out = [];
+  for (i = 0; i < order.length; i++) {
+    var list = byAdres[order[i]].slice();
+    list.sort(function(a, b) {
+      return a - b;
+    });
+    out.push({ adres: order[i], rows: list });
+  }
+  return out;
+}
+
+function buildHarmonogramList_(shops, groups, today) {
+  var byId = {};
+  var i;
+  for (i = 0; i < groups.length; i++) {
+    byId[collapseText_(groups[i].id)] = groups[i];
+  }
+  var members = {};
+  var loose = [];
+  for (i = 0; i < shops.length; i++) {
+    var shop = shops[i];
+    var group = byId[collapseText_(shop.harmonogramId)];
+    if (group && memberMatchesHarmonogram_(shop, group)) {
+      if (!members[group.id]) {
+        members[group.id] = [];
+      }
+      members[group.id].push(shop);
+      continue;
+    }
+    if (!collapseText_(shop.adres) || !collapseText_(shop.podwykonawca) || !canonicalHarmonogramDays_(shop.dni)) {
+      continue;
+    }
+    loose.push(shop);
+  }
+  var memberSibling = {};
+  var memberId;
+  for (memberId in members) {
+    if (!Object.prototype.hasOwnProperty.call(members, memberId)) {
+      continue;
+    }
+    var memberRows = members[memberId];
+    var mr;
+    for (mr = 0; mr < memberRows.length; mr++) {
+      memberSibling[harmonogramSiblingKey_(memberRows[mr])] = memberId;
+    }
+  }
+  var stillLoose = [];
+  for (i = 0; i < loose.length; i++) {
+    var joined = memberSibling[harmonogramSiblingKey_(loose[i])];
+    if (!joined) {
+      stillLoose.push(loose[i]);
+      continue;
+    }
+    members[joined].push(loose[i]);
+  }
+  var harmonogramy = [];
+  var sortedGroups = groups.slice();
+  sortedGroups.sort(function(a, b) {
+    return String(a.id).localeCompare(String(b.id), 'pl');
+  });
+  for (i = 0; i < sortedGroups.length; i++) {
+    var item = sortedGroups[i];
+    if (!collapseText_(item.id)) {
+      continue;
+    }
+    harmonogramy.push({
+      id: item.id,
+      podwykonawca: item.podwykonawca,
+      dni: canonicalHarmonogramDays_(item.dni),
+      cenaTrasy: item.cenaTrasy || '',
+      miejsceZrzutu: item.miejsceZrzutu || '',
+      oknoAwizacji: item.oknoAwizacji || '',
+      awizacja: item.awizacja || '',
+      rodzajZbiorki: item.rodzajZbiorki || '',
+      rodzajTransportu: item.rodzajTransportu || '',
+      spodziewaneWorki: item.spodziewaneWorki || '',
+      bolecin: isBolecinPlace_(item.miejsceZrzutu),
+      daty: harmonogramProposalDates_(item.dni, today),
+      sklepy: collapseHarmonogramShops_(members[item.id] || []),
+    });
+  }
+  var buckets = {};
+  var bucketKeys = [];
+  for (i = 0; i < stillLoose.length; i++) {
+    var key = harmonogramBucketKey_(stillLoose[i]);
+    if (!buckets[key]) {
+      buckets[key] = [];
+      bucketKeys.push(key);
+    }
+    buckets[key].push(stillLoose[i]);
+  }
+  bucketKeys.sort(function(a, b) {
+    return a.localeCompare(b, 'pl');
+  });
+  var doZgrupowania = [];
+  for (i = 0; i < bucketKeys.length; i++) {
+    var rows = buckets[bucketKeys[i]];
+    doZgrupowania.push({
+      podwykonawca: collapseText_(rows[0].podwykonawca),
+      dni: canonicalHarmonogramDays_(rows[0].dni),
+      sklepy: collapseHarmonogramShops_(rows),
+    });
+  }
+  return { harmonogramy: harmonogramy, doZgrupowania: doZgrupowania };
+}
+
+function selectedShopsForGroup_(shops, rows) {
+  var wanted = {};
+  var count = 0;
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    var n = Number(rows[i]);
+    if (n === Math.floor(n) && n >= 2) {
+      wanted[n] = true;
+      count += 1;
+    }
+  }
+  if (!count) {
+    return { ok: false, error: 'zaznacz' };
+  }
+  var picked = [];
+  for (i = 0; i < shops.length; i++) {
+    if (wanted[shops[i].sheetRow]) {
+      picked.push(shops[i]);
+    }
+  }
+  if (!picked.length) {
+    return { ok: false, error: 'zaznacz' };
+  }
+  var bucket = harmonogramBucketKey_(picked[0]);
+  for (i = 1; i < picked.length; i++) {
+    if (harmonogramBucketKey_(picked[i]) !== bucket) {
+      return { ok: false, error: 'rozne' };
+    }
+  }
+  var dni = canonicalHarmonogramDays_(picked[0].dni);
+  var podwykonawca = collapseText_(picked[0].podwykonawca);
+  if (!dni || !podwykonawca) {
+    return { ok: false, error: 'brak_dni' };
+  }
+  var siblings = {};
+  for (i = 0; i < picked.length; i++) {
+    siblings[harmonogramSiblingKey_(picked[i])] = true;
+  }
+  var sheetRows = [];
+  for (i = 0; i < shops.length; i++) {
+    if (siblings[harmonogramSiblingKey_(shops[i])]) {
+      sheetRows.push(shops[i].sheetRow);
+    }
+  }
+  sheetRows.sort(function(a, b) {
+    return a - b;
+  });
+  return { ok: true, dni: dni, podwykonawca: podwykonawca, sheetRows: sheetRows };
+}
+
+function readHarmonogramShopRows_(sheet) {
+  var headers = sheetHeaders_(sheet);
+  var adresIx = headerIndexNamed_(headers, 'Adres sklepu');
+  var whoIx = headerIndexNamed_(headers, 'Podwykonawca');
+  var daysIx = headerIndexNamed_(headers, 'Dni odbiorów');
+  var idIx = headerIndexNamed_(headers, HARMONOGRAM_ID_HEADER);
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last < 2 || adresIx < 0 || whoIx < 0 || daysIx < 0) {
+    return rows;
+  }
+  var values = sheet.getRange(2, 1, last - 1, headers.length).getValues();
+  var i;
+  for (i = 0; i < values.length; i++) {
+    rows.push({
+      sheetRow: i + 2,
+      adres: cellAt_(values[i], adresIx),
+      podwykonawca: cellAt_(values[i], whoIx),
+      dni: cellAt_(values[i], daysIx),
+      harmonogramId: cellAt_(values[i], idIx),
+    });
+  }
+  return rows;
+}
+
+function readHarmonogramHeads_(sheet) {
+  var headers = sheetHeaders_(sheet);
+  var ix = {
+    id: headerIndexNamed_(headers, 'Id'),
+    podwykonawca: headerIndexNamed_(headers, 'Podwykonawca'),
+    dni: headerIndexNamed_(headers, 'Dni odbiorów'),
+    cena: headerIndexNamed_(headers, 'Cena za trasę'),
+    miejsce: headerIndexNamed_(headers, 'Miejsce zrzutu'),
+    okno: headerIndexNamed_(headers, 'Okno awizacji'),
+    awizacja: headerIndexNamed_(headers, 'Awizacja'),
+    rodzajZbiorki: headerIndexNamed_(headers, 'Rodzaj zbiórki'),
+    rodzajTransportu: headerIndexNamed_(headers, 'Rodzaj transportu'),
+    worki: headerIndexNamed_(headers, 'Spodziewane worki'),
+  };
+  var last = sheet.getLastRow();
+  var rows = [];
+  if (last < 2 || ix.id < 0) {
+    return rows;
+  }
+  var values = sheet.getRange(2, 1, last - 1, headers.length).getValues();
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var id = cellAt_(values[i], ix.id);
+    if (!id) {
+      continue;
+    }
+    rows.push({
+      sheetRow: i + 2,
+      id: id,
+      podwykonawca: cellAt_(values[i], ix.podwykonawca),
+      dni: cellAt_(values[i], ix.dni),
+      cenaTrasy: cellAt_(values[i], ix.cena),
+      miejsceZrzutu: cellAt_(values[i], ix.miejsce),
+      oknoAwizacji: cellAt_(values[i], ix.okno),
+      awizacja: cellAt_(values[i], ix.awizacja),
+      rodzajZbiorki: cellAt_(values[i], ix.rodzajZbiorki),
+      rodzajTransportu: cellAt_(values[i], ix.rodzajTransportu),
+      spodziewaneWorki: cellAt_(values[i], ix.worki),
+    });
+  }
+  return rows;
+}
+
+function getOrCreateHarmonogramySheet_() {
+  var sheet = getOrCreateRefSheet_(HARMONOGRAMY_SHEET_NAME, HARMONOGRAMY_HEADERS);
+  var i;
+  for (i = 0; i < HARMONOGRAMY_HEADERS.length; i++) {
+    ensureSheetColumn_(sheet, HARMONOGRAMY_HEADERS[i]);
+  }
+  return sheet;
+}
+
+function listHarmonogramy_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  var head = ss.getSheetByName(HARMONOGRAMY_SHEET_NAME);
+  var shops = baza ? readHarmonogramShopRows_(baza) : [];
+  var groups = head ? readHarmonogramHeads_(head) : [];
+  var view = buildHarmonogramList_(shops, groups, new Date());
+  return { ok: true, harmonogramy: view.harmonogramy, doZgrupowania: view.doZgrupowania };
+}
+
+function rowNumbersFromBody_(body) {
+  var raw = body && body.rows;
+  var rows = [];
+  if (!raw || !raw.length) {
+    return rows;
+  }
+  var i;
+  for (i = 0; i < raw.length; i++) {
+    var n = Number(raw[i]);
+    if (n === Math.floor(n)) {
+      rows.push(n);
+    }
+  }
+  return rows;
+}
+
+function putHarmonogramCell_(sheet, headers, sheetRow, name, value) {
+  var ix = headerIndexNamed_(headers, name);
+  if (ix >= 0) {
+    sheet.getRange(sheetRow, ix + 1).setValue(value);
+  }
+}
+
+function handleGroupHarmonogramPost_(body) {
+  var baza = getOrCreateHarmonogramRateSheet_();
+  var shops = readHarmonogramShopRows_(baza);
+  var selection = selectedShopsForGroup_(shops, rowNumbersFromBody_(body));
+  if (!selection.ok) {
+    return jsonResponse({ ok: false, error: selection.error });
+  }
+  var headsSheet = getOrCreateHarmonogramySheet_();
+  var heads = readHarmonogramHeads_(headsSheet);
+  var byRow = {};
+  var i;
+  for (i = 0; i < shops.length; i++) {
+    byRow[shops[i].sheetRow] = shops[i];
+  }
+  var existingId = '';
+  for (i = 0; i < selection.sheetRows.length; i++) {
+    var shop = byRow[selection.sheetRows[i]];
+    var g;
+    for (g = 0; g < heads.length; g++) {
+      if (shop && memberMatchesHarmonogram_(shop, heads[g])) {
+        if (existingId && existingId !== heads[g].id) {
+          return jsonResponse({ ok: false, error: 'juz' });
+        }
+        existingId = heads[g].id;
+      }
+    }
+  }
+  var ids = [];
+  for (i = 0; i < heads.length; i++) {
+    ids.push(heads[i].id);
+  }
+  var id = existingId || nextHarmonogramId_(ids);
+  var idCol = ensureSheetColumn_(baza, HARMONOGRAM_ID_HEADER);
+  for (i = 0; i < selection.sheetRows.length; i++) {
+    baza.getRange(selection.sheetRows[i], idCol).setValue(id);
+  }
+  if (existingId) {
+    return jsonResponse({ ok: true, id: id, rows: selection.sheetRows.length });
+  }
+  var headers = sheetHeaders_(headsSheet);
+  var blank = [];
+  for (i = 0; i < headers.length; i++) {
+    blank.push('');
+  }
+  var rowNum = Math.max(headsSheet.getLastRow(), 1) + 1;
+  headsSheet.getRange(rowNum, 1, 1, blank.length).setValues([blank]);
+  putHarmonogramCell_(headsSheet, headers, rowNum, 'Id', id);
+  putHarmonogramCell_(headsSheet, headers, rowNum, 'Podwykonawca', selection.podwykonawca);
+  putHarmonogramCell_(headsSheet, headers, rowNum, 'Dni odbiorów', selection.dni);
+  return jsonResponse({ ok: true, id: id, rows: selection.sheetRows.length });
+}
+
+function handleSaveHarmonogramPost_(body) {
+  var id = collapseText_(body && body.id);
+  if (!id) {
+    return jsonResponse({ ok: false, error: 'id' });
+  }
+  var cena = parseRateAmount_(body && body.cenaTrasy);
+  if (!cena) {
+    return jsonResponse({ ok: false, error: 'amount' });
+  }
+  var sheet = getOrCreateHarmonogramySheet_();
+  var heads = readHarmonogramHeads_(sheet);
+  var found = null;
+  var i;
+  for (i = 0; i < heads.length; i++) {
+    if (heads[i].id === id) {
+      found = heads[i];
+    }
+  }
+  if (!found) {
+    return jsonResponse({ ok: false, error: 'id' });
+  }
+  var headers = sheetHeaders_(sheet);
+  putHarmonogramCell_(sheet, headers, found.sheetRow, 'Cena za trasę', rateAmountCell_(cena));
+  putHarmonogramCell_(sheet, headers, found.sheetRow, 'Miejsce zrzutu', collapseText_(body.miejsceZrzutu));
+  putHarmonogramCell_(sheet, headers, found.sheetRow, 'Okno awizacji', collapseText_(body.oknoAwizacji));
+  putHarmonogramCell_(sheet, headers, found.sheetRow, 'Awizacja', collapseText_(body.awizacja));
+  putHarmonogramCell_(sheet, headers, found.sheetRow, 'Rodzaj zbiórki', collapseText_(body.rodzajZbiorki));
+  putHarmonogramCell_(sheet, headers, found.sheetRow, 'Rodzaj transportu', collapseText_(body.rodzajTransportu));
+  putHarmonogramCell_(sheet, headers, found.sheetRow, 'Spodziewane worki', collapseText_(body.spodziewaneWorki));
+  return jsonResponse({ ok: true, id: id });
+}
+
+function handleUngroupHarmonogramPost_(body) {
+  var rows = rowNumbersFromBody_(body);
+  if (!rows.length) {
+    return jsonResponse({ ok: false, error: 'zaznacz' });
+  }
+  var baza = getOrCreateHarmonogramRateSheet_();
+  var idCol = ensureSheetColumn_(baza, HARMONOGRAM_ID_HEADER);
+  var last = baza.getLastRow();
+  var cleared = 0;
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    if (rows[i] < 2 || rows[i] > last) {
+      continue;
+    }
+    baza.getRange(rows[i], idCol).setValue('');
+    cleared += 1;
+  }
+  return jsonResponse({ ok: true, rows: cleared });
+}
+
+function getBolecinSheetsId_() {
+  var id = String(
+    PropertiesService.getScriptProperties().getProperty(BOLECIN_SHEETS_ID_PROP) || '',
+  ).trim();
+  if (!id) {
+    throw new Error(
+      'Brak Script property BOLECIN_SHEETS_ID — ustaw ID arkusza Bolęcin w Apps Script → Project settings → Script properties',
+    );
+  }
+  return id;
+}
+
+function getOrCreateBolecinMonthSheet_(ss, dateText) {
+  var name = monthLabelFromDateText_(dateText);
+  var sheet = ss.getSheetByName(name);
+  if (sheet) {
+    return sheet;
+  }
+  sheet = ss.insertSheet(name);
+  sheet.getRange(1, 1, 1, BOLECIN_HEADER_ROW.length).setValues([BOLECIN_HEADER_ROW]);
+  return sheet;
+}
+
+function bolecinFieldKey_(header) {
+  var n = String(header || '').trim().toLowerCase();
+  if (n.indexOf('okno') >= 0) {
+    return 'oknoAwizacji';
+  }
+  if (n.indexOf('adres odbioru') >= 0) {
+    return 'adres';
+  }
+  if (n.indexOf('nazwa kontrahenta') >= 0) {
+    return 'nazwa';
+  }
+  if (n.indexOf('data odbioru') >= 0) {
+    return 'data';
+  }
+  if (n.indexOf('kto odbiera') >= 0) {
+    return 'kto';
+  }
+  if (n.indexOf('miejsce zrzutu') >= 0) {
+    return 'miejsce';
+  }
+  if (n.indexOf('rodzaj zbi') >= 0) {
+    return 'rodzajZbiorki';
+  }
+  if (n.indexOf('ile work') >= 0) {
+    return 'worki';
+  }
+  if (n.indexOf('traport') >= 0 || n.indexOf('transport') >= 0) {
+    return 'rodzajTransportu';
+  }
+  if (n === 'awizacja') {
+    return 'awizacja';
+  }
+  return '';
+}
+
+function bolecinSheetHasIdentity_(sheet, identity) {
+  var last = sheet.getLastRow();
+  if (last < 2) {
+    return false;
+  }
+  var headers = sheetHeaders_(sheet);
+  var adresIx = -1;
+  var dataIx = -1;
+  var ktoIx = -1;
+  var i;
+  for (i = 0; i < headers.length; i++) {
+    var key = bolecinFieldKey_(headers[i]);
+    if (key === 'adres') adresIx = i;
+    if (key === 'data') dataIx = i;
+    if (key === 'kto') ktoIx = i;
+  }
+  if (adresIx < 0 || dataIx < 0 || ktoIx < 0) {
+    return false;
+  }
+  var values = sheet.getRange(2, 1, last - 1, headers.length).getValues();
+  for (i = 0; i < values.length; i++) {
+    var rowIdentity = bolecinRowIdentity_(
+      cellAt_(values[i], adresIx),
+      cellAt_(values[i], dataIx),
+      cellAt_(values[i], ktoIx),
+    );
+    if (rowIdentity === identity) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function appendBolecinMapped_(sheet, fields) {
+  var headers = sheetHeaders_(sheet);
+  var row = [];
+  var any = false;
+  var i;
+  for (i = 0; i < headers.length; i++) {
+    var key = bolecinFieldKey_(headers[i]);
+    if (key) {
+      any = true;
+    }
+    row.push(key && fields[key] != null ? String(fields[key]) : '');
+  }
+  if (!any) {
+    sheet.appendRow([
+      fields.oknoAwizacji || '',
+      fields.adres || '',
+      fields.nazwa || '',
+      fields.data || '',
+      fields.kto || '',
+      fields.miejsce || '',
+      fields.rodzajZbiorki || '',
+      fields.worki || '',
+      fields.rodzajTransportu || '',
+      fields.awizacja || '',
+    ]);
+    return;
+  }
+  sheet.appendRow(row);
+}
+
+function handleAwizujBolecinPost_(body) {
+  var id = collapseText_(body && body.id);
+  if (!id) {
+    return jsonResponse({ ok: false, error: 'id' });
+  }
+  var sheet = getOrCreateHarmonogramySheet_();
+  var heads = readHarmonogramHeads_(sheet);
+  var group = null;
+  var i;
+  for (i = 0; i < heads.length; i++) {
+    if (heads[i].id === id) {
+      group = heads[i];
+    }
+  }
+  if (!group) {
+    return jsonResponse({ ok: false, error: 'id' });
+  }
+  if (!isBolecinPlace_(group.miejsceZrzutu)) {
+    return jsonResponse({ ok: false, error: 'nie_bolecin' });
+  }
+  var baza = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  var shops = baza ? readHarmonogramShopRows_(baza) : [];
+  var members = [];
+  for (i = 0; i < shops.length; i++) {
+    if (memberMatchesHarmonogram_(shops[i], group)) {
+      members.push(shops[i]);
+    }
+  }
+  if (!members.length) {
+    return jsonResponse({ ok: false, error: 'brak_sklepow' });
+  }
+  var nazwyMap = body && body.nazwy && typeof body.nazwy === 'object' ? body.nazwy : {};
+  var adresy = [];
+  var nazwy = [];
+  for (i = 0; i < members.length; i++) {
+    adresy.push(members[i].adres);
+    var given = nazwyMap[members[i].adres];
+    nazwy.push(given ? String(given) : members[i].adres);
+  }
+  var adres = joinHarmonogramLabels_(adresy);
+  var nazwa = joinHarmonogramLabels_(nazwy);
+  var dates = harmonogramProposalDates_(group.dni, new Date());
+  if (!dates.length) {
+    return jsonResponse({ ok: false, error: 'brak_dat' });
+  }
+  var ss = SpreadsheetApp.openById(getBolecinSheetsId_());
+  var dopisane = 0;
+  var pominiete = 0;
+  for (i = 0; i < dates.length; i++) {
+    var monthSheet = getOrCreateBolecinMonthSheet_(ss, dates[i]);
+    var identity = bolecinRowIdentity_(adres, dates[i], group.podwykonawca);
+    if (bolecinSheetHasIdentity_(monthSheet, identity)) {
+      pominiete += 1;
+      continue;
+    }
+    appendBolecinMapped_(monthSheet, {
+      oknoAwizacji: group.oknoAwizacji,
+      adres: adres,
+      nazwa: nazwa,
+      data: dates[i],
+      kto: group.podwykonawca,
+      miejsce: group.miejsceZrzutu,
+      rodzajZbiorki: group.rodzajZbiorki,
+      worki: group.spodziewaneWorki,
+      rodzajTransportu: group.rodzajTransportu,
+      awizacja: group.awizacja,
+    });
+    dopisane += 1;
+  }
+  return jsonResponse({ ok: true, dopisane: dopisane, pominiete: pominiete });
 }
 
 /**

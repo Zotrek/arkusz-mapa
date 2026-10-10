@@ -106,6 +106,11 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 | GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia (legacy + `Harmonogram …`); każdy wiersz ma `sheetName` |
 
 | POST | `action=syncZestawienieHarmonogram` | Agregacja odebrane + dni Bazy cen → zakładki `Harmonogram {miesiąc} {rok}` (domyślnie bieżący miesiąc → dziś) |
+| GET | `action=listHarmonogramy` | Wspólne harmonogramy + kubełki „do zgrupowania” (te same dni + ten sam podwykonawca) |
+| POST | `mode=groupHarmonogram` | Nadaje id `H0001…` zaznaczonym wierszom Bazy cen. Bliźniak ceny tego sklepu dostaje to samo id |
+| POST | `mode=saveHarmonogram` | Cena za trasę, miejsce zrzutu, a przy Bolęcinie okno awizacji, awizacja, rodzaj zbiórki, rodzaj transportu, spodziewane worki |
+| POST | `mode=ungroupHarmonogram` | Czyści id sklepu. Nagłówka harmonogramu nie usuwa |
+| POST | `mode=awizujBolecin` | Dopisuje daty bieżącego miesiąca (od 22. także następnego) do arkusza Bolęcin. Jeden wiersz na harmonogram + data. Ta sama trójka adres + data + kto nie wchodzi drugi raz. Puste worki zostają puste. Wymaga Script property `BOLECIN_SHEETS_ID` |
 
 | POST | JSON w body (`Content-Type: text/plain`) | Atomowy zapis wiersza (`LockService`) + zwraca `numer`. Opcjonalne `numer` w body — jeśli użytkownik wpisał ręcznie, ten numer trafia do arkusza zamiast automatycznego |
 

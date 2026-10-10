@@ -21,6 +21,7 @@ function existingRow(
     validFrom: '',
     routeName: '',
     hasPrices: false,
+    harmonogramId: '',
     ...overrides,
   };
 }
@@ -146,6 +147,7 @@ describe('planBazaCenSync', () => {
       '',
       '',
       shop.dni,
+      '',
     ]);
   });
 
@@ -172,7 +174,39 @@ describe('planBazaCenSync', () => {
     expect(plan.append).toEqual([]);
     expect(plan.duplicateDeletes).toEqual([]);
     expect(plan.dayUpdates).toEqual([{ sheetRow: 2, dni: 'pn' }]);
+    expect(plan.idClears).toEqual([]);
     expect(plan.addressHeals).toEqual([]);
+  });
+
+  it('test_planBazaCenSync_when_canonical_days_change_should_clear_harmonogram_id', () => {
+    const plan = planBazaCenSync(
+      [{ ...shop, dni: 'pn' }],
+      [
+        existingRow(2, {
+          adres: shop.adres,
+          podwykonawca: shop.podwykonawca,
+          dni: 'pn, cz',
+          harmonogramId: 'H0003',
+        }),
+      ],
+    );
+    expect(plan.idClears).toEqual([2]);
+  });
+
+  it('test_planBazaCenSync_when_only_day_order_changes_should_keep_harmonogram_id', () => {
+    const plan = planBazaCenSync(
+      [shop],
+      [
+        existingRow(4, {
+          adres: shop.adres,
+          podwykonawca: shop.podwykonawca,
+          dni: 'cz, pn',
+          harmonogramId: 'H0003',
+        }),
+      ],
+    );
+    expect(plan.dayUpdates).toEqual([{ sheetRow: 4, dni: 'pn, cz' }]);
+    expect(plan.idClears).toEqual([]);
   });
 
   it('test_planBazaCenSync_when_raw_al_address_should_heal_not_append', () => {
@@ -250,6 +284,7 @@ describe('planBazaCenSync', () => {
         validFrom: '01.01.2026',
         routeName: 'Trasa A',
         hasPrices: true,
+        harmonogramId: '',
       },
     ]);
   });
@@ -304,7 +339,7 @@ describe('syncBazaCenHarmonogram', () => {
     });
     expect(values.get(SHEET_NAME_BAZA_CEN_HARMONOGRAM)).toEqual([
       [...BAZA_CEN_HEADERS],
-      ['32-100 Proszowice 3 Maja 10', 'Interzero', '', '', '', '', '', 'pn, cz'],
+      ['32-100 Proszowice 3 Maja 10', 'Interzero', '', '', '', '', '', 'pn, cz', ''],
     ]);
     expect(api.spreadsheets.values.batchUpdate).not.toHaveBeenCalled();
   });

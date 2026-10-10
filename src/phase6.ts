@@ -31,6 +31,11 @@ import {
   manualAdminCss,
   manualAdminHtml,
 } from './buildMapManualAdmin.js';
+import {
+  harmonogramPanelBrowserScript,
+  harmonogramPanelCss,
+  harmonogramPanelHtml,
+} from './buildMapHarmonogram.js';
 import { routeNameBrowserScript } from './routeName.js';
 import { routeProtocolBrowserScript } from './routeProtocol.js';
 import {
@@ -1113,7 +1118,7 @@ ${
     .map-app-notice.is-error { border-color: rgba(176,42,55,0.4); color: #b02a37; }
 `
     : ''
-}${referenceAdminEnabled ? manualAdminCss() : ''}${docStyles}  </style>
+}${referenceAdminEnabled ? manualAdminCss() : ''}${referenceAdminEnabled ? harmonogramPanelCss() : ''}${docStyles}  </style>
 </head>
 <body>
   <div id="map"></div>
@@ -1128,7 +1133,7 @@ ${
   <div id="map-app-notice" class="map-app-notice" role="status" aria-live="polite" hidden></div>
 `
     : ''
-}${wordModal}${bulkRatesModal}${referenceAdminEnabled ? manualAdminHtml() : ''}  <script>
+}${wordModal}${bulkRatesModal}${referenceAdminEnabled ? manualAdminHtml() : ''}${referenceAdminEnabled ? harmonogramPanelHtml() : ''}  <script>
 ${SITE_PASSWORD_FETCH_SNIPPET}
     const adresy = ${JSON.stringify(points)};
     const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
@@ -3776,7 +3781,8 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         '</div>'
       : '';
     var manualAdminBtnHtml = (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL)
-      ? '<button type="button" id="map-manual-admin-open" class="map-manual-add-btn">Dodaj do listy / popraw adres</button>'
+      ? '<button type="button" id="map-manual-admin-open" class="map-manual-add-btn">Dodaj do listy / popraw adres</button>' +
+        '<button type="button" id="map-harmonogram-open" class="map-harmonogram-open-btn">Harmonogramy</button>'
       : '';
     var autoBulkBtnHtml = wordDocEnabled
       ? '<button type="button" id="map-auto-bulk-toggle" class="map-auto-bulk-btn" aria-pressed="false">Automatyczne zbiorcze zaznaczanie</button>'
@@ -4043,7 +4049,7 @@ ${
       return div;
     };
     legend.addTo(map);
-${referenceAdminEnabled ? manualAdminBrowserScript() : ''}
+${referenceAdminEnabled ? manualAdminBrowserScript() : ''}${referenceAdminEnabled ? harmonogramPanelBrowserScript() : ''}
   </script>
 </body>
 </html>`;
