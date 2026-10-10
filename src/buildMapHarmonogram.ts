@@ -36,12 +36,13 @@ export function harmonogramPanelCss(): string {
     #harmonogram-group-modal .harmonogram-status { min-height: 1.2em; font-size: 12px; white-space: pre-line; color: #0f766e; }
     #harmonogram-group-modal .harmonogram-status.is-error { color: #b02a37; }
     #harmonogram-group-modal .harmonogram-loading {
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      margin: 8px 0 4px; font-size: 13px; font-weight: 600; color: #0f766e;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; margin: 28px 0 18px; padding: 8px 0;
+      font-size: 13px; font-weight: 600; color: var(--map-muted, #64748b); text-align: center;
     }
     #harmonogram-group-modal .harmonogram-loading[hidden] { display: none !important; }
     #harmonogram-group-modal .harmonogram-loading img {
-      width: 36px; height: 36px; flex-shrink: 0;
+      width: 64px; height: 64px; flex-shrink: 0;
       animation: harmonogram-pulse 1.2s ease-in-out infinite;
     }
     @keyframes harmonogram-pulse {
@@ -164,7 +165,7 @@ export function harmonogramPanelHtml(): string {
       <p class="harmonogram-hint">Wspólny przejazd dla sklepów z tymi samymi dniami i tym samym podwykonawcą. Cena za trasę jest jedna. Do Bolęcina idzie suma „spodziewanych worków” — puste pole zostaje puste.</p>
       <p id="harmonogram-group-status" class="harmonogram-status" aria-live="polite"></p>
       <div id="harmonogram-group-loading" class="harmonogram-loading" hidden>
-        <img src="./favicon.svg" alt="" width="36" height="36">
+        <img src="./favicon.svg" alt="" width="64" height="64">
         <span>Ładowanie harmonogramów…</span>
       </div>
       <h4>Zapisane</h4>
