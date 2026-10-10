@@ -5218,45 +5218,80 @@ function migrateRegisterLayoutTransportOdbył() {
   return migrateRegisterLayoutTransportOdbył_();
 }
 
-/** Ręczne: październik 2026 ze starych zakładek → miesięczne (po nazwie). */
-function migrateOctober2026ToMonthSheets() {
-  return migrateOctober2026ToMonthSheets_();
-}
-
 /**
- * Przenosi wiersze z datą odbioru w 10.2026:
- * Arkusz1 → Na zgłoszenie Październik 2026
- * zestawienie z harmonogramu → Harmonogram Październik 2026
- * Starsze miesiące zostają w legacy.
+ * Ręczne: październik 2026 ze starych zakładek → miesięczne (po nazwie).
+ * Przy dużych arkuszach uruchamiaj osobno report / schedule (limit 6 min GAS).
  */
-function migrateOctober2026ToMonthSheets_() {
+function migrateOctober2026ToMonthSheets() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var report = migrateMonthRowsFromLegacy_(
-      'report',
-      REGISTER_SHEET_NAME,
-      10,
-      2026,
-      COL.dataOdbioru,
-      COL.komentarz2,
-    );
-    var schedule = migrateMonthRowsFromLegacy_(
-      'schedule',
-      SCHEDULE_REGISTER_SHEET_NAME,
-      10,
-      2026,
-      SCHEDULE_COL.dataOdbioru,
-      SCHEDULE_COL.komentarz2,
-    );
-    return { ok: true, report: report, schedule: schedule };
+    var out = {
+      ok: true,
+      report: migrateOctober2026ReportBody_(),
+      schedule: migrateOctober2026ScheduleBody_(),
+    };
+    Logger.log(JSON.stringify(out));
+    return out;
   } finally {
     lock.releaseLock();
   }
 }
 
+/** Tylko Arkusz1 → Na zgłoszenie Październik 2026. */
+function migrateOctober2026ReportToMonthSheet() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var out = migrateOctober2026ReportBody_();
+    Logger.log(JSON.stringify(out));
+    return out;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Tylko zestawienie → Harmonogram Październik 2026. */
+function migrateOctober2026ScheduleToMonthSheet() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var out = migrateOctober2026ScheduleBody_();
+    Logger.log(JSON.stringify(out));
+    return out;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function migrateOctober2026ReportBody_() {
+  return migrateMonthRowsFromLegacy_(
+    'report',
+    REGISTER_SHEET_NAME,
+    10,
+    2026,
+    COL.dataOdbioru,
+    COL.komentarz2,
+  );
+}
+
+function migrateOctober2026ScheduleBody_() {
+  return migrateMonthRowsFromLegacy_(
+    'schedule',
+    SCHEDULE_REGISTER_SHEET_NAME,
+    10,
+    2026,
+    SCHEDULE_COL.dataOdbioru,
+    SCHEDULE_COL.komentarz2,
+  );
+}
+
 /**
- * @returns {{ moved: number, targetSheet: string, skipped: number }}
+ * Batch: jeden odczyt, append na target (jeśli pusty), rewrite legacy bez wierszy miesiąca.
+ * Bez deleteRow w pętli (limit czasu GAS). Re-run po timeout: gdy target już ma dane,
+ * pomija append i tylko czyści pozostałe wiersze miesiąca z legacy.
+ *
+ * @returns {{ ok: boolean, moved: number, appended: number, stripped: number, targetSheet: string, legacySheet: string, skippedAppend: boolean }}
  */
 function migrateMonthRowsFromLegacy_(kind, legacyName, month, year, dateCol, lastCol) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -5266,45 +5301,87 @@ function migrateMonthRowsFromLegacy_(kind, legacyName, month, year, dateCol, las
       ? SCHEDULE_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year
       : REPORT_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year;
   if (!legacy) {
-    return { moved: 0, targetSheet: targetName, skipped: 0 };
+    return {
+      ok: true,
+      moved: 0,
+      appended: 0,
+      stripped: 0,
+      targetSheet: targetName,
+      legacySheet: legacyName,
+      skippedAppend: false,
+    };
   }
   var lastRow = legacy.getLastRow();
   if (lastRow < 2) {
-    return { moved: 0, targetSheet: targetName, skipped: 0 };
+    return {
+      ok: true,
+      moved: 0,
+      appended: 0,
+      stripped: 0,
+      targetSheet: targetName,
+      legacySheet: legacyName,
+      skippedAppend: false,
+    };
   }
   var width = Math.max(legacy.getLastColumn(), lastCol);
   var values = legacy.getRange(2, 1, lastRow - 1, width).getValues();
-  var moveIdx = [];
+  var moveRows = [];
+  var keepRows = [];
   var i;
+  var c;
   for (i = 0; i < values.length; i++) {
-    var parts = parsePickupDateParts_(values[i][dateCol - 1]);
-    if (parts && parts.month === month && parts.year === year) {
-      moveIdx.push(i);
-    }
-  }
-  if (moveIdx.length === 0) {
-    return { moved: 0, targetSheet: targetName, skipped: 0 };
-  }
-  var target = getOrCreateMonthRegisterSheet_(
-    kind,
-    '01.' + (month < 10 ? '0' : '') + month + '.' + year,
-  );
-  var rowsToAppend = [];
-  for (i = 0; i < moveIdx.length; i++) {
-    var src = values[moveIdx[i]];
+    var src = values[i];
     var line = [];
-    var c;
     for (c = 0; c < width; c++) {
       line.push(src[c] != null ? src[c] : '');
     }
-    rowsToAppend.push(line);
+    var parts = parsePickupDateParts_(src[dateCol - 1]);
+    if (parts && parts.month === month && parts.year === year) {
+      moveRows.push(line);
+    } else {
+      keepRows.push(line);
+    }
   }
-  var startRow = Math.max(target.getLastRow() + 1, 2);
-  target.getRange(startRow, 1, rowsToAppend.length, width).setValues(rowsToAppend);
-  for (i = moveIdx.length - 1; i >= 0; i--) {
-    legacy.deleteRow(moveIdx[i] + 2);
+  if (moveRows.length === 0) {
+    return {
+      ok: true,
+      moved: 0,
+      appended: 0,
+      stripped: 0,
+      targetSheet: targetName,
+      legacySheet: legacyName,
+      skippedAppend: false,
+    };
   }
-  return { moved: moveIdx.length, targetSheet: target.getName(), skipped: 0 };
+  var dateText = '01.' + (month < 10 ? '0' : '') + month + '.' + year;
+  var target = getOrCreateMonthRegisterSheet_(kind, dateText);
+  var targetHadData = target.getLastRow() >= 2;
+  var appended = 0;
+  var skippedAppend = false;
+  if (targetHadData) {
+    // Poprzedni run zdążył skopiować — nie dubluj; tylko usuń październik z legacy.
+    skippedAppend = true;
+  } else {
+    target.getRange(2, 1, moveRows.length, width).setValues(moveRows);
+    appended = moveRows.length;
+  }
+  var clearRows = lastRow - 1;
+  if (clearRows > 0) {
+    legacy.getRange(2, 1, clearRows, width).clearContent();
+  }
+  if (keepRows.length > 0) {
+    legacy.getRange(2, 1, keepRows.length, width).setValues(keepRows);
+  }
+  SpreadsheetApp.flush();
+  return {
+    ok: true,
+    moved: moveRows.length,
+    appended: appended,
+    stripped: moveRows.length,
+    targetSheet: target.getName(),
+    legacySheet: legacyName,
+    skippedAppend: skippedAppend,
+  };
 }
 
 /**

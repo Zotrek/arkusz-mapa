@@ -174,10 +174,15 @@ Runbook: [MIGRATE_REGISTER_RATES.md](./MIGRATE_REGISTER_RATES.md).
 
 ### Migracja na zakładki miesięczne (październik 2026)
 
-Ręcznie w edytorze Apps Script: **`migrateOctober2026ToMonthSheets`**.
+Ręcznie w edytorze Apps Script (po wklejeniu aktualnego `transport-log.gs`):
 
-- Wiersze z datą odbioru w **10.2026** z `Arkusz1` → `Na zgłoszenie Październik 2026`.
-- To samo z `zestawienie z harmonogramu` → `Harmonogram Październik 2026`.
+1. **`migrateOctober2026ReportToMonthSheet`** — `Arkusz1` → `Na zgłoszenie Październik 2026`
+2. **`migrateOctober2026ScheduleToMonthSheet`** — `zestawienie z harmonogramu` → `Harmonogram Październik 2026`
+
+Albo obie naraz: **`migrateOctober2026ToMonthSheets`** (przy dużych arkuszach może znów dojść do limitu 6 min — wtedy osobno).
+
+- Kopiuje wiersze z datą w **10.2026**, potem przepisuje legacy bez nich (batch, bez `deleteRow` w pętli).
+- Re-run po timeout: jeśli zakładka miesięczna już ma dane, **nie dokleja drugi raz** — tylko czyści pozostały październik z legacy.
 - Starsze miesiące zostają w legacy. Odczyty nadal skanują obie warstwy.
 
 Po migracji: **Wdróż → Nowa wersja** Web App (jeśli skrypt był aktualizowany).
