@@ -8,13 +8,17 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 - **ID (przykład):** `1hvSvy9c069SefhYH3rCUDtCViRhAoRQ6DDj_EIlmWNk`
 
-- **Zakładki (Web App szuka po nazwie):**
+- **Zakładki (Web App szuka po nazwie, nie po kolejności kart):**
 
-  - `Arkusz1` — rejestr transportów (Na zgłoszenie)
-  - `odebrane z harmonogramu` — 1 wiersz = 1 worek (źródło sync)
-  - `zestawienie z harmonogramu` — rejestr odbiorów Harmonogram (bez nr zlecenia; Rodzaj zbiórki z Tryb zbiórki; sync uzupełnia, nigdy nie czyści; nazwy kontrahenta/punktu także przy 0 workach z odebrane)
+  - `Na zgłoszenie {MiesiącPL} {YYYY}` — rejestr transportów bieżącego miesiąca (np. `Na zgłoszenie Październik 2026`). Nowe protokoły trafiają tu wg **Data odbioru**.
+  - `Harmonogram {MiesiącPL} {YYYY}` — rejestr odbiorów Harmonogram tego miesiąca (np. `Harmonogram Październik 2026`). Sync dopisuje/aktualizuje tu wg daty odbioru.
+  - `Arkusz1` — **legacy** Na zgłoszenie (historia sprzed migracji miesięcznej; nadal skanowana przy odczytach).
+  - `zestawienie z harmonogramu` — **legacy** Harmonogram (j.w.).
+  - `odebrane z harmonogramu` — 1 wiersz = 1 worek (źródło sync; nie miesięczna).
 
-- **Wiersz 1 — nagłówki rejestru Arkusz1 (kolejność kolumn):**
+  Odczyty (mapa, rozliczenia, statystyki) **zawsze** scalają legacy + wszystkie zakładki miesięczne danego trybu. Lookup wyłącznie po nazwie zakładki.
+
+- **Wiersz 1 — nagłówki rejestru Na zgłoszenie / Arkusz1 (kolejność kolumn):**
 
   1. Numer transportowy
 
@@ -56,7 +60,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   20. Komentarz 2
 
-- **Nagłówki `zestawienie z harmonogramu`:** jak Arkusz1, **bez** „Nr zlecenia transportowego” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” (po Ilość worków) ma listę tak/nie. Sync nigdy nie czyści zakładki. Przy 0 workach **Nazwa kontrahenta** i **Nazwa punktu** biorą się z dowolnego wiersza `odebrane` tego adresu. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (bez czekania na pipeline). Sync dopisuje wiersz **dzień po** teoretycznej dacie odbioru (odbiór 01.10 → zestawienie od 02.10; kolumna Data odbioru zostaje 01.10).
+- **Nagłówki `Harmonogram …` / `zestawienie z harmonogramu`:** jak Na zgłoszenie, **bez** „Numer transportowy” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” (po Ilość worków) ma listę tak/nie. Sync nigdy nie czyści zakładek. Przy 0 workach **Nazwa kontrahenta** i **Nazwa punktu** biorą się z dowolnego wiersza `odebrane` tego adresu. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (legacy + miesięczne). Sync dopisuje wiersz **dzień po** teoretycznej dacie odbioru (odbiór 01.10 → zestawienie od 02.10; kolumna Data odbioru zostaje 01.10).
 
 
 
@@ -91,17 +95,17 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 |--------|-----------|------|
 
-| GET | `action=modalData&podmiot=…&adres=…` | **Zalecane** — numer + ostatnia data + kto odbiera w jednym requestcie. Wiersz z kolumną 18 = `nie` nie wchodzi w datę |
+| GET | `action=modalData&podmiot=…&adres=…` | **Zalecane** — numer + ostatnia data + kto odbiera w jednym requestcie. Wiersz z kolumną 10 = `nie` nie wchodzi w datę |
 
 | GET | `action=previewNumber` | Podgląd następnego numeru (cache Script Properties) |
 
-| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres**. Wiersz z kolumną 18 = `nie` nie wchodzi |
+| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres**. Wiersz z kolumną 10 = `nie` nie wchodzi |
 
-| GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 18 = `nie` nie wchodzi |
+| GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 10 = `nie` nie wchodzi |
 
-| GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia z `zestawienie z harmonogramu` |
+| GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia (legacy + `Harmonogram …`); każdy wiersz ma `sheetName` |
 
-| POST | `action=syncZestawienieHarmonogram` | Agregacja odebrane + dni Bazy cen → zestawienie (domyślnie bieżący miesiąc → dziś) |
+| POST | `action=syncZestawienieHarmonogram` | Agregacja odebrane + dni Bazy cen → zakładki `Harmonogram {miesiąc} {rok}` (domyślnie bieżący miesiąc → dziś) |
 
 | POST | JSON w body (`Content-Type: text/plain`) | Atomowy zapis wiersza (`LockService`) + zwraca `numer`. Opcjonalne `numer` w body — jeśli użytkownik wpisał ręcznie, ten numer trafia do arkusza zamiast automatycznego |
 
@@ -161,6 +165,16 @@ Nowa kwota trasy, także zero, idzie od razu na pozostałe nierozliczone wiersze
 Idempotentne. Po sukcesie: **Wdróż → Nowa wersja** Web App.
 
 Runbook: [MIGRATE_REGISTER_RATES.md](./MIGRATE_REGISTER_RATES.md).
+
+### Migracja na zakładki miesięczne (październik 2026)
+
+Ręcznie w edytorze Apps Script: **`migrateOctober2026ToMonthSheets`**.
+
+- Wiersze z datą odbioru w **10.2026** z `Arkusz1` → `Na zgłoszenie Październik 2026`.
+- To samo z `zestawienie z harmonogramu` → `Harmonogram Październik 2026`.
+- Starsze miesiące zostają w legacy. Odczyty nadal skanują obie warstwy.
+
+Po migracji: **Wdróż → Nowa wersja** Web App (jeśli skrypt był aktualizowany).
 
 
 

@@ -227,7 +227,7 @@ describe('saveRate', () => {
     expect(daysUpdate).toContain('getRange(row.row, 8)');
 
     const apply = functionBody(gas, 'applyHarmonogramRatesToScheduleRegister_');
-    expect(apply).toContain('SCHEDULE_REGISTER_SHEET_NAME');
+    expect(apply).toContain("listRegisterSheets_('schedule')");
     expect(apply).toContain('listHarmonogramRateAmountRows_');
     expect(apply).toContain('resolveHarmonogramSnapshot_');
     expect(apply).toContain('mapped.settled');

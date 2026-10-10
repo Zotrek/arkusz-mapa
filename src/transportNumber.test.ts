@@ -46,6 +46,11 @@ class FakeRange {
 
 class FakeSheet {
   private readonly cells = new Map<string, Cell>();
+  constructor(readonly name = 'Arkusz1') {}
+
+  getName(): string {
+    return this.name;
+  }
 
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
@@ -97,7 +102,7 @@ function loadGas(sheet: FakeSheet): GasNumberFns {
             return [sheet];
           },
           getSheetByName(name: string) {
-            return name === 'Arkusz1' ? sheet : null;
+            return name === sheet.name ? sheet : null;
           },
         };
       },

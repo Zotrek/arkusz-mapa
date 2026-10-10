@@ -37,6 +37,11 @@ class FakeRange {
 
 class FakeSheet {
   private readonly cells = new Map<string, Cell>();
+  constructor(readonly name = 'Arkusz1') {}
+
+  getName(): string {
+    return this.name;
+  }
 
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
@@ -123,10 +128,16 @@ const gsPath = join(
 );
 const gs = readFileSync(gsPath, 'utf8');
 
-const holder: { register: FakeSheet; rates: FakeSheet | null; odebrane: FakeSheet | null } = {
-  register: new FakeSheet(),
+const holder: {
+  register: FakeSheet;
+  rates: FakeSheet | null;
+  odebrane: FakeSheet | null;
+  schedule: FakeSheet | null;
+} = {
+  register: new FakeSheet('Arkusz1'),
   rates: null,
   odebrane: null,
+  schedule: null,
 };
 
 let lastBody = '';
@@ -140,10 +151,14 @@ beforeAll(() => {
       getActiveSpreadsheet() {
         return {
           getSheets() {
-            return [holder.register];
+            const out: FakeSheet[] = [holder.register];
+            if (holder.schedule) {
+              out.push(holder.schedule);
+            }
+            return out;
           },
           getSheetByName(name: string) {
-            if (name === 'Arkusz1') {
+            if (name === holder.register.name) {
               return holder.register;
             }
             if (name === 'Baza stawek') {
@@ -151,6 +166,9 @@ beforeAll(() => {
             }
             if (name === 'odebrane z harmonogramu') {
               return holder.odebrane;
+            }
+            if (holder.schedule && name === holder.schedule.name) {
+              return holder.schedule;
             }
             return null;
           },
@@ -215,12 +233,13 @@ beforeAll(() => {
 });
 
 function fresh(withRates = true): { register: FakeSheet; rates: FakeSheet | null; odebrane: FakeSheet } {
-  const register = new FakeSheet();
-  const rates = withRates ? new FakeSheet() : null;
-  const odebrane = new FakeSheet();
+  const register = new FakeSheet('Arkusz1');
+  const rates = withRates ? new FakeSheet('Baza stawek') : null;
+  const odebrane = new FakeSheet('odebrane z harmonogramu');
   holder.register = register;
   holder.rates = rates;
   holder.odebrane = odebrane;
+  holder.schedule = new FakeSheet('zestawienie z harmonogramu');
   return { register, rates, odebrane };
 }
 

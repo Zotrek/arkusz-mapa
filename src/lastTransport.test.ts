@@ -30,6 +30,11 @@ class FakeRange {
 
 class FakeSheet {
   private readonly cells = new Map<string, Cell>();
+  constructor(readonly name = 'Arkusz1') {}
+
+  getName(): string {
+    return this.name;
+  }
 
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
@@ -87,8 +92,11 @@ function loadGas(sheet: FakeSheet, otherFirst?: FakeSheet): GasFns {
             return otherFirst ? [otherFirst, sheet] : [sheet];
           },
           getSheetByName(name: string) {
-            if (name === 'Arkusz1') {
+            if (name === sheet.name) {
               return sheet;
+            }
+            if (otherFirst && name === otherFirst.name) {
+              return otherFirst;
             }
             return null;
           },

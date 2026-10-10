@@ -75,8 +75,26 @@ export const SHEET_NAME_BLEDNE_KODY_POCZTOWE = 'Błędne kody pocztowe';
 export const SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU = 'odebrane z harmonogramu';
 /** Stawki i dni odbiorów modułu Harmonogram. Ten sam plik co ewidencja. */
 export const SHEET_NAME_BAZA_CEN_HARMONOGRAM = 'Baza cen harmonogram';
-/** Rejestr odbiorów Harmonogram (1 wiersz = odbiór; Ilość worków = suma). */
+/** Legacy rejestr odbiorów Harmonogram (historia sprzed zakładek miesięcznych). */
 export const SHEET_NAME_ZESTAWIENIE_HARMONOGRAM = 'zestawienie z harmonogramu';
+/** Prefiks miesięcznych zakładek Harmonogram: `Harmonogram Październik 2026`. */
+export const SCHEDULE_MONTH_SHEET_PREFIX = 'Harmonogram ';
+/** Prefiks miesięcznych zakładek Na zgłoszenie: `Na zgłoszenie Październik 2026`. */
+export const REPORT_MONTH_SHEET_PREFIX = 'Na zgłoszenie ';
+export const MONTH_NAMES_PL = [
+  'Styczeń',
+  'Luty',
+  'Marzec',
+  'Kwiecień',
+  'Maj',
+  'Czerwiec',
+  'Lipiec',
+  'Sierpień',
+  'Wrzesień',
+  'Październik',
+  'Listopad',
+  'Grudzień',
+] as const;
 
 /** Zakładki słowników w arkuszu transportów (osobny dokument od plomb). */
 export const SHEET_NAME_LISTA_PODWYKONAWCOW = 'Lista podwykonawców';

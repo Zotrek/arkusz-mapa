@@ -63,15 +63,35 @@
  * (Cloudflare Worker dokleja secret= / body.secret). Bez property = błąd.
  *
  * Zakładki (ten sam plik; rejestr po nazwie, nie po kolejności kart):
- *   Arkusz1 — rejestr transportów (Na zgłoszenie)
+ *   Na zgłoszenie {MiesiącPL} {YYYY} — rejestr miesięczny (np. Na zgłoszenie Październik 2026)
+ *   Harmonogram {MiesiącPL} {YYYY} — zestawienie miesięczne (np. Harmonogram Październik 2026)
+ *   Arkusz1 — legacy Na zgłoszenie (historia sprzed migracji miesięcznej)
+ *   zestawienie z harmonogramu — legacy Harmonogram (historia)
  *   odebrane z harmonogramu — 1 wiersz = 1 worek (źródło sync)
- *   zestawienie z harmonogramu — rejestr odbiorów Harmonogram (jak Arkusz1)
  *   Lista podwykonawców, Popraw adres, Baza stawek, Baza cen harmonogram
  *   (legacy odczyt: Przewoźnicy, Miejsca dostawy — scalane przy listReferenceData)
  */
 
-/** Nazwa zakładki rejestru. Kolejność kart w pliku nie ma znaczenia. */
+/** Legacy rejestr Na zgłoszenie. Kolejność kart w pliku nie ma znaczenia. */
 var REGISTER_SHEET_NAME = 'Arkusz1';
+/** Prefiks zakładek miesięcznych Na zgłoszenie. */
+var REPORT_MONTH_SHEET_PREFIX = 'Na zgłoszenie ';
+/** Prefiks zakładek miesięcznych Harmonogram. */
+var SCHEDULE_MONTH_SHEET_PREFIX = 'Harmonogram ';
+var MONTH_NAMES_PL = [
+  'Styczeń',
+  'Luty',
+  'Marzec',
+  'Kwiecień',
+  'Maj',
+  'Czerwiec',
+  'Lipiec',
+  'Sierpień',
+  'Wrzesień',
+  'Październik',
+  'Listopad',
+  'Grudzień',
+];
 
 var COL = {
   numer: 1,
@@ -111,6 +131,19 @@ var REGISTER_HEADERS_10_20 = [
   'Komentarz 2',
 ];
 
+/** Pełne nagłówki rejestru Na zgłoszenie (nowe zakładki miesięczne). */
+var REGISTER_HEADERS_FULL = [
+  'Numer transportowy',
+  'Adres sklepu',
+  'Podmiot handlowy',
+  'Sklep',
+  'Data odbioru',
+  'Kto odbiera',
+  'Miejsce zrzutu',
+  'Rodzaj zbiórki',
+  'Ilość worków',
+].concat(REGISTER_HEADERS_10_20);
+
 /** Marker migracji V2 — nagłówek kolumny 12 przy układzie Trasa@10. */
 var REGISTER_LAYOUT_V2_MARKER = 'Stawka za podjazd';
 
@@ -118,7 +151,9 @@ var REGISTER_LAYOUT_V2_MARKER = 'Stawka za podjazd';
 var TRANSPORT_HAPPENED_STRIKE_FORMULA = '=$J2="nie"';
 
 var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
+/** Cache wiersza ostatniego numeru: „sheetName\\trow”. */
 var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
+var TRANSPORT_LAST_SHEET_KEY = 'transportLastSheet';
 /** Tajny klucz Worker → GAS. Ustaw w Apps Script → Project settings → Script properties: GAS_SHARED_SECRET. Nie commituj. */
 var GAS_SHARED_SECRET_KEY = 'GAS_SHARED_SECRET';
 
@@ -368,6 +403,7 @@ function requireAppSecret_(e, body) {
   return null;
 }
 
+/** Legacy Arkusz1 — tylko gdy zakładka istnieje (historia). */
 function getDataSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(REGISTER_SHEET_NAME);
@@ -381,16 +417,161 @@ function getDataSheet_() {
   return sheet;
 }
 
-function getOrCreateScheduleRegisterSheet_() {
-  var sheet = getOrCreateRefSheet_(SCHEDULE_REGISTER_SHEET_NAME, SCHEDULE_REGISTER_HEADERS);
+/** dd.mm.yyyy → { day, month, year } albo null. */
+function parsePickupDateParts_(value) {
+  var text = settlementDateText_(value);
+  if (!text) {
+    return null;
+  }
+  var m = String(text).match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) {
+    return null;
+  }
+  var day = parseInt(m[1], 10);
+  var month = parseInt(m[2], 10);
+  var year = parseInt(m[3], 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+  return { day: day, month: month, year: year };
+}
+
+/** Dziś w timezone skryptu. */
+function todayParts_() {
+  var now = new Date();
+  return {
+    day: now.getDate(),
+    month: now.getMonth() + 1,
+    year: now.getFullYear(),
+  };
+}
+
+/** „Październik 2026” z daty dd.mm.yyyy; puste/złe → dziś. */
+function monthLabelFromDateText_(dateText) {
+  var parsed = parsePickupDateParts_(dateText);
+  var d = parsed != null ? parsed : todayParts_();
+  return MONTH_NAMES_PL[d.month - 1] + ' ' + d.year;
+}
+
+function reportMonthSheetName_(dateText) {
+  return REPORT_MONTH_SHEET_PREFIX + monthLabelFromDateText_(dateText);
+}
+
+function scheduleMonthSheetName_(dateText) {
+  return SCHEDULE_MONTH_SHEET_PREFIX + monthLabelFromDateText_(dateText);
+}
+
+/** kind: 'report' | 'schedule' */
+function isMonthRegisterSheetName_(kind, name) {
+  var n = settlementText_(name);
+  if (kind === 'schedule') {
+    return n.indexOf(SCHEDULE_MONTH_SHEET_PREFIX) === 0 && n.length > SCHEDULE_MONTH_SHEET_PREFIX.length;
+  }
+  return n.indexOf(REPORT_MONTH_SHEET_PREFIX) === 0 && n.length > REPORT_MONTH_SHEET_PREFIX.length;
+}
+
+/**
+ * Zakładki rejestru po nazwie (nie po kolejności kart): legacy + wszystkie miesięczne.
+ * @returns {Array<{ name: string, sheet: GoogleAppsScript.Spreadsheet.Sheet }>}
+ */
+function listRegisterSheets_(kind) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var out = [];
+  var seen = {};
+  var legacyName = kind === 'schedule' ? SCHEDULE_REGISTER_SHEET_NAME : REGISTER_SHEET_NAME;
+  var legacy = ss.getSheetByName(legacyName);
+  if (legacy) {
+    out.push({ name: legacyName, sheet: legacy });
+    seen[legacyName] = true;
+  }
+  var i;
+  for (i = 0; i < sheets.length; i++) {
+    var sheet = sheets[i];
+    var name = sheet.getName();
+    if (seen[name] || !isMonthRegisterSheetName_(kind, name)) {
+      continue;
+    }
+    out.push({ name: name, sheet: sheet });
+    seen[name] = true;
+  }
+  return out;
+}
+
+function prepareReportRegisterSheet_(sheet) {
+  if (isRegisterLayoutV1_(sheet)) {
+    throw new Error(
+      'Rejestr ma stary układ kolumn (komentarze w J/K). Uruchom migrateRegisterLayoutRates w Apps Script, potem wdróż Web App.',
+    );
+  }
+  if (isRegisterLayoutV2_(sheet)) {
+    throw new Error(
+      'Rejestr ma układ V2 (Trasa w J). Uruchom migrateRegisterLayoutTransportOdbył w Apps Script, potem wdróż Web App.',
+    );
+  }
+  ensureTransportRegisterColumns_(sheet);
+  return sheet;
+}
+
+function prepareScheduleRegisterSheet_(sheet) {
   if (isScheduleLayoutV2_(sheet)) {
     migrateScheduleTransportOdbyłColumn_();
-    sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SCHEDULE_REGISTER_SHEET_NAME);
+    sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheet.getName()) || sheet;
   }
   if (!isScheduleLayoutV2_(sheet)) {
     ensureRefSheetHeader_(sheet, SCHEDULE_REGISTER_HEADERS);
   }
   ensureScheduleTransportHappenedRules_(sheet);
+  return sheet;
+}
+
+/**
+ * Zakładka miesiąca: create + nagłówki jeśli brak. Lookup wyłącznie po nazwie.
+ * kind: 'report' | 'schedule'
+ */
+function getOrCreateMonthRegisterSheet_(kind, dateText) {
+  var name =
+    kind === 'schedule' ? scheduleMonthSheetName_(dateText) : reportMonthSheetName_(dateText);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    if (sheet.getLastRow() < 1) {
+      var headers = kind === 'schedule' ? SCHEDULE_REGISTER_HEADERS : REGISTER_HEADERS_FULL;
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    }
+  }
+  if (kind === 'schedule') {
+    return prepareScheduleRegisterSheet_(sheet);
+  }
+  return prepareReportRegisterSheet_(sheet);
+}
+
+/** Legacy zestawienie — create gdy brak (migracje / odczyt). */
+function getOrCreateScheduleRegisterSheet_() {
+  var sheet = getOrCreateRefSheet_(SCHEDULE_REGISTER_SHEET_NAME, SCHEDULE_REGISTER_HEADERS);
+  return prepareScheduleRegisterSheet_(sheet);
+}
+
+/** Zakładka do zapisu po nazwie z body (wymagane przy rozliczeniach). */
+function getRegisterSheetByName_(sheetName, kind) {
+  var name = settlementText_(sheetName);
+  if (!name) {
+    return null;
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sheet) {
+    return null;
+  }
+  if (kind === 'schedule') {
+    if (name !== SCHEDULE_REGISTER_SHEET_NAME && !isMonthRegisterSheetName_('schedule', name)) {
+      return null;
+    }
+    return sheet;
+  }
+  if (name !== REGISTER_SHEET_NAME && !isMonthRegisterSheetName_('report', name)) {
+    return null;
+  }
   return sheet;
 }
 
@@ -435,66 +616,81 @@ function ensureScheduleTransportHappenedRules_(sheet) {
     sheet.setConditionalFormatRules(rules);
   }
 }
-/** tryb=harmonogram|schedule → zestawienie; inaczej Arkusz1. */
+/**
+ * tryb=harmonogram|schedule → zakładka Harmonogram (miesięczna lub legacy).
+ * Inaczej Na zgłoszenie. Wymaga body.sheetName (lookup po nazwie).
+ */
 function settlementRegisterSheetForWrite_(body) {
   var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
-  if (tryb === 'harmonogram' || tryb === 'schedule') {
-    return getOrCreateScheduleRegisterSheet_();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var sheet = getRegisterSheetByName_(body && body.sheetName, schedule ? 'schedule' : 'report');
+  if (!sheet) {
+    throw new Error('sheetName required — zakładka rejestru szukana po nazwie');
   }
-  return getDataSheet_();
+  return sheet;
 }
 
-/** Kolumna 11 (Trasa), bez pustych. Propozycję nazwy liczy strona, nie ten skrypt. */
+/** Kolumna Trasa, bez pustych — skan legacy + miesięczne Na zgłoszenie. */
 function listOccupiedRouteNames_() {
-  var sheet = getDataSheet_();
-  var lastRow = sheet.getLastRow();
   var names = [];
   var seen = {};
-  if (lastRow < 2) {
-    return names;
-  }
-  var values = sheet.getRange(2, COL.trasa, lastRow - 1, 1).getValues();
-  for (var i = 0; i < values.length; i++) {
-    var name = String(values[i][0] == null ? '' : values[i][0]).trim();
-    if (!name || seen[name]) {
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
       continue;
     }
-    seen[name] = true;
-    names.push(name);
+    var values = sheet.getRange(2, COL.trasa, lastRow - 1, 1).getValues();
+    var i;
+    for (i = 0; i < values.length; i++) {
+      var name = String(values[i][0] == null ? '' : values[i][0]).trim();
+      if (!name || seen[name]) {
+        continue;
+      }
+      seen[name] = true;
+      names.push(name);
+    }
   }
   return names;
 }
 
 /**
- * Stawka z ostatniego nierozliczonego wiersza o tym tekście w kolumnie 10.
- * Rozliczony `tak` pomija. Brak nazwy albo sama pusta stawka: pusty string. Zero zostaje.
+ * Stawka z ostatniego nierozliczonego wiersza o tym tekście w kolumnie Trasa.
+ * Skan legacy + miesięczne. Rozliczony `tak` pomija.
  */
 function routeRateByName_(name) {
   var wanted = String(name == null ? '' : name).trim();
   if (!wanted) {
     return '';
   }
-  var sheet = getDataSheet_();
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return '';
-  }
-  var numRows = lastRow - 1;
-  var names = sheet.getRange(2, COL.trasa, numRows, 1).getValues();
-  var rates = sheet.getRange(2, COL.stawkaTrasy, numRows, 1).getValues();
-  var settled = sheet.getRange(2, COL.rozliczony, numRows, 1).getValues();
   var found = null;
-  for (var i = 0; i < numRows; i++) {
-    var rowName = String(names[i][0] == null ? '' : names[i][0]).trim();
-    if (rowName !== wanted) {
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
       continue;
     }
-    var flag = String(settled[i][0] == null ? '' : settled[i][0]).trim().toLowerCase();
-    if (flag === 'tak') {
-      continue;
+    var numRows = lastRow - 1;
+    var names = sheet.getRange(2, COL.trasa, numRows, 1).getValues();
+    var rates = sheet.getRange(2, COL.stawkaTrasy, numRows, 1).getValues();
+    var settled = sheet.getRange(2, COL.rozliczony, numRows, 1).getValues();
+    var i;
+    for (i = 0; i < numRows; i++) {
+      var rowName = String(names[i][0] == null ? '' : names[i][0]).trim();
+      if (rowName !== wanted) {
+        continue;
+      }
+      var flag = String(settled[i][0] == null ? '' : settled[i][0]).trim().toLowerCase();
+      if (flag === 'tak') {
+        continue;
+      }
+      var rate = rates[i][0];
+      found = rate == null || rate === '' ? '' : String(rate).trim();
     }
-    var rate = rates[i][0];
-    found = rate == null || rate === '' ? '' : String(rate).trim();
   }
   return found == null ? '' : found;
 }
@@ -534,12 +730,23 @@ function getStoredLastRow_() {
   return isNaN(row) || row < 2 ? null : row;
 }
 
-function setStoredLastRow_(row) {
-  PropertiesService.getScriptProperties().setProperty(TRANSPORT_LAST_ROW_KEY, String(row));
+function getStoredLastSheetName_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(TRANSPORT_LAST_SHEET_KEY);
+  return raw == null || raw === '' ? '' : String(raw);
+}
+
+function setStoredLastRow_(row, sheetName) {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty(TRANSPORT_LAST_ROW_KEY, String(row));
+  if (sheetName != null && String(sheetName) !== '') {
+    props.setProperty(TRANSPORT_LAST_SHEET_KEY, String(sheetName));
+  }
 }
 
 function clearStoredLastRow_() {
-  PropertiesService.getScriptProperties().deleteProperty(TRANSPORT_LAST_ROW_KEY);
+  var props = PropertiesService.getScriptProperties();
+  props.deleteProperty(TRANSPORT_LAST_ROW_KEY);
+  props.deleteProperty(TRANSPORT_LAST_SHEET_KEY);
 }
 
 function parseNumberFromCell_(cell) {
@@ -554,69 +761,87 @@ function parseNumberFromCell_(cell) {
   return isNaN(n) ? null : n;
 }
 
+/** Skan max numeru po legacy + wszystkich miesięcznych Na zgłoszenie. */
 function scanMaxNumberAndRowFromSheet_() {
-  var sheet = getDataSheet_();
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return { max: 0, row: 0 };
-  }
-  var values = sheet.getRange(2, COL.numer, lastRow, COL.numer).getValues();
   var max = 0;
   var maxRow = 0;
-  for (var i = 0; i < values.length; i++) {
-    var n = parseNumberFromCell_(values[i][0]);
-    if (n != null && n >= max) {
-      max = n;
-      maxRow = i + 2;
+  var maxSheet = '';
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      continue;
+    }
+    var values = sheet.getRange(2, COL.numer, lastRow, COL.numer).getValues();
+    var i;
+    for (i = 0; i < values.length; i++) {
+      var n = parseNumberFromCell_(values[i][0]);
+      if (n != null && n >= max) {
+        max = n;
+        maxRow = i + 2;
+        maxSheet = sheets[s].name;
+      }
     }
   }
-  return { max: max, row: maxRow };
+  return { max: max, row: maxRow, sheetName: maxSheet };
 }
 
 function scanMaxNumberFromSheet_() {
   return scanMaxNumberAndRowFromSheet_().max;
 }
 
-function isNumberAtRow_(expected, row) {
-  var sheet = getDataSheet_();
-  if (row > sheet.getLastRow()) {
+function isNumberAtRow_(expected, row, sheetName) {
+  var sheet = getRegisterSheetByName_(sheetName || REGISTER_SHEET_NAME, 'report');
+  if (!sheet || row > sheet.getLastRow()) {
     return false;
   }
   return parseNumberFromCell_(sheet.getRange(row, COL.numer).getValue()) === expected;
 }
 
-/** O(1): cache wiersza ostatniego zapisu; pełny skan tylko gdy brak cache (np. po migracji). */
+/** O(1): cache wiersza + nazwy zakładki; pełny skan gdy brak cache. */
 function isLastAssignedNumberStillInSheet_(stored) {
   if (stored <= 0) {
     return true;
   }
   var row = getStoredLastRow_();
-  if (row == null) {
-    row = findHighestRowWithNumber_(stored);
-    if (row != null) {
-      setStoredLastRow_(row);
+  var sheetName = getStoredLastSheetName_();
+  if (row == null || !sheetName) {
+    var found = findHighestRowWithNumber_(stored);
+    if (found) {
+      setStoredLastRow_(found.row, found.sheetName);
+      row = found.row;
+      sheetName = found.sheetName;
     }
   }
-  if (row == null) {
+  if (row == null || !sheetName) {
     return false;
   }
-  return isNumberAtRow_(stored, row);
+  return isNumberAtRow_(stored, row, sheetName);
 }
 
 function findHighestRowWithNumber_(target) {
-  var sheet = getDataSheet_();
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return null;
-  }
-  var values = sheet.getRange(2, COL.numer, lastRow, COL.numer).getValues();
   var foundRow = null;
-  for (var i = 0; i < values.length; i++) {
-    if (parseNumberFromCell_(values[i][0]) === target) {
-      foundRow = i + 2;
+  var foundSheet = '';
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      continue;
+    }
+    var values = sheet.getRange(2, COL.numer, lastRow, COL.numer).getValues();
+    var i;
+    for (i = 0; i < values.length; i++) {
+      if (parseNumberFromCell_(values[i][0]) === target) {
+        foundRow = i + 2;
+        foundSheet = sheets[s].name;
+      }
     }
   }
-  return foundRow;
+  return foundRow == null ? null : { row: foundRow, sheetName: foundSheet };
 }
 
 function ensureStoredMaxNumberSeeded_() {
@@ -626,8 +851,8 @@ function ensureStoredMaxNumberSeeded_() {
   }
   var result = scanMaxNumberAndRowFromSheet_();
   setStoredMaxNumber_(result.max);
-  if (result.row > 0) {
-    setStoredLastRow_(result.row);
+  if (result.row > 0 && result.sheetName) {
+    setStoredLastRow_(result.row, result.sheetName);
   }
   return result.max;
 }
@@ -646,6 +871,9 @@ function resolveNextTransportNumber_(increment) {
   var next = result.max + 1;
   if (increment) {
     setStoredMaxNumber_(next);
+    if (result.row > 0 && result.sheetName) {
+      setStoredLastRow_(result.row, result.sheetName);
+    }
   }
   return next;
 }
@@ -823,13 +1051,12 @@ function ensureTransportHappenedRules_(sheet) {
 }
 
 /**
- * Ten sam tekst w kolumnie 11 (Trasa), bez filtra podwykonawcy i dat.
- * Rozliczony `tak` pomija. Kolumny 17 i 18 nie są w tym zapisie.
- * Lock trzyma `doPost`, tak jak przy numerze protokołu.
+ * Ten sam tekst w kolumnie Trasa na jednej zakładce.
+ * Rozliczony `tak` pomija. Kolumny kosztu nie są w tym zapisie.
  */
-function applyRouteRateToUnsettled_(sheet, name, rate) {
+function applyRouteRateToSheetUnsettled_(sheet, name, rate, trasaCol, stawkaCol, rozliczonyCol) {
   var wanted = String(name == null ? '' : name).trim();
-  if (!wanted) {
+  if (!wanted || !sheet) {
     return;
   }
   var lastRow = sheet.getLastRow();
@@ -837,10 +1064,11 @@ function applyRouteRateToUnsettled_(sheet, name, rate) {
     return;
   }
   var numRows = lastRow - 1;
-  var names = sheet.getRange(2, COL.trasa, numRows, 1).getValues();
-  var settled = sheet.getRange(2, COL.rozliczony, numRows, 1).getValues();
+  var names = sheet.getRange(2, trasaCol, numRows, 1).getValues();
+  var settled = sheet.getRange(2, rozliczonyCol, numRows, 1).getValues();
   var next = rate == null ? '' : String(rate).trim();
-  for (var i = 0; i < numRows; i++) {
+  var i;
+  for (i = 0; i < numRows; i++) {
     var rowName = String(names[i][0] == null ? '' : names[i][0]).trim();
     if (rowName !== wanted) {
       continue;
@@ -849,7 +1077,45 @@ function applyRouteRateToUnsettled_(sheet, name, rate) {
     if (flag === 'tak') {
       continue;
     }
-    sheet.getRange(i + 2, COL.stawkaTrasy).setValue(next);
+    sheet.getRange(i + 2, stawkaCol).setValue(next);
+  }
+}
+
+/**
+ * Stawka trasy na wszystkich zakładkach Na zgłoszenie (legacy + miesięczne).
+ * Lock trzyma `doPost`, tak jak przy numerze protokołu.
+ */
+function applyRouteRateToUnsettled_(sheet, name, rate) {
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    applyRouteRateToSheetUnsettled_(
+      sheets[s].sheet,
+      name,
+      rate,
+      COL.trasa,
+      COL.stawkaTrasy,
+      COL.rozliczony,
+    );
+  }
+  if (sheet && sheets.length === 0) {
+    applyRouteRateToSheetUnsettled_(sheet, name, rate, COL.trasa, COL.stawkaTrasy, COL.rozliczony);
+  }
+}
+
+/** Stawka trasy na wszystkich zakładkach Harmonogram (legacy + miesięczne). */
+function applyRouteRateToScheduleUnsettled_(name, rate) {
+  var sheets = listRegisterSheets_('schedule');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    applyRouteRateToSheetUnsettled_(
+      sheets[s].sheet,
+      name,
+      rate,
+      SCHEDULE_COL.trasa,
+      SCHEDULE_COL.stawkaTrasy,
+      SCHEDULE_COL.rozliczony,
+    );
   }
 }
 
@@ -908,21 +1174,10 @@ function resolveSnapshotFromRateList_(rates, shop, contractor, pickupDate) {
 }
 
 function appendTransportRow_(numer, body) {
-  var sheet = getDataSheet_();
-  if (isRegisterLayoutV1_(sheet)) {
-    throw new Error(
-      'Rejestr ma stary układ kolumn (komentarze w J/K). Uruchom migrateRegisterLayoutRates w Apps Script, potem wdróż Web App.',
-    );
-  }
-  if (isRegisterLayoutV2_(sheet)) {
-    throw new Error(
-      'Rejestr ma układ V2 (Trasa w J). Uruchom migrateRegisterLayoutTransportOdbył w Apps Script, potem wdróż Web App.',
-    );
-  }
-  ensureTransportRegisterColumns_(sheet);
+  var dataOdbioru = body.dataOdbioru || '';
+  var sheet = getOrCreateMonthRegisterSheet_('report', dataOdbioru);
   var adres = body.adresSklepu || '';
   var kto = body.ktoOdbiera || '';
-  var dataOdbioru = body.dataOdbioru || '';
   var pickupDate = settlementDateText_(dataOdbioru) || '';
   var snapshot = resolveRegisterRateSnapshot_(cellStr_(adres), cellStr_(kto), pickupDate);
   var routeName = '';
@@ -960,7 +1215,7 @@ function appendTransportRow_(numer, body) {
   var parsed = parseNumberFromCell_(numer);
   var stored = getStoredMaxNumber_();
   if (parsed != null && stored != null && parsed === stored) {
-    setStoredLastRow_(sheet.getLastRow());
+    setStoredLastRow_(sheet.getLastRow(), sheet.getName());
   }
 }
 
@@ -993,35 +1248,40 @@ function transportDidNotHappen_(row) {
  * Wiersz z kolumną 10 = `nie` nie ustawia daty odcięcia.
  */
 function buildBulkLastTransportDatesMap_() {
-  var sheet = getDataSheet_();
-  var lastRow = sheet.getLastRow();
   var result = {};
-  if (lastRow < 2) {
-    return result;
-  }
-  var rows = readTransportPickupRows_(sheet, lastRow);
-  for (var i = 0; i < rows.length; i++) {
-    if (transportDidNotHappen_(rows[i])) {
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
       continue;
     }
-    var rowAdres = rows[i][0];
-    var rowPodmiot = rows[i][1];
-    var rowData = rows[i][3];
-    var rowKto = rows[i][4];
-    var key = buildTransportShopKey_(rowPodmiot, rowAdres);
-    if (!key || key === '\0') {
-      continue;
-    }
-    var ms = parseDateToMs_(rowData);
-    if (ms == null) {
-      continue;
-    }
-    var prev = result[key];
-    if (prev == null || ms >= prev.ms) {
-      result[key] = {
-        ms: ms,
-        ktoOdbiera: String(rowKto || '').trim(),
-      };
+    var rows = readTransportPickupRows_(sheet, lastRow);
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      if (transportDidNotHappen_(rows[i])) {
+        continue;
+      }
+      var rowAdres = rows[i][0];
+      var rowPodmiot = rows[i][1];
+      var rowData = rows[i][3];
+      var rowKto = rows[i][4];
+      var key = buildTransportShopKey_(rowPodmiot, rowAdres);
+      if (!key || key === '\0') {
+        continue;
+      }
+      var ms = parseDateToMs_(rowData);
+      if (ms == null) {
+        continue;
+      }
+      var prev = result[key];
+      if (prev == null || ms >= prev.ms) {
+        result[key] = {
+          ms: ms,
+          ktoOdbiera: String(rowKto || '').trim(),
+        };
+      }
     }
   }
   return result;
@@ -1050,31 +1310,35 @@ function findLastTransportInfo_(podmiot, adres) {
   if (!normalizeTransportKeyPart_(adres)) {
     return null;
   }
-  var sheet = getDataSheet_();
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return null;
-  }
-  var rows = readTransportPickupRows_(sheet, lastRow);
   var best = null;
-
-  for (var i = 0; i < rows.length; i++) {
-    if (transportDidNotHappen_(rows[i])) {
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
       continue;
     }
-    var rowAdres = rows[i][0];
-    var rowPodmiot = rows[i][1];
-    var rowData = rows[i][3];
-    var rowKto = rows[i][4];
-    if (!rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres)) {
-      continue;
-    }
-    var ms = parseDateToMs_(rowData);
-    if (ms != null && (best == null || ms >= best.ms)) {
-      best = {
-        ms: ms,
-        ktoOdbiera: String(rowKto || '').trim(),
-      };
+    var rows = readTransportPickupRows_(sheet, lastRow);
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      if (transportDidNotHappen_(rows[i])) {
+        continue;
+      }
+      var rowAdres = rows[i][0];
+      var rowPodmiot = rows[i][1];
+      var rowData = rows[i][3];
+      var rowKto = rows[i][4];
+      if (!rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres)) {
+        continue;
+      }
+      var ms = parseDateToMs_(rowData);
+      if (ms != null && (best == null || ms >= best.ms)) {
+        best = {
+          ms: ms,
+          ktoOdbiera: String(rowKto || '').trim(),
+        };
+      }
     }
   }
   return best;
@@ -1999,18 +2263,12 @@ function resolveHarmonogramSnapshot_(rates, shop, contractor, pickupDate) {
 
 /**
  * Po zapisie Bazy cen: uzupełnia Trasa + stawki na nierozliczonych wierszach
- * „zestawienie z harmonogramu” dla tej pary sklep+podwykonawca.
- * Zakładki nie zakłada. Rozliczonych nie rusza.
+ * rejestru Harmonogram (legacy + miesięczne) dla tej pary sklep+podwykonawca.
+ * Zakładek nie zakłada. Rozliczonych nie rusza.
  */
 function applyHarmonogramRatesToScheduleRegister_(shop, contractor) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var register = ss.getSheetByName(SCHEDULE_REGISTER_SHEET_NAME);
-  var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
-  if (!register || !baza || !shop || !contractor) {
-    return 0;
-  }
-  var lastRow = register.getLastRow();
-  if (lastRow < 2) {
+  var baza = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  if (!baza || !shop || !contractor) {
     return 0;
   }
   var rates = listHarmonogramRateAmountRows_(baza);
@@ -2019,31 +2277,45 @@ function applyHarmonogramRatesToScheduleRegister_(shop, contractor) {
   }
   var shopFold = settlementFoldPl_(shop);
   var whoFold = settlementFoldPl_(contractor);
-  var width = Math.max(register.getLastColumn(), SCHEDULE_COL.stawkaWorka);
-  var values = register.getRange(2, 1, lastRow - 1, width).getValues();
   var updated = 0;
-  var i;
-  for (i = 0; i < values.length; i++) {
-    var mapped = mapSettlementScheduleRegisterRow_(i + 2, values[i]);
-    if (!mapped || mapped.settled) {
+  var sheets = listRegisterSheets_('schedule');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var register = sheets[s].sheet;
+    var lastRow = register.getLastRow();
+    if (lastRow < 2) {
       continue;
     }
-    if (
-      settlementFoldPl_(mapped.address) !== shopFold ||
-      settlementFoldPl_(mapped.contractor) !== whoFold
-    ) {
-      continue;
+    var width = Math.max(register.getLastColumn(), SCHEDULE_COL.stawkaWorka);
+    var values = register.getRange(2, 1, lastRow - 1, width).getValues();
+    var i;
+    for (i = 0; i < values.length; i++) {
+      var mapped = mapSettlementScheduleRegisterRow_(i + 2, values[i], sheets[s].name);
+      if (!mapped || mapped.settled) {
+        continue;
+      }
+      if (
+        settlementFoldPl_(mapped.address) !== shopFold ||
+        settlementFoldPl_(mapped.contractor) !== whoFold
+      ) {
+        continue;
+      }
+      var snap = resolveHarmonogramSnapshot_(
+        rates,
+        mapped.address,
+        mapped.contractor,
+        mapped.pickupDate,
+      );
+      register.getRange(i + 2, SCHEDULE_COL.trasa, 1, 4).setValues([
+        [
+          snap.routeName,
+          sheetRateWriteValue_(snap.route),
+          sheetRateWriteValue_(snap.pickup),
+          sheetRateWriteValue_(snap.bag),
+        ],
+      ]);
+      updated += 1;
     }
-    var snap = resolveHarmonogramSnapshot_(rates, mapped.address, mapped.contractor, mapped.pickupDate);
-    register.getRange(i + 2, SCHEDULE_COL.trasa, 1, 4).setValues([
-      [
-        snap.routeName,
-        sheetRateWriteValue_(snap.route),
-        sheetRateWriteValue_(snap.pickup),
-        sheetRateWriteValue_(snap.bag),
-      ],
-    ]);
-    updated += 1;
   }
   return updated;
 }
@@ -2139,14 +2411,23 @@ function listContractors_() {
  * Nic nie zapisuje i zakładki nie zakłada.
  */
 function listStoreAddresses_() {
-  var sheet = getDataSheet_();
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return [];
+  var all = [];
+  var sheets = listRegisterSheets_('report');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      continue;
+    }
+    var width = COL.sklep - COL.adres + 1;
+    var values = sheet.getRange(2, COL.adres, lastRow - 1, width).getValues();
+    var i;
+    for (i = 0; i < values.length; i++) {
+      all.push(values[i]);
+    }
   }
-  var width = COL.sklep - COL.adres + 1;
-  var values = sheet.getRange(2, COL.adres, lastRow - 1, width).getValues();
-  return uniqueStoreAddresses_(values);
+  return uniqueStoreAddresses_(all);
 }
 
 function uniqueStoreAddresses_(rows) {
@@ -2186,8 +2467,8 @@ function uniqueStoreAddresses_(rows) {
 
 /**
  * Odczyt zestawienia. Nie bierze locka i nic nie zapisuje.
- * tryb=harmonogram: zakładka „zestawienie z harmonogramu” + rates z Bazy cen.
- * Inaczej: Arkusz1 + Baza stawek (Na zgłoszenie).
+ * tryb=harmonogram: legacy + miesięczne Harmonogram + rates z Bazy cen.
+ * Inaczej: legacy Arkusz1 + miesięczne Na zgłoszenie + Baza stawek.
  */
 function settlementSearch_(query) {
   var tryb = settlementText_(query && query.tryb).toLowerCase();
@@ -2197,21 +2478,19 @@ function settlementSearch_(query) {
   var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
   return buildSettlementRead_(
     query,
-    readSettlementCells_(getDataSheet_(), COL.kosztPerWorek),
+    readAllRegisterSettlementCells_('report', COL.kosztPerWorek),
     readSettlementCells_(rateSheet, 5),
   );
 }
 
 /**
- * Harmonogram: wiersze z „zestawienie z harmonogramu”; rates z Bazy cen (okno stawek).
+ * Harmonogram: wiersze z legacy + miesięcznych; rates z Bazy cen.
  */
 function settlementSearchHarmonogram_(query) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SCHEDULE_REGISTER_SHEET_NAME);
-  var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  var baza = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
   return buildSettlementHarmonogramRead_(
     query,
-    readSettlementCells_(sheet, SCHEDULE_COL.kosztPerWorek),
+    readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.kosztPerWorek),
     readSettlementCells_(baza, 8),
   );
 }
@@ -2263,14 +2542,14 @@ function settlementStats_(query) {
   var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
   return buildSettlementStats_(
     query,
-    readSettlementCells_(getDataSheet_(), COL.kosztPerWorek),
+    readAllRegisterSettlementCells_('report', COL.kosztPerWorek),
     readSettlementCells_(rateSheet, 5),
     readOdebraneSheetRows_(odebrane),
   );
 }
 
 /** Czyta istniejące kolumny i dopina puste. Nie woła setValue. Brak flagi „nie” = transport się odbył. */
-function readSettlementCells_(sheet, width) {
+function readSettlementCells_(sheet, width, sheetName) {
   if (!sheet) {
     return [];
   }
@@ -2285,6 +2564,7 @@ function readSettlementCells_(sheet, width) {
   var numDataRows = lastRow - 1;
   var readWidth = lastCol < width ? lastCol : width;
   var values = sheet.getRange(2, 1, numDataRows, readWidth).getValues();
+  var name = sheetName != null && sheetName !== '' ? String(sheetName) : sheet.getName();
   var out = [];
   for (var i = 0; i < values.length; i++) {
     var cells = [];
@@ -2292,7 +2572,22 @@ function readSettlementCells_(sheet, width) {
     for (var c = 0; c < width; c++) {
       cells.push(c < row.length && row[c] != null ? row[c] : '');
     }
-    out.push({ sheetRow: i + 2, cells: cells });
+    out.push({ sheetName: name, sheetRow: i + 2, cells: cells });
+  }
+  return out;
+}
+
+/** Scalenie wierszy ze wszystkich zakładek rejestru danego trybu (legacy + miesięczne). */
+function readAllRegisterSettlementCells_(kind, width) {
+  var out = [];
+  var sheets = listRegisterSheets_(kind);
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var chunk = readSettlementCells_(sheets[s].sheet, width, sheets[s].name);
+    var i;
+    for (i = 0; i < chunk.length; i++) {
+      out.push(chunk[i]);
+    }
   }
   return out;
 }
@@ -2526,12 +2821,13 @@ function settlementQueryError_(query) {
   return '';
 }
 
-function mapSettlementRegisterRow_(sheetRow, cells) {
+function mapSettlementRegisterRow_(sheetRow, cells, sheetName) {
   var pickupDate = settlementDateText_(settlementCell_(cells, 4));
   if (!pickupDate) {
     return null;
   }
   return {
+    sheetName: sheetName != null ? String(sheetName) : '',
     sheetRow: sheetRow,
     transportNumber: settlementTransportNumber_(settlementCell_(cells, 0)),
     address: settlementText_(settlementCell_(cells, 1)),
@@ -2551,12 +2847,13 @@ function mapSettlementRegisterRow_(sheetRow, cells) {
 }
 
 /** Mapowanie wiersza zestawienia Harmonogram (bez nr zlecenia). */
-function mapSettlementScheduleRegisterRow_(sheetRow, cells) {
+function mapSettlementScheduleRegisterRow_(sheetRow, cells, sheetName) {
   var pickupDate = settlementDateText_(settlementCell_(cells, 3));
   if (!pickupDate) {
     return null;
   }
   return {
+    sheetName: sheetName != null ? String(sheetName) : '',
     sheetRow: sheetRow,
     transportNumber: '',
     address: settlementText_(settlementCell_(cells, 0)),
@@ -2597,6 +2894,7 @@ function mapSettlementRateRow_(sheetRow, cells) {
 
 function settlementPublicRow_(mapped) {
   return {
+    sheetName: mapped.sheetName || '',
     sheetRow: mapped.sheetRow,
     transportNumber: mapped.transportNumber,
     address: mapped.address,
@@ -2613,6 +2911,7 @@ function settlementPublicRow_(mapped) {
 
 function settlementStatsPublicRow_(mapped) {
   return {
+    sheetName: mapped.sheetName || '',
     sheetRow: mapped.sheetRow,
     transportNumber: mapped.transportNumber,
     address: mapped.address,
@@ -2726,7 +3025,7 @@ function buildSettlementRead_(query, register, rates) {
   var sourceRows = register || [];
   for (var i = 0; i < sourceRows.length; i++) {
     var item = sourceRows[i];
-    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells);
+    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells, item.sheetName);
     if (!mapped || mapped.contractor !== q.podwykonawca) {
       continue;
     }
@@ -2803,7 +3102,7 @@ function buildSettlementStats_(query, register, rates, odebrane) {
   var sourceRows = register || [];
   for (var i = 0; i < sourceRows.length; i++) {
     var item = sourceRows[i];
-    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells);
+    var mapped = mapSettlementRegisterRow_(item.sheetRow, item.cells, item.sheetName);
     if (!mapped) {
       continue;
     }
@@ -3031,7 +3330,7 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
   var i;
   for (i = 0; i < sourceRows.length; i++) {
     var item = sourceRows[i];
-    var mapped = mapSettlementScheduleRegisterRow_(item.sheetRow, item.cells);
+    var mapped = mapSettlementScheduleRegisterRow_(item.sheetRow, item.cells, item.sheetName);
     if (!mapped || settlementFoldPl_(mapped.contractor) !== who) {
       continue;
     }
@@ -3401,9 +3700,9 @@ function scheduleSyncDefaultWindow_() {
 /* settlement-read-pure:end */
 
 /**
- * Sync „zestawienie z harmonogramu” z odebrane + Baza cen.
+ * Sync Harmonogram (miesięczne + legacy) z odebrane + Baza cen.
  * Uzupełnia braki / aktualizuje nierozliczone. NIGDY nie czyści zakładki.
- * Ilość worków przy update: max(istniejąca, z odebrane) — usunięcie worków z odebrane nie cofa sumy.
+ * Nowe wiersze → zakładka miesięczna z daty odbioru. Update → istniejąca zakładka (po nazwie).
  */
 function syncZestawienieHarmonogram_(body) {
   var window = scheduleSyncDefaultWindow_();
@@ -3413,7 +3712,6 @@ function syncZestawienieHarmonogram_(body) {
     return { ok: false, error: 'dataOd after dataDo' };
   }
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = getOrCreateScheduleRegisterSheet_();
   var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
   var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
   var expected = buildScheduleSyncExpected_(
@@ -3422,7 +3720,7 @@ function syncZestawienieHarmonogram_(body) {
     readSettlementCells_(baza, 8),
     readOdebraneSheetRows_(odebrane),
   );
-  var existing = scheduleRegisterIndex_(sheet);
+  var existing = scheduleRegisterIndexAll_();
   var created = 0;
   var updated = 0;
   var skippedSettled = 0;
@@ -3435,11 +3733,15 @@ function syncZestawienieHarmonogram_(body) {
         skippedSettled += 1;
         continue;
       }
+      var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(found.sheetName);
+      if (!targetSheet) {
+        continue;
+      }
       var existingBags = found.bagCount != null ? found.bagCount : 0;
       var writeBags = Math.max(existingBags, exp.bagCount || 0);
-      sheet.getRange(found.row, SCHEDULE_COL.iloscWorkow).setValue(writeBags);
-      sheet.getRange(found.row, SCHEDULE_COL.rodzajZbiorki).setValue(exp.rodzajZbiorki || '');
-      sheet.getRange(found.row, SCHEDULE_COL.trasa, 1, 4).setValues([
+      targetSheet.getRange(found.row, SCHEDULE_COL.iloscWorkow).setValue(writeBags);
+      targetSheet.getRange(found.row, SCHEDULE_COL.rodzajZbiorki).setValue(exp.rodzajZbiorki || '');
+      targetSheet.getRange(found.row, SCHEDULE_COL.trasa, 1, 4).setValues([
         [
           exp.routeName || '',
           sheetRateWriteValue_(exp.routeRate),
@@ -3448,14 +3750,15 @@ function syncZestawienieHarmonogram_(body) {
         ],
       ]);
       if (exp.shopName) {
-        sheet.getRange(found.row, SCHEDULE_COL.sklep).setValue(exp.shopName);
+        targetSheet.getRange(found.row, SCHEDULE_COL.sklep).setValue(exp.shopName);
       }
       if (exp.podmiot) {
-        sheet.getRange(found.row, SCHEDULE_COL.podmiot).setValue(exp.podmiot);
+        targetSheet.getRange(found.row, SCHEDULE_COL.podmiot).setValue(exp.podmiot);
       }
       updated += 1;
       continue;
     }
+    var sheet = getOrCreateMonthRegisterSheet_('schedule', exp.pickupDate);
     var newRow = sheet.getLastRow() + 1;
     if (newRow < 2) {
       newRow = 2;
@@ -3478,6 +3781,12 @@ function syncZestawienieHarmonogram_(body) {
     line[SCHEDULE_COL.stawkaWorka - 1] = sheetRateWriteValue_(exp.bagRate);
     sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
     created += 1;
+    existing.byKey[exp.key] = {
+      sheetName: sheet.getName(),
+      row: newRow,
+      settled: false,
+      bagCount: exp.bagCount || 0,
+    };
   }
   return {
     ok: true,
@@ -3490,30 +3799,33 @@ function syncZestawienieHarmonogram_(body) {
   };
 }
 
-/** Indeks istniejących wierszy zestawienia: klucz → { row, settled, bagCount }. Bez clear. */
-function scheduleRegisterIndex_(sheet) {
+/** Indeks istniejących wierszy Harmonogram (legacy + miesięczne): klucz → lokalizacja. */
+function scheduleRegisterIndexAll_() {
   var byKey = {};
-  if (!sheet) {
-    return { byKey: byKey };
-  }
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return { byKey: byKey };
-  }
-  var width = Math.max(sheet.getLastColumn(), SCHEDULE_COL.kosztPerWorek);
-  var values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
-  var i;
-  for (i = 0; i < values.length; i++) {
-    var mapped = mapSettlementScheduleRegisterRow_(i + 2, values[i]);
-    if (!mapped) {
+  var sheets = listRegisterSheets_('schedule');
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s].sheet;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
       continue;
     }
-    var key = scheduleSyncRowKey_(mapped.address, mapped.pickupDate, mapped.contractor);
-    byKey[key] = {
-      row: i + 2,
-      settled: mapped.settled,
-      bagCount: mapped.bagCount != null ? mapped.bagCount : 0,
-    };
+    var width = Math.max(sheet.getLastColumn(), SCHEDULE_COL.kosztPerWorek);
+    var values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
+    var i;
+    for (i = 0; i < values.length; i++) {
+      var mapped = mapSettlementScheduleRegisterRow_(i + 2, values[i], sheets[s].name);
+      if (!mapped) {
+        continue;
+      }
+      var key = scheduleSyncRowKey_(mapped.address, mapped.pickupDate, mapped.contractor);
+      byKey[key] = {
+        sheetName: sheets[s].name,
+        row: i + 2,
+        settled: mapped.settled,
+        bagCount: mapped.bagCount != null ? mapped.bagCount : 0,
+      };
+    }
   }
   return { byKey: byKey };
 }
@@ -3530,39 +3842,46 @@ function isSettlementWriteAction_(action) {
 }
 
 /**
- * Para klucza: numer wiersza i numer z kolumny 1 (Arkusz1).
- * Harmonogram: tylko sheetRow (bez nr zlecenia).
+ * Para klucza: sheetName + sheetRow (+ transportNumber dla Na zgłoszenie).
+ * Harmonogram: sheetName + sheetRow (bez nr zlecenia).
  * Rozliczony `tak` też odpada — wiersz nie jest już w zestawieniu.
- * Zwraca { row } albo { error }.
+ * Zwraca { sheet, row } albo { error }.
  */
 function registerWriteTarget_(sheet, body) {
   if (!body || body.sheetRow == null) {
     return { error: 'key' };
   }
-  var row = Number(body.sheetRow);
-  if (!isFinite(row) || Math.floor(row) !== row || row < 2 || row > sheet.getLastRow()) {
-    return { error: 'key' };
-  }
   var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
   var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var targetSheet = sheet;
+  if (body.sheetName != null && settlementText_(body.sheetName) !== '') {
+    targetSheet = getRegisterSheetByName_(body.sheetName, schedule ? 'schedule' : 'report');
+  }
+  if (!targetSheet) {
+    return { error: 'key' };
+  }
+  var row = Number(body.sheetRow);
+  if (!isFinite(row) || Math.floor(row) !== row || row < 2 || row > targetSheet.getLastRow()) {
+    return { error: 'key' };
+  }
   if (!schedule) {
     if (body.transportNumber == null) {
       return { error: 'key' };
     }
-    var actual = settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue());
+    var actual = settlementTransportNumber_(targetSheet.getRange(row, COL.numer).getValue());
     var expected = settlementTransportNumber_(body.transportNumber);
     if (actual !== expected) {
       return { error: 'key' };
     }
-    if (settlementFlag_(sheet.getRange(row, COL.rozliczony).getValue()) === 'tak') {
+    if (settlementFlag_(targetSheet.getRange(row, COL.rozliczony).getValue()) === 'tak') {
       return { error: 'settled' };
     }
   } else {
-    if (settlementFlag_(sheet.getRange(row, SCHEDULE_COL.rozliczony).getValue()) === 'tak') {
+    if (settlementFlag_(targetSheet.getRange(row, SCHEDULE_COL.rozliczony).getValue()) === 'tak') {
       return { error: 'settled' };
     }
   }
-  return { row: row };
+  return { sheet: targetSheet, row: row };
 }
 
 /** Puste pole czyści komórkę. Ujemne i nieliczba odpadają. Zero zostaje. */
@@ -3606,8 +3925,7 @@ function routeRateWriteValue_(parsed) {
 }
 
 function patchBags_(body) {
-  var sheet = settlementRegisterSheetForWrite_(body);
-  var target = registerWriteTarget_(sheet, body);
+  var target = registerWriteTarget_(null, body);
   if (target.error) {
     return { ok: false, error: target.error };
   }
@@ -3620,17 +3938,16 @@ function patchBags_(body) {
     settlementText_(body && (body.tryb || body.mode)).toLowerCase() === 'schedule'
       ? SCHEDULE_COL.iloscWorkow
       : COL.iloscWorkow;
-  sheet.getRange(target.row, col).setValue(bags.empty ? '' : bags.value);
+  target.sheet.getRange(target.row, col).setValue(bags.empty ? '' : bags.value);
   return { ok: true };
 }
 
 /**
  * Stawka po tekście nazwy, nie po podwykonawcy i nie po dacie.
- * Pusta stawka czyści. Kolumny 16 i 17 nie wchodzą w ten zapis.
+ * Pusta stawka czyści. Kolumny kosztu nie wchodzą w ten zapis.
  */
 function patchRouteRate_(body) {
-  var sheet = settlementRegisterSheetForWrite_(body);
-  var target = registerWriteTarget_(sheet, body);
+  var target = registerWriteTarget_(null, body);
   if (target.error) {
     return { ok: false, error: target.error };
   }
@@ -3642,18 +3959,26 @@ function patchRouteRate_(body) {
   if (!parsed) {
     return { ok: false, error: 'rate' };
   }
-  applyRouteRateToUnsettled_(sheet, name, routeRateWriteValue_(parsed));
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var value = routeRateWriteValue_(parsed);
+  if (tryb === 'harmonogram' || tryb === 'schedule') {
+    applyRouteRateToScheduleUnsettled_(name, value);
+  } else {
+    applyRouteRateToUnsettled_(target.sheet, name, value);
+  }
   return { ok: true };
 }
 
 /** Czyści Trasa i Stawka za trasę jednego wiersza. Reszty trasy nie rusza. */
 function detachRoute_(body) {
-  var sheet = settlementRegisterSheetForWrite_(body);
-  var target = registerWriteTarget_(sheet, body);
+  var target = registerWriteTarget_(null, body);
   if (target.error) {
     return { ok: false, error: target.error };
   }
-  sheet.getRange(target.row, COL.trasa, 1, 2).setValues([['', '']]);
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var trasaCol = schedule ? SCHEDULE_COL.trasa : COL.trasa;
+  target.sheet.getRange(target.row, trasaCol, 1, 2).setValues([['', '']]);
   return { ok: true };
 }
 
@@ -3663,8 +3988,7 @@ function detachRoute_(body) {
  * Potem ta sama reguła co patchRouteRate.
  */
 function attachRoute_(body) {
-  var sheet = settlementRegisterSheetForWrite_(body);
-  var target = registerWriteTarget_(sheet, body);
+  var target = registerWriteTarget_(null, body);
   if (target.error) {
     return { ok: false, error: target.error };
   }
@@ -3676,8 +4000,16 @@ function attachRoute_(body) {
   if (!parsed || parsed.empty) {
     return { ok: false, error: 'rate' };
   }
-  sheet.getRange(target.row, COL.trasa).setValue(name);
-  applyRouteRateToUnsettled_(sheet, name, routeRateWriteValue_(parsed));
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var trasaCol = schedule ? SCHEDULE_COL.trasa : COL.trasa;
+  target.sheet.getRange(target.row, trasaCol).setValue(name);
+  var value = routeRateWriteValue_(parsed);
+  if (schedule) {
+    applyRouteRateToScheduleUnsettled_(name, value);
+  } else {
+    applyRouteRateToUnsettled_(target.sheet, name, value);
+  }
   return { ok: true };
 }
 
@@ -3814,6 +4146,7 @@ function approveRateApplies_(validFrom, pickupDate) {
 function approveIdentity_(item) {
   var row = item && item.sheetRow != null ? Number(item.sheetRow) : null;
   return {
+    sheetName: item && item.sheetName != null ? settlementText_(item.sheetName) : '',
     sheetRow: row,
     transportNumber:
       item && item.transportNumber != null ? settlementTransportNumber_(item.transportNumber) : '',
@@ -3827,18 +4160,22 @@ function approveSkip_(item, reason) {
 }
 
 function approveSaved_(sheet, row, schedule) {
-  if (schedule) {
-    return { sheetRow: row, transportNumber: '' };
-  }
-  return {
+  var base = {
+    sheetName: sheet ? sheet.getName() : '',
     sheetRow: row,
-    transportNumber: settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue()),
+    transportNumber: '',
   };
+  if (schedule) {
+    return base;
+  }
+  base.transportNumber = settlementTransportNumber_(sheet.getRange(row, COL.numer).getValue());
+  return base;
 }
 
 /**
  * Jedyny zapis kolumn rozliczenia. Koszt jest już policzony (`koszt` w groszach).
- * tryb=harmonogram → kolumny SCHEDULE_COL; inaczej Arkusz1 COL.
+ * tryb=harmonogram → kolumny SCHEDULE_COL; inaczej Na zgłoszenie COL.
+ * Każdy wiersz z body.wiersze[].sheetName — zakładka po nazwie.
  * Bez flagi nieOdbył: transport się odbył = tak + Rozliczony = tak (i koszty).
  * Z flagą nieOdbył: tylko transport się odbył = nie (bez kolumn rozliczenia).
  */
@@ -3853,22 +4190,21 @@ function approve_(body) {
   }
   var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
   var schedule = tryb === 'harmonogram' || tryb === 'schedule';
-  var sheet = settlementRegisterSheetForWrite_(body);
   var c = schedule ? SCHEDULE_COL : COL;
   var saved = [];
   var skipped = [];
   var i;
   for (i = 0; i < rows.length; i++) {
-    var item = rows[i];
+    var item = rows[i] || {};
     if (schedule) {
-      item = item || {};
       item.tryb = 'harmonogram';
     }
-    var target = registerWriteTarget_(sheet, item);
+    var target = registerWriteTarget_(null, item);
     if (target.error) {
       skipped.push(approveSkip_(item, target.error));
       continue;
     }
+    var sheet = target.sheet;
     var markedNie = approveDidNotHappen_(item && item.nieOdbył);
     var alreadyNie =
       settlementFlag_(sheet.getRange(target.row, c.transportOdbył).getValue()) === 'nie';
@@ -3934,6 +4270,95 @@ function migrateRegisterLayoutRates() {
 
 function migrateRegisterLayoutTransportOdbył() {
   return migrateRegisterLayoutTransportOdbył_();
+}
+
+/** Ręczne: październik 2026 ze starych zakładek → miesięczne (po nazwie). */
+function migrateOctober2026ToMonthSheets() {
+  return migrateOctober2026ToMonthSheets_();
+}
+
+/**
+ * Przenosi wiersze z datą odbioru w 10.2026:
+ * Arkusz1 → Na zgłoszenie Październik 2026
+ * zestawienie z harmonogramu → Harmonogram Październik 2026
+ * Starsze miesiące zostają w legacy.
+ */
+function migrateOctober2026ToMonthSheets_() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var report = migrateMonthRowsFromLegacy_(
+      'report',
+      REGISTER_SHEET_NAME,
+      10,
+      2026,
+      COL.dataOdbioru,
+      COL.komentarz2,
+    );
+    var schedule = migrateMonthRowsFromLegacy_(
+      'schedule',
+      SCHEDULE_REGISTER_SHEET_NAME,
+      10,
+      2026,
+      SCHEDULE_COL.dataOdbioru,
+      SCHEDULE_COL.komentarz2,
+    );
+    return { ok: true, report: report, schedule: schedule };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * @returns {{ moved: number, targetSheet: string, skipped: number }}
+ */
+function migrateMonthRowsFromLegacy_(kind, legacyName, month, year, dateCol, lastCol) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var legacy = ss.getSheetByName(legacyName);
+  var targetName =
+    kind === 'schedule'
+      ? SCHEDULE_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year
+      : REPORT_MONTH_SHEET_PREFIX + MONTH_NAMES_PL[month - 1] + ' ' + year;
+  if (!legacy) {
+    return { moved: 0, targetSheet: targetName, skipped: 0 };
+  }
+  var lastRow = legacy.getLastRow();
+  if (lastRow < 2) {
+    return { moved: 0, targetSheet: targetName, skipped: 0 };
+  }
+  var width = Math.max(legacy.getLastColumn(), lastCol);
+  var values = legacy.getRange(2, 1, lastRow - 1, width).getValues();
+  var moveIdx = [];
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var parts = parsePickupDateParts_(values[i][dateCol - 1]);
+    if (parts && parts.month === month && parts.year === year) {
+      moveIdx.push(i);
+    }
+  }
+  if (moveIdx.length === 0) {
+    return { moved: 0, targetSheet: targetName, skipped: 0 };
+  }
+  var target = getOrCreateMonthRegisterSheet_(
+    kind,
+    '01.' + (month < 10 ? '0' : '') + month + '.' + year,
+  );
+  var rowsToAppend = [];
+  for (i = 0; i < moveIdx.length; i++) {
+    var src = values[moveIdx[i]];
+    var line = [];
+    var c;
+    for (c = 0; c < width; c++) {
+      line.push(src[c] != null ? src[c] : '');
+    }
+    rowsToAppend.push(line);
+  }
+  var startRow = Math.max(target.getLastRow() + 1, 2);
+  target.getRange(startRow, 1, rowsToAppend.length, width).setValues(rowsToAppend);
+  for (i = moveIdx.length - 1; i >= 0; i--) {
+    legacy.deleteRow(moveIdx[i] + 2);
+  }
+  return { moved: moveIdx.length, targetSheet: target.getName(), skipped: 0 };
 }
 
 /**

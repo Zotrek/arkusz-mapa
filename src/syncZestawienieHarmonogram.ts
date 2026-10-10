@@ -1,11 +1,13 @@
 /**
- * Zakładka „zestawienie z harmonogramu” — rejestr jak Arkusz1, bez nr zlecenia.
- * Sync po „odebrane”: uzupełnia braki / aktualizuje nierozliczone; NIGDY nie czyści zakładki.
- * Ilość worków przy update: tylko w górę (max z istniejącej i z odebrane) — usunięcie worków
- * z „odebrane” nie cofa sumy w zestawieniu.
+ * Rejestr Harmonogram — zakładki miesięczne `Harmonogram {Miesiąc} {YYYY}` + legacy
+ * `zestawienie z harmonogramu`. Sync po „odebrane”: uzupełnia braki / aktualizuje nierozliczone;
+ * NIGDY nie czyści zakładki. Nowe wiersze → zakładka miesiąca z daty odbioru (po nazwie).
+ * Ilość worków przy update: tylko w górę (max z istniejącej i z odebrane).
  */
 
 import {
+  MONTH_NAMES_PL,
+  SCHEDULE_MONTH_SHEET_PREFIX,
   SHEET_NAME_BAZA_CEN_HARMONOGRAM,
   SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU,
   SHEET_NAME_ZESTAWIENIE_HARMONOGRAM,
@@ -92,6 +94,7 @@ export interface ScheduleSyncExpectedRow {
 }
 
 export interface ScheduleRegisterExistingRow {
+  sheetName: string;
   sheetRow: number;
   key: string;
   settled: boolean;
@@ -101,8 +104,26 @@ export interface ScheduleRegisterExistingRow {
 
 export interface ScheduleSyncPlan {
   create: ScheduleSyncExpectedRow[];
-  update: Array<{ sheetRow: number; row: ScheduleSyncExpectedRow }>;
+  update: Array<{ sheetName: string; sheetRow: number; row: ScheduleSyncExpectedRow }>;
   skippedSettled: number;
+}
+
+/** `Harmonogram Październik 2026` z daty dd.mm.yyyy. */
+export function scheduleMonthSheetName(pickupDate: string, now = new Date()): string {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(pickupDate.trim());
+  if (m) {
+    const month = Number(m[2]);
+    const year = Number(m[3]);
+    if (month >= 1 && month <= 12) {
+      return `${SCHEDULE_MONTH_SHEET_PREFIX}${MONTH_NAMES_PL[month - 1]} ${year}`;
+    }
+  }
+  return `${SCHEDULE_MONTH_SHEET_PREFIX}${MONTH_NAMES_PL[now.getMonth()]} ${now.getFullYear()}`;
+}
+
+export function isScheduleMonthSheetName(name: string): boolean {
+  const n = name.trim();
+  return n.startsWith(SCHEDULE_MONTH_SHEET_PREFIX) && n.length > SCHEDULE_MONTH_SHEET_PREFIX.length;
 }
 
 type SheetsClient = {
@@ -591,6 +612,7 @@ export function sheetRateWriteValue(raw: string | number | null | undefined): st
 export function parseScheduleRegisterRows(
   headers: string[],
   rows: string[][],
+  sheetName: string,
 ): ScheduleRegisterExistingRow[] {
   const ixAdres = headerIndex(headers, 'Adres odbioru');
   const ixData = headerIndex(headers, 'Data odbioru');
@@ -607,6 +629,7 @@ export function parseScheduleRegisterRows(
     const contractor = cell(row, ixKto);
     if (!address || !pickupDate || !contractor) return;
     existing.push({
+      sheetName,
       sheetRow: index + 2,
       key: scheduleRowKey(address, pickupDate, contractor),
       settled: ixRoz >= 0 && foldScheduleKeyPart(cell(row, ixRoz)) === 'tak',
@@ -626,7 +649,7 @@ export function planScheduleSync(
 ): ScheduleSyncPlan {
   const byKey = new Map(existing.map((e) => [e.key, e]));
   const create: ScheduleSyncExpectedRow[] = [];
-  const update: Array<{ sheetRow: number; row: ScheduleSyncExpectedRow }> = [];
+  const update: Array<{ sheetName: string; sheetRow: number; row: ScheduleSyncExpectedRow }> = [];
   let skippedSettled = 0;
   for (const row of expected) {
     const found = byKey.get(row.key);
@@ -637,6 +660,7 @@ export function planScheduleSync(
       }
       const bagCount = Math.max(found.bagCount || 0, row.bagCount || 0);
       update.push({
+        sheetName: found.sheetName,
         sheetRow: found.sheetRow,
         row: bagCount === row.bagCount ? row : { ...row, bagCount },
       });
@@ -645,6 +669,34 @@ export function planScheduleSync(
     create.push(row);
   }
   return { create, update, skippedSettled };
+}
+
+async function listSpreadsheetSheetTitles(
+  api: SheetsClient,
+  spreadsheetId: string,
+): Promise<string[]> {
+  const metaResponse = await api.spreadsheets.get({ spreadsheetId });
+  const sheets = (metaResponse.data as { sheets?: Array<{ properties?: { title?: string } }> })
+    .sheets;
+  return (sheets ?? [])
+    .map((s) => String(s.properties?.title ?? '').trim())
+    .filter((title) => title.length > 0);
+}
+
+/** Legacy + wszystkie zakładki `Harmonogram …` (po nazwie). */
+export function scheduleRegisterSheetNamesFromTitles(titles: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  if (titles.includes(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM)) {
+    out.push(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM);
+    seen.add(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM);
+  }
+  for (const title of titles) {
+    if (seen.has(title) || !isScheduleMonthSheetName(title)) continue;
+    out.push(title);
+    seen.add(title);
+  }
+  return out;
 }
 
 export function zestawienieRowValues(
@@ -816,60 +868,76 @@ export async function syncZestawienieHarmonogram(
     odebraneRows,
   );
 
-  const sheetName = SHEET_NAME_ZESTAWIENIE_HARMONOGRAM;
-  const exists = await sheetExists(api, spreadsheetId, sheetName);
-  let sheetCreated = false;
-  if (!exists) {
-    await ensureSheetExists(api, spreadsheetId, sheetName);
-    sheetCreated = true;
-  }
+  const titles = await listSpreadsheetSheetTitles(api, spreadsheetId);
+  const registerNames = scheduleRegisterSheetNamesFromTitles(titles);
+  const existing: ScheduleRegisterExistingRow[] = [];
+  const headersBySheet = new Map<string, string[]>();
 
-  let currentValues = exists ? await readValues(api, spreadsheetId, sheetName) : [];
-  let currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
-
-  if (isScheduleHeadersV2(currentHeaders)) {
-    currentValues = migrateScheduleValuesV2toV3(
-      currentValues.map((r) => r.map((c) => String(c ?? ''))),
+  for (const sheetName of registerNames) {
+    let currentValues = await readValues(api, spreadsheetId, sheetName);
+    let currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
+    if (isScheduleHeadersV2(currentHeaders)) {
+      currentValues = migrateScheduleValuesV2toV3(
+        currentValues.map((r) => r.map((c) => String(c ?? ''))),
+      );
+      currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
+      await api.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${quoteSheet(sheetName)}!A1`,
+        valueInputOption: 'RAW',
+        requestBody: { values: currentValues },
+      });
+      logger?.info?.('zestawienie: migrated layout V2→V3 on %s', sheetName);
+    }
+    const headers = currentHeaders.some((h) => h.trim().length > 0)
+      ? currentHeaders
+      : [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
+    headersBySheet.set(sheetName, headers);
+    existing.push(
+      ...parseScheduleRegisterRows(
+        headers,
+        currentValues.slice(1).map((r) => r.map((c) => String(c ?? ''))),
+        sheetName,
+      ),
     );
-    currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
-    await api.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${quoteSheet(sheetName)}!A1`,
-      valueInputOption: 'RAW',
-      requestBody: { values: currentValues },
-    });
-    logger?.info?.('zestawienie: migrated layout V2→V3 (transport się odbył → col 9)');
   }
 
-  const headers = currentHeaders.some((h) => h.trim().length > 0)
-    ? currentHeaders
-    : [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
-
-  if (!currentHeaders.some((h) => h.trim().length > 0)) {
-    await api.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${quoteSheet(sheetName)}!A1`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [headers] },
-    });
-  }
-
-  await ensureTransportOdbyłValidation(api, spreadsheetId, sheetName, sheetCreated);
-
-  const existing = parseScheduleRegisterRows(
-    headers,
-    currentValues.slice(1).map((r) => r.map((c) => String(c ?? ''))),
-  );
   const plan = planScheduleSync(expected, existing);
+  let sheetCreated = false;
 
-  if (plan.create.length > 0) {
+  const createBySheet = new Map<string, ScheduleSyncExpectedRow[]>();
+  for (const row of plan.create) {
+    const sheetName = scheduleMonthSheetName(row.pickupDate, input.now);
+    const list = createBySheet.get(sheetName) ?? [];
+    list.push(row);
+    createBySheet.set(sheetName, list);
+  }
+
+  for (const [sheetName, rows] of createBySheet) {
+    const exists = await sheetExists(api, spreadsheetId, sheetName);
+    if (!exists) {
+      await ensureSheetExists(api, spreadsheetId, sheetName);
+      sheetCreated = true;
+      await api.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${quoteSheet(sheetName)}!A1`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]] },
+      });
+      headersBySheet.set(sheetName, [...ZESTAWIENIE_HARMONOGRAM_HEADERS]);
+    }
+    const headers = headersBySheet.get(sheetName) ?? [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
+    if (!headersBySheet.has(sheetName)) {
+      headersBySheet.set(sheetName, headers);
+    }
+    await ensureTransportOdbyłValidation(api, spreadsheetId, sheetName, !exists);
     await api.spreadsheets.values.append({
       spreadsheetId,
       range: `${quoteSheet(sheetName)}!A1`,
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: plan.create.map((row) => zestawienieRowValues(row, headers)),
+        values: rows.map((row) => zestawienieRowValues(row, headers)),
       },
     });
   }
@@ -890,6 +958,7 @@ export async function syncZestawienieHarmonogram(
     ];
     const data: Array<{ range: string; values: Array<Array<string | number>> }> = [];
     for (const item of plan.update) {
+      const headers = headersBySheet.get(item.sheetName) ?? [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
       for (const field of fields) {
         const ix = headerIndex(headers, field.name);
         if (ix < 0) continue;
@@ -902,7 +971,7 @@ export async function syncZestawienieHarmonogram(
           continue;
         }
         data.push({
-          range: `${quoteSheet(sheetName)}!${columnLetter(ix)}${item.sheetRow}`,
+          range: `${quoteSheet(item.sheetName)}!${columnLetter(ix)}${item.sheetRow}`,
           values: [[val]],
         });
       }
@@ -916,7 +985,7 @@ export async function syncZestawienieHarmonogram(
   }
 
   logger?.info(
-    'Zestawienie z harmonogramu: oczekiwane %d, nowe %d, zaktualizowane %d, pominięte rozliczone %d, okno %s–%s, nowa zakładka=%s (bez clear)',
+    'Zestawienie Harmonogram: oczekiwane %d, nowe %d, zaktualizowane %d, pominięte rozliczone %d, okno %s–%s, nowa zakładka=%s (bez clear)',
     expected.length,
     plan.create.length,
     plan.update.length,

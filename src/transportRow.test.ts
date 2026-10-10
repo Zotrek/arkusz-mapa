@@ -106,6 +106,11 @@ class FakeSheet {
   readonly validations: ValidationSpan[] = [];
   rules: StrikeRule[] = [];
   readonly maxRows = 100;
+  name = 'Arkusz1';
+
+  getName(): string {
+    return this.name;
+  }
 
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
@@ -188,21 +193,30 @@ const sheetDocPath = join(dirname(fileURLToPath(import.meta.url)), '../docs/TRAN
 
 function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
   const store = new Map<string, string>();
+  const extras: FakeSheet[] = [];
   const context: Record<string, unknown> = {
     SpreadsheetApp: {
       getActiveSpreadsheet() {
         return {
           getSheets() {
-            return [sheet];
+            return [sheet, ...extras];
           },
           getSheetByName(name: string) {
-            if (name === 'Arkusz1') {
+            if (name === sheet.name) {
               return sheet;
             }
             if (name === 'Baza stawek') {
               return rateSheet;
             }
-            return null;
+            return extras.find((s) => s.name === name) ?? null;
+          },
+          insertSheet(name: string) {
+            // Append testów sprawdza ten sam FakeSheet — miesięczna zakładka = ten obiekt.
+            sheet.name = name;
+            if (!extras.includes(sheet)) {
+              extras.push(sheet);
+            }
+            return sheet;
           },
         };
       },
@@ -851,6 +865,7 @@ describe('patchRouteRate_', () => {
     seedSettlementRow(sheet, 5, { 1: 18, 11: 'inna', 12: '5' });
 
     const result = loadGas(sheet).patchRouteRate_({
+      sheetName: 'Arkusz1',
       sheetRow: 2,
       transportNumber: '15',
       trasa: 'trasa-a',
@@ -873,6 +888,7 @@ describe('patchRouteRate_', () => {
 
     expect(
       gas.patchRouteRate_({
+        sheetName: 'Arkusz1',
         sheetRow: 2,
         transportNumber: '15',
         trasa: 'trasa-a',
@@ -883,6 +899,7 @@ describe('patchRouteRate_', () => {
 
     expect(
       gas.patchRouteRate_({
+        sheetName: 'Arkusz1',
         sheetRow: 2,
         transportNumber: '15',
         trasa: 'trasa-a',
@@ -902,6 +919,7 @@ describe('patchRouteRate_', () => {
 
     expect(
       gas.patchRouteRate_({
+        sheetName: 'Arkusz1',
         sheetRow: 2,
         transportNumber: '16',
         trasa: 'trasa-a',
@@ -910,6 +928,7 @@ describe('patchRouteRate_', () => {
     ).toEqual({ ok: false, error: 'key' });
     expect(
       gas.patchRouteRate_({
+        sheetName: 'Arkusz1',
         sheetRow: 4,
         transportNumber: '17',
         trasa: 'trasa-a',
@@ -929,7 +948,7 @@ describe('detachRoute_', () => {
     seedSettlementRow(sheet, 3, { 1: 16 });
 
     expect(
-      loadGas(sheet).detachRoute_({ sheetRow: 2, transportNumber: '15' }),
+      loadGas(sheet).detachRoute_({ sheetName: 'Arkusz1', sheetRow: 2, transportNumber: '15' }),
     ).toEqual({ ok: true });
     expect(sheet.cell(2, 11)).toBe('');
     expect(sheet.cell(2, 12)).toBe('');
@@ -944,7 +963,7 @@ describe('detachRoute_', () => {
     seedSettlementRow(sheet, 2);
 
     expect(
-      loadGas(sheet).detachRoute_({ sheetRow: 9, transportNumber: '15' }),
+      loadGas(sheet).detachRoute_({ sheetName: 'Arkusz1', sheetRow: 9, transportNumber: '15' }),
     ).toEqual({ ok: false, error: 'key' });
     expect(sheet.writes).toEqual([]);
     expect(sheet.cell(2, 11)).toBe('trasa-a');
@@ -960,6 +979,7 @@ describe('attachRoute_', () => {
     seedSettlementRow(sheet, 4, { 1: 17, 11: 'nowa', 12: '77', 15: 'tak' });
 
     const result = loadGas(sheet).attachRoute_({
+      sheetName: 'Arkusz1',
       sheetRow: 2,
       transportNumber: '15',
       trasa: '  nowa  ',
@@ -982,6 +1002,7 @@ describe('attachRoute_', () => {
 
     expect(
       gas.attachRoute_({
+      sheetName: 'Arkusz1',
         sheetRow: 2,
         transportNumber: '15',
         trasa: 'nowa',
@@ -990,6 +1011,7 @@ describe('attachRoute_', () => {
     ).toEqual({ ok: false, error: 'rate' });
     expect(
       gas.attachRoute_({
+      sheetName: 'Arkusz1',
         sheetRow: 2,
         transportNumber: '15',
         trasa: ' ',
@@ -1008,6 +1030,7 @@ describe('attachRoute_', () => {
 
     expect(
       loadGas(sheet).attachRoute_({
+      sheetName: 'Arkusz1',
         sheetRow: 2,
         transportNumber: '99',
         trasa: 'nowa',

@@ -65,6 +65,10 @@ class FakeSheet {
     this.name = name;
   }
 
+  getName(): string {
+    return this.name;
+  }
+
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
     return value == null ? '' : value;

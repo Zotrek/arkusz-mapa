@@ -70,6 +70,11 @@ class FakeSheet {
   private readonly cells = new Map<string, Cell>();
   readonly writes: Write[] = [];
   readonly deletes: number[] = [];
+  constructor(readonly name = "Arkusz1") {}
+
+  getName(): string {
+    return this.name;
+  }
 
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
@@ -159,10 +164,12 @@ const holder: {
   register: FakeSheet;
   rates: FakeSheet | null;
   schedule: FakeSheet | null;
+  extra: FakeSheet[];
 } = {
-  register: new FakeSheet(),
+  register: new FakeSheet("Arkusz1"),
   rates: null,
   schedule: null,
+  extra: [],
 };
 
 type PostResult = {
@@ -180,24 +187,39 @@ beforeAll(() => {
       getActiveSpreadsheet() {
         return {
           getSheets() {
-            return [holder.register];
+            const out: FakeSheet[] = [holder.register];
+            if (holder.schedule) {
+              out.push(holder.schedule);
+            }
+            for (const sheet of holder.extra) {
+              out.push(sheet);
+            }
+            return out;
           },
           getSheetByName(name: string) {
-            if (name === "Arkusz1") {
+            if (name === holder.register.name) {
               return holder.register;
             }
             if (name === "Baza stawek") {
               return holder.rates;
             }
-            if (name === "zestawienie z harmonogramu") {
+            if (holder.schedule && name === holder.schedule.name) {
               return holder.schedule;
             }
-            return null;
+            const extra = holder.extra.find((s) => s.name === name);
+            return extra ?? null;
           },
           insertSheet(name: string) {
-            if (name === "zestawienie z harmonogramu") {
-              holder.schedule = new FakeSheet();
-              return holder.schedule;
+            if (name === "zestawienie z harmonogramu" || name.startsWith("Harmonogram ")) {
+              const sheet = new FakeSheet(name);
+              holder.schedule = sheet;
+              holder.extra.push(sheet);
+              return sheet;
+            }
+            if (name.startsWith("Na zgłoszenie ")) {
+              const sheet = new FakeSheet(name);
+              holder.extra.push(sheet);
+              return sheet;
             }
             throw new Error(`unexpected insertSheet ${name}`);
           },
@@ -264,8 +286,22 @@ beforeAll(() => {
   }
   postToSheet = (body) => {
     maxLock = 0;
+    const tryb = String(body.tryb || body.mode || "").toLowerCase();
+    const schedule = tryb === "harmonogram" || tryb === "schedule";
+    const defaultSheet = schedule ? "zestawienie z harmonogramu" : "Arkusz1";
+    const payload: Record<string, unknown> = {
+      ...body,
+      sheetName: body.sheetName != null ? body.sheetName : defaultSheet,
+      secret: "test-gas-secret",
+    };
+    if (Array.isArray(payload.wiersze)) {
+      payload.wiersze = (payload.wiersze as Record<string, unknown>[]).map((row) => ({
+        ...row,
+        sheetName: row.sheetName != null ? row.sheetName : payload.sheetName,
+      }));
+    }
     doPost({
-      postData: { contents: JSON.stringify({ ...body, secret: "test-gas-secret" }) },
+      postData: { contents: JSON.stringify(payload) },
     });
     expect(lockDepth).toBe(0);
     expect(maxLock).toBe(1);
@@ -274,12 +310,13 @@ beforeAll(() => {
 });
 
 function fresh(): { register: FakeSheet; rates: FakeSheet; schedule: FakeSheet } {
-  const register = new FakeSheet();
-  const rates = new FakeSheet();
-  const schedule = new FakeSheet();
+  const register = new FakeSheet("Arkusz1");
+  const rates = new FakeSheet("Baza stawek");
+  const schedule = new FakeSheet("zestawienie z harmonogramu");
   holder.register = register;
   holder.rates = rates;
   holder.schedule = schedule;
+  holder.extra = [];
   return { register, rates, schedule };
 }
 
@@ -762,7 +799,7 @@ describe("approve", () => {
 
     expect(result).toEqual({
       ok: true,
-      zapisane: [{ sheetRow: 2, transportNumber: "15" }],
+      zapisane: [{ sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15" }],
       pominiete: [],
     });
     expect(register.cell(2, 15)).toBe("tak");
@@ -847,8 +884,8 @@ describe("approve", () => {
     });
 
     expect(result.zapisane).toEqual([
-      { sheetRow: 2, transportNumber: "15" },
-      { sheetRow: 3, transportNumber: "16" },
+      { sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15" },
+      { sheetName: "Arkusz1", sheetRow: 3, transportNumber: "16" },
     ]);
     expect(register.cell(2, 10)).toBe("nie");
     expect(register.cell(2, 15)).toBe("");
@@ -879,8 +916,8 @@ describe("approve", () => {
     });
 
     expect(result.zapisane).toEqual([
-      { sheetRow: 2, transportNumber: "15" },
-      { sheetRow: 3, transportNumber: "16" },
+      { sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15" },
+      { sheetName: "Arkusz1", sheetRow: 3, transportNumber: "16" },
     ]);
     expect(register.cell(2, 15)).toBe("tak");
     expect(register.cell(2, 16)).toBe("FV/9");
@@ -923,12 +960,12 @@ describe("approve", () => {
     expect(result).toEqual({
       ok: true,
       zapisane: [
-        { sheetRow: 5, transportNumber: "18" },
-        { sheetRow: 3, transportNumber: "16" },
+        { sheetName: "Arkusz1", sheetRow: 5, transportNumber: "18" },
+        { sheetName: "Arkusz1", sheetRow: 3, transportNumber: "16" },
       ],
       pominiete: [
-        { sheetRow: 2, transportNumber: "99", reason: "key" },
-        { sheetRow: 4, transportNumber: "17", reason: "settled" },
+        { sheetName: "Arkusz1", sheetRow: 2, transportNumber: "99", reason: "key" },
+        { sheetName: "Arkusz1", sheetRow: 4, transportNumber: "17", reason: "settled" },
       ],
     });
     expect(register.cell(2, 15)).toBe("");
@@ -1006,7 +1043,7 @@ describe("approve", () => {
 
     expect(result).toEqual({
       ok: true,
-      zapisane: [{ sheetRow: 2, transportNumber: "15" }],
+      zapisane: [{ sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15" }],
       pominiete: [],
     });
     expect(register.cell(2, 10)).toBe("nie");
@@ -1023,7 +1060,7 @@ describe("approve", () => {
       wiersze: [{ sheetRow: 2, transportNumber: "15", koszt: 3000 }],
     });
 
-    expect(result.pominiete).toEqual([{ sheetRow: 2, transportNumber: "15", reason: "nie" }]);
+    expect(result.pominiete).toEqual([{ sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15", reason: "nie" }]);
     expect(register.writes).toEqual([]);
     expect(register.cell(2, 15)).toBe("");
     expect(register.cell(2, 17)).toBe("999");
@@ -1044,7 +1081,7 @@ describe("approve", () => {
       ],
     });
 
-    expect(result.pominiete).toEqual([{ sheetRow: 2, transportNumber: "15", reason: "date" }]);
+    expect(result.pominiete).toEqual([{ sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15", reason: "date" }]);
     expect(register.cell(2, 15)).toBe("");
     expect(register.cell(3, 15)).toBe("tak");
     expect(register.cell(3, 17)).toBe(10);
@@ -1080,8 +1117,8 @@ describe("approve", () => {
       ],
     });
 
-    expect(result.zapisane).toEqual([{ sheetRow: 3, transportNumber: "16" }]);
-    expect(result.pominiete).toEqual([{ sheetRow: 2, transportNumber: "15", reason: "cost" }]);
+    expect(result.zapisane).toEqual([{ sheetName: "Arkusz1", sheetRow: 3, transportNumber: "16" }]);
+    expect(result.pominiete).toEqual([{ sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15", reason: "cost" }]);
     expect(register.cell(2, 15)).toBe("");
     expect(register.cell(3, 17)).toBe(20);
     expect(register.cell(3, 18)).toBe(10);
@@ -1106,7 +1143,7 @@ describe("approve", () => {
 
     expect(result).toEqual({
       ok: true,
-      zapisane: [{ sheetRow: 2, transportNumber: "" }],
+      zapisane: [{ sheetName: "zestawienie z harmonogramu", sheetRow: 2, transportNumber: "" }],
       pominiete: [],
     });
     expect(schedule.cell(2, 9)).toBe("tak");

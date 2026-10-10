@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BAZA_CEN_HEADERS } from './bazaCenHarmonogram.js';
-import { SHEET_NAME_ZESTAWIENIE_HARMONOGRAM } from './config.js';
 import {
   buildScheduleSyncExpected,
   defaultSyncWindow,
   planScheduleSync,
+  scheduleMonthSheetName,
   sheetRateWriteValue,
   syncZestawienieHarmonogram,
   zestawienieRowValues,
@@ -171,7 +171,13 @@ describe('planScheduleSync', () => {
       [odebraneRow()],
     );
     const plan = planScheduleSync(expected, [
-      { sheetRow: 2, key: expected[0]!.key, settled: true, bagCount: 1 },
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 2,
+        key: expected[0]!.key,
+        settled: true,
+        bagCount: 1,
+      },
     ]);
     expect(plan.skippedSettled).toBe(1);
     expect(plan.create).toHaveLength(0);
@@ -189,10 +195,17 @@ describe('planScheduleSync', () => {
     );
     expect(expected[0]!.bagCount).toBe(1);
     const plan = planScheduleSync(expected, [
-      { sheetRow: 2, key: expected[0]!.key, settled: false, bagCount: 5 },
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 2,
+        key: expected[0]!.key,
+        settled: false,
+        bagCount: 5,
+      },
     ]);
     expect(plan.update).toHaveLength(1);
     expect(plan.update[0]!.row.bagCount).toBe(5);
+    expect(plan.update[0]!.sheetName).toBe('Harmonogram Wrzesień 2026');
   });
 
   it('test_planScheduleSync_when_odebrane_bags_rise_should_increase_count', () => {
@@ -210,7 +223,13 @@ describe('planScheduleSync', () => {
     );
     expect(expected[0]!.bagCount).toBe(3);
     const plan = planScheduleSync(expected, [
-      { sheetRow: 2, key: expected[0]!.key, settled: false, bagCount: 1 },
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 2,
+        key: expected[0]!.key,
+        settled: false,
+        bagCount: 1,
+      },
     ]);
     expect(plan.update).toHaveLength(1);
     expect(plan.update[0]!.row.bagCount).toBe(3);
@@ -304,14 +323,17 @@ describe('syncZestawienieHarmonogram', () => {
             const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
             return { data: { values: title ? sheets.get(title) : [] } };
           }),
-          update: vi.fn(async (args: { requestBody: { values: string[][] } }) => {
-            sheets.set(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM, args.requestBody.values);
+          update: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
+            const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
+            const month = scheduleMonthSheetName('15.09.2026');
+            sheets.set(title ?? month, args.requestBody.values);
           }),
-          append: vi.fn(async (args: { requestBody: { values: string[][] } }) => {
-            const current = sheets.get(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM) ?? [
-              [...ZESTAWIENIE_HARMONOGRAM_HEADERS],
-            ];
-            sheets.set(SHEET_NAME_ZESTAWIENIE_HARMONOGRAM, [...current, ...args.requestBody.values]);
+          append: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
+            const title =
+              [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`)) ??
+              scheduleMonthSheetName('15.09.2026');
+            const current = sheets.get(title) ?? [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]];
+            sheets.set(title, [...current, ...args.requestBody.values]);
           }),
           batchUpdate: vi.fn(async () => ({})),
           clear: vi.fn(),
@@ -325,10 +347,13 @@ describe('syncZestawienieHarmonogram', () => {
       dataDo: '16.09.2026',
     });
 
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    expect(monthSheet).toBe('Harmonogram Wrzesień 2026');
     expect(result.sheetCreated).toBe(true);
     expect(result.createdCount).toBe(1);
     expect(api.spreadsheets.values.clear).not.toHaveBeenCalled();
     expect(api.spreadsheets.values.append).toHaveBeenCalled();
+    expect(sheets.has(monthSheet)).toBe(true);
     const validationCalls = api.spreadsheets.batchUpdate.mock.calls.filter((c) =>
       JSON.stringify(c[0]).includes('setDataValidation'),
     );
