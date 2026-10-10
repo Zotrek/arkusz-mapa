@@ -28,14 +28,65 @@ export function harmonogramPanelCss(): string {
       font-family: system-ui, "Segoe UI", sans-serif; color: #0f172a;
     }
     #harmonogram-group-modal h3 { margin: 0 0 6px; font-size: 16px; }
-    #harmonogram-group-modal h4 { margin: 16px 0 6px; font-size: 13px; }
+    #harmonogram-group-modal h4 {
+      margin: 16px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #64748b;
+    }
     #harmonogram-group-modal .harmonogram-hint { margin: 0 0 10px; font-size: 12px; color: #64748b; line-height: 1.4; }
     #harmonogram-group-modal .harmonogram-status { min-height: 1.2em; font-size: 12px; white-space: pre-line; color: #0f766e; }
     #harmonogram-group-modal .harmonogram-status.is-error { color: #b02a37; }
-    #harmonogram-group-modal .harmonogram-card {
-      border: 1px solid rgba(148, 163, 184, 0.45); border-radius: 10px; padding: 10px 12px; margin: 8px 0;
+    #harmonogram-group-modal .harmonogram-loading {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      margin: 8px 0 4px; font-size: 13px; font-weight: 600; color: #0f766e;
     }
-    #harmonogram-group-modal .harmonogram-card h5 { margin: 0 0 6px; font-size: 13px; }
+    #harmonogram-group-modal .harmonogram-loading[hidden] { display: none !important; }
+    #harmonogram-group-modal .harmonogram-loading img {
+      width: 36px; height: 36px; flex-shrink: 0;
+      animation: harmonogram-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes harmonogram-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.12); opacity: 0.55; }
+    }
+    #harmonogram-group-modal.is-loading #harmonogram-group-saved,
+    #harmonogram-group-modal.is-loading #harmonogram-group-buckets,
+    #harmonogram-group-modal.is-loading h4 { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      #harmonogram-group-modal .harmonogram-loading img { animation: none; }
+    }
+    #harmonogram-group-saved {
+      font-family: "Ubuntu Sans", "Segoe UI", "Noto Sans", "Liberation Sans", sans-serif;
+    }
+    #harmonogram-group-modal .harmonogram-card {
+      border: 1px solid rgba(13, 148, 136, 0.22);
+      border-left: 4px solid #0d9488;
+      border-radius: 12px;
+      padding: 12px 12px 10px;
+      margin: 10px 0;
+      background: linear-gradient(180deg, #f0fdfa 0%, #fff 72px);
+      box-shadow: 0 1px 2px rgba(15, 118, 110, 0.06);
+    }
+    #harmonogram-group-modal .harmonogram-card-head {
+      display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px;
+    }
+    #harmonogram-group-modal .harmonogram-id {
+      flex-shrink: 0; margin-top: 1px; padding: 3px 7px; border-radius: 6px;
+      background: #fff; border: 1px solid rgba(13, 148, 136, 0.35); color: #0f766e;
+      font-family: "Ubuntu Mono", "DejaVu Sans Mono", ui-monospace, Consolas, monospace;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.3;
+    }
+    #harmonogram-group-modal .harmonogram-card h5 {
+      margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.25; color: #134e4a;
+    }
+    #harmonogram-group-modal .harmonogram-card .harmonogram-day-chips { padding: 6px 0 0; }
+    #harmonogram-group-modal .harmonogram-card .harmonogram-day-chip {
+      background: #fff; border-color: rgba(13, 148, 136, 0.35); color: #0f766e;
+    }
+    #harmonogram-group-modal .harmonogram-card .harmonogram-shop {
+      margin: 0; padding: 7px 0; border-top: 1px solid rgba(148, 163, 184, 0.22);
+      font-size: 13.5px; line-height: 1.4;
+    }
+    #harmonogram-group-modal .harmonogram-card .harmonogram-shop-name { font-weight: 500; min-width: 0; }
     #harmonogram-group-modal .harmonogram-bucket {
       border: 1px solid rgba(217, 119, 6, 0.28);
       border-left: 4px solid #d97706;
@@ -112,6 +163,11 @@ export function harmonogramPanelHtml(): string {
       <h3 id="harmonogram-group-title">Harmonogramy</h3>
       <p class="harmonogram-hint">Wspólny przejazd dla sklepów z tymi samymi dniami i tym samym podwykonawcą. Cena za trasę jest jedna. Do Bolęcina idzie suma „spodziewanych worków” — puste pole zostaje puste.</p>
       <p id="harmonogram-group-status" class="harmonogram-status" aria-live="polite"></p>
+      <div id="harmonogram-group-loading" class="harmonogram-loading" hidden>
+        <img src="./favicon.svg" alt="" width="36" height="36">
+        <span>Ładowanie harmonogramów…</span>
+      </div>
+      <h4>Zapisane</h4>
       <div id="harmonogram-group-saved"></div>
       <h4>Do zgrupowania</h4>
       <div id="harmonogram-group-buckets"></div>
@@ -131,6 +187,15 @@ export function harmonogramPanelBrowserScript(): string {
       if (!el) return;
       el.textContent = msg || '';
       el.classList.toggle('is-error', kind === 'error');
+    }
+
+    function harmonogramSetLoading(on) {
+      var el = document.getElementById('harmonogram-group-loading');
+      if (el) el.hidden = !on;
+      var modal = document.getElementById('harmonogram-group-modal');
+      if (!modal) return;
+      modal.classList.toggle('is-loading', !!on);
+      modal.setAttribute('aria-busy', on ? 'true' : 'false');
     }
 
     function harmonogramShopLabel(adres) {
@@ -203,7 +268,10 @@ export function harmonogramPanelBrowserScript(): string {
       var loose = (data && data.doZgrupowania) || [];
       var i;
       if (!groups.length) {
-        saved.appendChild(document.createTextNode('Brak zapisanych harmonogramów.'));
+        var none = document.createElement('p');
+        none.className = 'harmonogram-hint';
+        none.textContent = 'Brak zapisanych harmonogramów.';
+        saved.appendChild(none);
       }
       for (i = 0; i < groups.length; i++) {
         saved.appendChild(harmonogramGroupCard(groups[i]));
@@ -223,15 +291,27 @@ export function harmonogramPanelBrowserScript(): string {
       var card = document.createElement('article');
       card.className = 'harmonogram-card';
       card.setAttribute('data-harm-id', group.id);
+      var head = document.createElement('div');
+      head.className = 'harmonogram-card-head';
+      var idBadge = document.createElement('span');
+      idBadge.className = 'harmonogram-id';
+      idBadge.textContent = group.id || '';
+      var titleWrap = document.createElement('div');
       var title = document.createElement('h5');
-      title.textContent = group.id + ' · ' + (group.podwykonawca || '') + ' · ' + (group.dni || '');
-      card.appendChild(title);
+      title.textContent = group.podwykonawca || 'Bez podwykonawcy';
+      titleWrap.appendChild(title);
+      var chips = harmonogramDayChips(group.dni);
+      if (chips.childNodes.length) titleWrap.appendChild(chips);
+      head.appendChild(idBadge);
+      head.appendChild(titleWrap);
+      card.appendChild(head);
       var shops = group.sklepy || [];
       var s;
       for (s = 0; s < shops.length; s++) {
         var line = document.createElement('div');
         line.className = 'harmonogram-shop';
         var name = document.createElement('span');
+        name.className = 'harmonogram-shop-name';
         var label = harmonogramShopLabel(shops[s].adres);
         name.textContent = label === shops[s].adres ? label : label + ' — ' + shops[s].adres;
         var detach = document.createElement('button');
@@ -369,7 +449,8 @@ export function harmonogramPanelBrowserScript(): string {
     }
 
     function harmonogramLoad() {
-      harmonogramSetStatus('Ładowanie…', '');
+      harmonogramSetLoading(true);
+      harmonogramSetStatus('', '');
       return harmonogramGet().then(function(data) {
         if (!data || data.ok === false) {
           harmonogramSetStatus(harmonogramErrorText(data && data.error), 'error');
@@ -379,6 +460,8 @@ export function harmonogramPanelBrowserScript(): string {
         harmonogramSetStatus('', '');
       }).catch(function() {
         harmonogramSetStatus('Nie udało się pobrać harmonogramów.', 'error');
+      }).then(function() {
+        harmonogramSetLoading(false);
       });
     }
 

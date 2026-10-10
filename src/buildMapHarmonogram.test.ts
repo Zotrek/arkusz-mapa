@@ -9,7 +9,10 @@ describe('buildMapHarmonogram', () => {
     const html = harmonogramPanelHtml();
     expect(html).toContain('id="harmonogram-group-modal"');
     expect(html).toContain('id="harmonogram-group-buckets"');
+    expect(html).toContain('id="harmonogram-group-loading"');
+    expect(html).toContain('Ładowanie harmonogramów');
     expect(html).toContain('Do zgrupowania');
+    expect(html).toContain('Zapisane');
     expect(html).toContain('spodziewanych worków');
   });
 
@@ -26,5 +29,8 @@ describe('buildMapHarmonogram', () => {
     expect(script).toContain('harmonogram-bucket-head');
     expect(script).toContain('harmonogram-day-chip');
     expect(script).toContain('harmonogramShopCountLabel');
+    expect(script).toContain('harmonogramSetLoading');
+    expect(script).toContain('harmonogram-card-head');
+    expect(script).toContain('harmonogram-id');
   });
 });
