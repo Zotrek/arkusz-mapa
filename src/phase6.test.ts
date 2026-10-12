@@ -866,6 +866,11 @@ describe('phase6', () => {
       expect(html).toContain('Nr rejestracyjny');
       expect(html).toContain('Okno awizacji');
       expect(html).toContain('Rodzaj transportu');
+      expect(html).toContain('id="bolecin-aw-worki"');
+      expect(html).toContain('function iloscWorkowFromAwizacja_');
+      expect(html).toContain('__bolecinAwizacjaForm');
+      expect(html).toContain('miejsceZrzutuDane');
+      expect(html).toContain('bolecinError');
       expect(html).toContain('Generuj bez awizacji');
       expect(html).toContain('Dodaj awizację');
       expect(html).toContain('awizujBolecin');

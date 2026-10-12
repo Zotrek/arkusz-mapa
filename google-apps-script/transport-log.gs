@@ -69,10 +69,11 @@
  *   od 22. także następny). Adresy i nazwy sklepów sklejone. Ta sama trójka adres+data+kto
  *   nie dopisuje drugi raz. Puste „Spodziewane worki” zostają puste.
  *   Wymaga Script property BOLECIN_SHEETS_ID (arkusz Bolęcin, edycja konta Web App).
- * POST protokołu z awizujBolecin: true (miejsce Bolęcin/Biosystem) dopisuje jeden wiersz
- *   tego odbioru do arkusza Bolęcin: okno awizacji, nr rejestracyjny w kolumnie awizacja,
- *   rodzaj transportu oraz adres, nazwa, data, kto, miejsce, rodzaj zbiórki i worki.
- *   Ta sama trójka adres+data+kto nadpisuje istniejący wiersz.
+ * POST protokołu z awizujBolecin: true (miejsce Bolęcin/Biosystem, także w miejsceZrzutuDane)
+ *   dopisuje jeden wiersz tego odbioru do arkusza Bolęcin: okno awizacji, nr rejestracyjny
+ *   w kolumnie awizacja, rodzaj transportu oraz adres, nazwa, data, kto, miejsce,
+ *   rodzaj zbiórki i worki (iloscWorkow). Ta sama trójka adres+data+kto nadpisuje istniejący wiersz.
+ *   Błąd zapisu Bolęcina nie cofa wiersza rejestru: odpowiedź ma numer i bolecinError.
  * migrateRegisterLayoutRates_ — V1→V3 (wywołanie ręczne). V2→V3: migrateRegisterLayoutTransportOdbył.
  *
  * Bezpieczeństwo: doGet/doPost wymagają Script property GAS_SHARED_SECRET
@@ -407,15 +408,21 @@ function doPost(e) {
     if (mode === 'awizujBolecin') {
       return handleAwizujBolecinPost_(body);
     }
-    if (wantsProtocolBolecin_(body)) {
-      getBolecinSheetsId_();
-    }
     var numer = resolveTransportNumber_(body);
     appendTransportRow_(numer, body);
+    var bolecinError = '';
     if (wantsProtocolBolecin_(body)) {
-      upsertProtocolBolecin_(body);
+      try {
+        upsertProtocolBolecin_(body);
+      } catch (bolecinErr) {
+        bolecinError = String(bolecinErr);
+      }
     }
-    return jsonResponse({ ok: true, numer: String(numer) });
+    var response = { ok: true, numer: String(numer) };
+    if (bolecinError) {
+      response.bolecinError = bolecinError;
+    }
+    return jsonResponse(response);
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) }, 500);
   } finally {
@@ -3191,7 +3198,7 @@ function wantsProtocolBolecin_(body) {
   if (!(flag === true || flag === 'true' || flag === 1 || flag === '1')) {
     return false;
   }
-  return isBolecinPlace_(body.miejsceZrzutu);
+  return isBolecinPlace_(body.miejsceZrzutu) || isBolecinPlace_(body.miejsceZrzutuDane);
 }
 
 function protocolBolecinFields_(body) {

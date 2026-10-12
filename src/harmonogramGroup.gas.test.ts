@@ -160,6 +160,13 @@ describe('harmonogramGroup gas parity', () => {
       true,
     );
     expect(
+      gas.wantsProtocolBolecin_({
+        awizujBolecin: true,
+        miejsceZrzutu: 'Magazyn',
+        miejsceZrzutuDane: 'Biosystem Bolęcin',
+      }),
+    ).toBe(true);
+    expect(
       gas.protocolBolecinFields_({
         oknoAwizacji: ' 8:00–12:00 ',
         adresSklepu: 'ul. Testowa 1',
@@ -184,5 +191,18 @@ describe('harmonogramGroup gas parity', () => {
       rodzajTransportu: 'bus',
       awizacja: 'WX12345',
     });
+  });
+
+  it('test_doPost_when_bolecin_write_fails_should_keep_register_response', () => {
+    const source = readFileSync(gasPath, 'utf8');
+    const start = source.indexOf('function doPost');
+    const end = source.indexOf('function rebuildTransportCounterFromSheet');
+    const post = source.slice(start, end);
+    const appendAt = post.indexOf('appendTransportRow_(numer, body)');
+    const upsertAt = post.indexOf('upsertProtocolBolecin_(body)');
+    expect(appendAt).toBeGreaterThan(-1);
+    expect(upsertAt).toBeGreaterThan(appendAt);
+    expect(post).not.toContain('getBolecinSheetsId_()');
+    expect(post).toContain('response.bolecinError = bolecinError');
   });
 });
