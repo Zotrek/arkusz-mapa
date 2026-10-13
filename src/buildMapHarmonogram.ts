@@ -218,6 +218,10 @@ export function harmonogramPanelBrowserScript(): string {
     }
 
     function harmonogramErrorText(code) {
+      var raw = String(code || '');
+      if (raw.indexOf('BOLECIN_SHEETS_ID') >= 0) {
+        return 'W skrypcie mapy brakuje właściwości BOLECIN_SHEETS_ID. Ustaw ID arkusza Bolęcin.';
+      }
       var map = {
         zaznacz: 'Zaznacz sklepy z jednego zestawu dni i podwykonawcy.',
         rozne: 'Zaznaczone sklepy mają różne dni albo różnych podwykonawców.',
@@ -229,12 +233,38 @@ export function harmonogramPanelBrowserScript(): string {
         brak_sklepow: 'Harmonogram nie ma sklepów.',
         brak_dat: 'Brak dat odbioru w tym oknie.'
       };
-      return map[code] || code || 'Nie udało się zapisać.';
+      return map[raw] || 'Nie udało się zapisać.';
+    }
+
+    function harmonogramShowError_(code, place) {
+      var raw = code == null ? '' : String(code);
+      var summary = harmonogramErrorText(raw);
+      harmonogramSetStatus(summary, 'error');
+      var validation = raw === 'zaznacz' || raw === 'rozne' || raw === 'brak_dni';
+      if (validation || typeof showMapErrorCard !== 'function') return;
+      showMapErrorCard({
+        code: 'MAP-E-HARMONOGRAM',
+        summary: summary,
+        effect: 'Lista albo zapis mogą być nieaktualne. Sprawdź arkusz, zanim powtórzysz.',
+        place: place || 'buildMapHarmonogram.ts harmonogramErrorText',
+        technical: raw || 'brak szczegółu'
+      });
+    }
+
+    function harmonogramReloadMiss_(id, place) {
+      if (typeof showMapErrorCard !== 'function') return;
+      showMapErrorCard({
+        code: 'MAP-E-HARM-RELOAD',
+        summary: 'Zapis harmonogramu się udał, ale lista się nie odświeżyła.',
+        effect: 'Na ekranie nie ma „Zapisano”. Odśwież listę, zanim zapiszesz drugi raz.',
+        place: place,
+        technical: 'harmonogramLoad nie doszedł po zapisie ' + (id || '')
+      });
     }
 
     function harmonogramGet() {
       var sep = TRANSPORT_WEBAPP_URL.indexOf('?') >= 0 ? '&' : '?';
-      return fetch(TRANSPORT_WEBAPP_URL + sep + 'action=listHarmonogramy').then(function(res) { return res.json(); });
+      return fetch(TRANSPORT_WEBAPP_URL + sep + 'action=listHarmonogramy').then(function(res) { return readMapJson_(res); });
     }
 
     function harmonogramPost(payload) {
@@ -242,7 +272,7 @@ export function harmonogramPanelBrowserScript(): string {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }).then(function(res) { return res.json(); });
+      }).then(function(res) { return readMapJson_(res); });
     }
 
     function harmonogramField(card, name) {
@@ -452,17 +482,39 @@ export function harmonogramPanelBrowserScript(): string {
     function harmonogramLoad() {
       harmonogramSetLoading(true);
       harmonogramSetStatus('', '');
+      var failed = false;
       return harmonogramGet().then(function(data) {
+        if (data && data.status === 401) {
+          failed = true;
+          return;
+        }
+        if (data && data.notJson) {
+          failed = true;
+          harmonogramSetStatus('Nie udało się pobrać harmonogramów.', 'error');
+          if (typeof mapApiErrorCard_ === 'function') {
+            mapApiErrorCard_({
+              code: 'MAP-E-HARMONOGRAM',
+              summary: 'Nie udało się pobrać harmonogramów.',
+              effect: 'Lista zostaje pusta albo stara. Odśwież, gdy połączenie wróci.',
+              place: 'buildMapHarmonogram.ts harmonogramLoad',
+              technical: String(data.technical || 'nie-JSON')
+            }, data, null);
+          }
+          return;
+        }
         if (!data || data.ok === false) {
-          harmonogramSetStatus(harmonogramErrorText(data && data.error), 'error');
+          failed = true;
+          harmonogramShowError_(data && data.error, 'buildMapHarmonogram.ts harmonogramLoad');
           return;
         }
         harmonogramRender(data);
         harmonogramSetStatus('', '');
-      }).catch(function() {
-        harmonogramSetStatus('Nie udało się pobrać harmonogramów.', 'error');
+      }).catch(function(err) {
+        failed = true;
+        harmonogramShowError_(err && (err.message || err), 'buildMapHarmonogram.ts harmonogramLoad');
       }).then(function() {
         harmonogramSetLoading(false);
+        return !failed;
       });
     }
 
@@ -503,16 +555,34 @@ export function harmonogramPanelBrowserScript(): string {
           groupBtn.disabled = true;
           harmonogramPost({ mode: 'groupHarmonogram', rows: rows }).then(function(resp) {
             groupBtn.disabled = false;
-            if (!resp || resp.ok === false) {
-              harmonogramSetStatus(harmonogramErrorText(resp && resp.error), 'error');
+            if (resp && resp.status === 401) return;
+            if (resp && resp.notJson) {
+              harmonogramSetStatus('Nie udało się zgrupować.', 'error');
+              if (typeof mapApiErrorCard_ === 'function') {
+                mapApiErrorCard_({
+                  code: 'MAP-E-HARMONOGRAM',
+                  summary: 'Nie udało się zgrupować.',
+                  effect: 'Sklepy nie weszły do harmonogramu.',
+                  place: 'buildMapHarmonogram.ts groupHarmonogram',
+                  technical: String(resp.technical || 'nie-JSON')
+                }, resp, null);
+              }
               return;
             }
-            return harmonogramLoad().then(function() {
+            if (!resp || resp.ok === false) {
+              harmonogramShowError_(resp && resp.error, 'buildMapHarmonogram.ts groupHarmonogram');
+              return;
+            }
+            return harmonogramLoad().then(function(reloaded) {
+              if (!reloaded) {
+                harmonogramReloadMiss_(resp.id, 'buildMapHarmonogram.ts groupHarmonogram');
+                return;
+              }
               harmonogramSetStatus('Zapisano harmonogram ' + (resp.id || '') + '.', '');
             });
-          }).catch(function() {
+          }).catch(function(err) {
             groupBtn.disabled = false;
-            harmonogramSetStatus('Nie udało się zgrupować.', 'error');
+            harmonogramShowError_(err && (err.message || err), 'buildMapHarmonogram.ts groupHarmonogram');
           });
         }
         var detachBtn = target.closest('.harmonogram-detach');
@@ -520,14 +590,28 @@ export function harmonogramPanelBrowserScript(): string {
           detachBtn.disabled = true;
           harmonogramPost({ mode: 'ungroupHarmonogram', rows: harmonogramRowsFrom(detachBtn) }).then(function(resp) {
             detachBtn.disabled = false;
+            if (resp && resp.status === 401) return;
+            if (resp && resp.notJson) {
+              harmonogramSetStatus('Nie udało się odłączyć sklepu.', 'error');
+              if (typeof mapApiErrorCard_ === 'function') {
+                mapApiErrorCard_({
+                  code: 'MAP-E-HARMONOGRAM',
+                  summary: 'Nie udało się odłączyć sklepu.',
+                  effect: 'Sklep zostaje w harmonogramie.',
+                  place: 'buildMapHarmonogram.ts ungroupHarmonogram',
+                  technical: String(resp.technical || 'nie-JSON')
+                }, resp, null);
+              }
+              return;
+            }
             if (!resp || resp.ok === false) {
-              harmonogramSetStatus(harmonogramErrorText(resp && resp.error), 'error');
+              harmonogramShowError_(resp && resp.error, 'buildMapHarmonogram.ts ungroupHarmonogram');
               return;
             }
             harmonogramLoad();
-          }).catch(function() {
+          }).catch(function(err) {
             detachBtn.disabled = false;
-            harmonogramSetStatus('Nie udało się odłączyć sklepu.', 'error');
+            harmonogramShowError_(err && (err.message || err), 'buildMapHarmonogram.ts ungroupHarmonogram');
           });
         }
         var saveBtn = target.closest('.harmonogram-save');
@@ -547,16 +631,34 @@ export function harmonogramPanelBrowserScript(): string {
             spodziewaneWorki: harmonogramField(card, 'spodziewaneWorki')
           }).then(function(resp) {
             saveBtn.disabled = false;
-            if (!resp || resp.ok === false) {
-              harmonogramSetStatus(harmonogramErrorText(resp && resp.error), 'error');
+            if (resp && resp.status === 401) return;
+            if (resp && resp.notJson) {
+              harmonogramSetStatus('Nie udało się zapisać harmonogramu.', 'error');
+              if (typeof mapApiErrorCard_ === 'function') {
+                mapApiErrorCard_({
+                  code: 'MAP-E-HARMONOGRAM',
+                  summary: 'Nie udało się zapisać harmonogramu.',
+                  effect: 'Zmiany z formularza nie weszły do arkusza.',
+                  place: 'buildMapHarmonogram.ts saveHarmonogram',
+                  technical: String(resp.technical || 'nie-JSON')
+                }, resp, null);
+              }
               return;
             }
-            return harmonogramLoad().then(function() {
+            if (!resp || resp.ok === false) {
+              harmonogramShowError_(resp && resp.error, 'buildMapHarmonogram.ts saveHarmonogram');
+              return;
+            }
+            return harmonogramLoad().then(function(reloaded) {
+              if (!reloaded) {
+                harmonogramReloadMiss_(resp.id, 'buildMapHarmonogram.ts saveHarmonogram');
+                return;
+              }
               harmonogramSetStatus('Zapisano ' + (resp.id || '') + '.', '');
             });
-          }).catch(function() {
+          }).catch(function(err) {
             saveBtn.disabled = false;
-            harmonogramSetStatus('Nie udało się zapisać harmonogramu.', 'error');
+            harmonogramShowError_(err && (err.message || err), 'buildMapHarmonogram.ts saveHarmonogram');
           });
         }
         var awizujBtn = target.closest('.harmonogram-awizuj');
@@ -577,15 +679,28 @@ export function harmonogramPanelBrowserScript(): string {
             nazwy: nazwy
           }).then(function(resp) {
             awizujBtn.disabled = false;
+            if (resp && resp.status === 401) return;
+            if (resp && resp.notJson) {
+              harmonogramSetStatus('Nie udało się awizować do Bolęcina.', 'error');
+              if (typeof mapApiErrorCard_ === 'function') {
+                mapApiErrorCard_({
+                  code: 'MAP-E-HARMONOGRAM',
+                  summary: 'Nie udało się awizować do Bolęcina.',
+                  effect: 'Awizacja nie weszła do arkusza Bolęcin.',
+                  place: 'buildMapHarmonogram.ts awizujBolecin',
+                  technical: String(resp.technical || 'nie-JSON')
+                }, resp, null);
+              }
+              return;
+            }
             if (!resp || resp.ok === false) {
-              var raw = resp && resp.error ? String(resp.error) : '';
-              harmonogramSetStatus(raw.indexOf('BOLECIN_SHEETS_ID') >= 0 ? raw : harmonogramErrorText(raw), 'error');
+              harmonogramShowError_(resp && resp.error, 'buildMapHarmonogram.ts awizujBolecin');
               return;
             }
             harmonogramSetStatus('Bolęcin: dopisano ' + resp.dopisane + ', pominięto ' + resp.pominiete + ' (już były).', '');
-          }).catch(function() {
+          }).catch(function(err) {
             awizujBtn.disabled = false;
-            harmonogramSetStatus('Nie udało się awizować do Bolęcina.', 'error');
+            harmonogramShowError_(err && (err.message || err), 'buildMapHarmonogram.ts awizujBolecin');
           });
         }
       });

@@ -1,6 +1,6 @@
 # TODO: obsługa błędów na mapie
 
-Zrobione: błąd awizacji Bolęcin zostaje u góry do kliknięcia **Zamknij**. Brak `BOLECIN_SHEETS_ID` jest po polsku, nie jako surowy wyjątek. Na karcie są też: zapis rejestru (`MAP-E-REGISTER-SAVE`), brak numeru (`MAP-E-NO-NUMBER`), biblioteki Word (`MAP-E-WORD-LIBS`), częściowo nieudane zbiorcze (`MAP-E-BULK-PARTIAL`) i składanie jednego protokołu (`MAP-E-DOC-RENDER`).
+Zrobione: błąd awizacji Bolęcin zostaje u góry do kliknięcia **Zamknij**. Brak `BOLECIN_SHEETS_ID` jest po polsku, nie jako surowy wyjątek. Na karcie są też: zapis rejestru (`MAP-E-REGISTER-SAVE`), brak numeru (`MAP-E-NO-NUMBER`), biblioteki Word (`MAP-E-WORD-LIBS`), zbiorcze protokoły z adresem i etapem (`MAP-E-BULK-GENERATE`, wcześniej sam licznik `MAP-E-BULK-PARTIAL`), składanie jednego protokołu (`MAP-E-DOC-RENDER`), ostatnie daty transportu (`MAP-E-TRANSPORT-DATES`), podgląd numeru (`MAP-E-DOC-NUMBER`, `MAP-E-BULK-DOC-NUMBER`), nazwa i stawka trasy (`MAP-E-ROUTE-NAME`, `MAP-E-ROUTE-NAME-FRESH`, `MAP-E-ROUTE-RATE`), brak wolnego numeru (`MAP-E-ROUTE-FULL`), słowniki i zapis admina (`MAP-E-ADMIN-DICTS`, `MAP-E-ADMIN-SAVE`), granice województw (`MAP-E-VOIVODESHIP`), zły base64 szablonu (`MAP-E-TEMPLATE-BYTES`), kody harmonogramu (`MAP-E-HARMONOGRAM`), odświeżenie po zapisie (`MAP-E-HARM-RELOAD`), odpowiedź inna niż JSON (`MAP-E-NOT-JSON`), stawki zbiorcze (`MAP-E-BULK-RATES`, `MAP-E-BULK-RATES-PARTIAL`) i różne hasło Pages/Worker (`MAP-E-AUTH-MISMATCH`).
 
 ## Szablon karty
 
@@ -66,28 +66,28 @@ Walidacja formularza zostaje na `alert`. Kody z listy, których nie ma w „Zrob
 ## Zaplanowane wcześniej
 
 - [x] **Pozostałe błędy protokołu** — ten sam pasek do zamknięcia, nie toast na dole na 6 s. Zapis rejestru, brak numeru, biblioteki Word, częściowo nieudane zbiorcze (`phase6.ts`, `showMapErrorCard`). Składanie jednego protokołu: `finishWithNumber` łapie wyjątek z `renderDocxAndDownload` i zostawia kartę `MAP-E-DOC-RENDER`. W zbiorczym ten sam wyjątek wpada w licznik i jest w `MAP-E-BULK-GENERATE`.
-- [ ] **Jeden słownik tekstów** — `BOLECIN_SHEETS_ID` i kody harmonogramu (`zaznacz`, `brak_dat`, `nie_bolecin`). Panel harmonogramu trzyma status, ale przy braku właściwości wkleja surowy wyjątek (`buildMapHarmonogram.ts`, `harmonogramErrorText`).
-- [ ] **Odpowiedź, która nie jest JSON** — `fetchTransportGet`, `appendTransportRow`, `harmonogramGet` / `harmonogramPost`, `postReferencePayload` robią `res.json()` bez sprawdzenia statusu. Strona logowania Google albo limit kończy się ogólnym „nie udało się”.
-- [ ] **Admin ręczny** — „Zapis nieudany.” / „Zapis poprawki nieudany.” bez treści `resp.error` (`buildMapManualAdmin.ts`).
+- [x] **Jeden słownik tekstów** — `BOLECIN_SHEETS_ID` i kody harmonogramu (`zaznacz`, `brak_dat`, `nie_bolecin`). `harmonogramErrorText` zwraca polski tekst. Surowy wyjątek i kody inne niż walidacja (`zaznacz`, `rozne`, `brak_dni`) idą na kartę `MAP-E-HARMONOGRAM`.
+- [x] **Odpowiedź, która nie jest JSON** — `readMapJson_` w `fetchTransportGet`, `appendTransportRow`, `harmonogramGet` / `harmonogramPost`, `postReferencePayload` i słownikach admina. HTML albo limit dostaje `MAP-E-NOT-JSON` (objaw zostaje ten z miejsca wywołania). 401 zostaje na overlayu.
+- [x] **Admin ręczny** — zapis listy, poprawki i stawek woła `MAP-E-ADMIN-SAVE`. W `technicznie` jest `resp.error` albo komunikat sieci. Walidacja pustych pól zostaje na statusie formularza.
 
-Walidacja formularza zostaje na `alert`. Dwa przypadki też są na `alert`, ale to nie walidacja pól — mają iść na kartę:
+Walidacja formularza zostaje na `alert`. Dwa przypadki, które nie są walidacją pól, są już na karcie:
 
-- [ ] **Brak wolnego numeru trasy** — `resolveRouteFieldsBeforeSave` w `phase6.ts` (`MAP-E-ROUTE-FULL`). „Brak wolnego numeru trasy (01–99). Zapis przerwany…”. Nie ma raportu. Osobno od `MAP-E-ROUTE-NAME-FRESH`, gdzie błąd sieci udaje pustą listę i może wziąć zajęty numer.
-- [ ] **Hasło Pages i Worker** — `maybeMismatchAlert` w `sitePasswordFetchSnippet.ts` (`MAP-E-AUTH-MISMATCH`). Status 503 i `proxy_auth_mismatch`. 401 zostaje na overlayu „Zaloguj ponownie” — to blok sesji, nie karta mapy.
+- [x] **Brak wolnego numeru trasy** — `resolveRouteFieldsBeforeSave` w `phase6.ts` (`MAP-E-ROUTE-FULL`). Zapis przerwany, stawka poprzedniej trasy zostaje. Osobno od `MAP-E-ROUTE-NAME-FRESH`.
+- [x] **Hasło Pages i Worker** — `maybeMismatchAlert` w `sitePasswordFetchSnippet.ts` (`MAP-E-AUTH-MISMATCH`). Status 503 i `proxy_auth_mismatch`. 401 zostaje na overlayu „Zaloguj ponownie”.
 
 ## Brak komunikatu dla użytkownika
 
 Błąd jest połknięty albo widać go tylko w konsoli. Mapa idzie dalej jakby nic.
 
-- [ ] **Ostatnie daty transportu na starcie** — `loadBulkTransportDates` w `phase6.ts`. `catch` tylko `console.error`, potem `__transportDatesLoaded = true`. To samo, gdy odpowiedź ma `ok: false`. Pinezki bez ostatniego odbioru, filtr worków bez odcięcia, zero komunikatu.
-- [ ] **Podgląd numeru w jednym protokole** — `loadDocModalData`. Sieć ma tekst w filtrze modalu. Odpowiedź `ok: false` nie: numer zostaje pusty i przycisk się odblokowuje.
-- [ ] **Podgląd numeru w zbiorczym** — `loadBulkDocModalData`. `catch` woła `finishBulkLoading('')`. Modal idzie dalej bez informacji, że podgląd numeru padł.
-- [ ] **Propozycja nazwy trasy** — `refreshRouteNameField`. `catch` zwraca `[]` i liczy nazwę tak, jakby żadna trasa nie była zajęta. To samo, gdy odpowiedź nie ma tablicy `names` (`ok: false`). Wyjątek w `namesBlockingNewRoute` / `proposeRouteName` (`catch (eOcc)`, `catch (eProp)`) też daje pustą propozycję, bez komunikatu. Może zaproponować numer, który już jest.
-- [ ] **Nowa nazwa przy konflikcie stawki** — `proposeFreshRouteName`. Ten sam wzorzec: błąd sieci albo brak `names` → pusta lista zajętych → następny numer z pustej listy.
-- [ ] **Stawka istniejącej trasy** — `lookupRouteRateNow`. `catch` jest pusty, loader znika, pole stawki zostaje puste. Odpowiedź `ok: false` robi to samo: stawki z odpowiedzi nie ma i nikt tego nie mówi.
-- [ ] **Słowniki admina** — `loadReferenceDataFromWebApp` w `buildMapManualAdmin.ts`. Pusty `catch`. Gdy `ok` jest false, `then` też nic nie mówi. Lista podwykonawców zostaje ta z HTML.
-- [ ] **Granice województw** — `fetch` GeoJSON w `phase6.ts`. Tylko `console.warn`. Mapa działa, filtr województwa nie ma granic do trafienia.
-- [ ] **Zły plik szablonu przy otwarciu modalu** — `prewarmDocxTemplateCache` w `phase6.ts` (`MAP-E-TEMPLATE-BYTES`). `getWordTemplateBytes` przy złym base64 robi tylko `console.warn`. Osobno od `MAP-E-WORD-TEMPLATE` (brak `{{ }}` przy `npm run generate`).
+- [x] **Ostatnie daty transportu na starcie** — `loadBulkTransportDates` w `phase6.ts` (`MAP-E-TRANSPORT-DATES`). `catch` i odpowiedź `ok: false` zostawiają kartę. `__transportDatesLoaded` i tak schodzi na `true`, pinezki idą dalej bez ostatniego odbioru.
+- [x] **Podgląd numeru w jednym protokole** — `loadDocModalData` (`MAP-E-DOC-NUMBER`). Sieć i `ok: false` zostawiają kartę. Nad przyciskiem zostaje liczba worków, nie zdanie o błędzie. Przycisk i tak się odblokowuje.
+- [x] **Podgląd numeru w zbiorczym** — `loadBulkDocModalData` (`MAP-E-BULK-DOC-NUMBER`). `catch` i `ok: false` wołają kartę, potem `finishBulkLoading('')`. Modal idzie dalej.
+- [x] **Propozycja nazwy trasy** — `refreshRouteNameField` (`MAP-E-ROUTE-NAME`). Błąd sieci, brak tablicy `names` oraz wyjątek w `namesBlockingNewRoute` / `proposeRouteName` zostawiają kartę i nie liczą nazwy z pustej listy.
+- [x] **Nowa nazwa przy konflikcie stawki** — `proposeFreshRouteName` (`MAP-E-ROUTE-NAME-FRESH`). Błąd sieci albo brak `names` przerywa zapis kartą i zwraca `null`. Pusta propozycja przy pełnych numerach 01–99 zostaje na alercie (`MAP-E-ROUTE-FULL`).
+- [x] **Stawka istniejącej trasy** — `lookupRouteRateNow` (`MAP-E-ROUTE-RATE`). `catch` i `ok: false` zostawiają kartę, gdy ticket jest aktualny. Pusta stawka przy `ok: true` to trasa bez zapisu, nie błąd.
+- [x] **Słowniki admina** — `loadReferenceDataFromWebApp` w `buildMapManualAdmin.ts` (`MAP-E-ADMIN-DICTS`). `catch` i `ok: false` zostawiają kartę. Lista podwykonawców zostaje ta z HTML.
+- [x] **Granice województw** — `fetch` GeoJSON w `phase6.ts` (`MAP-E-VOIVODESHIP`). `catch` zostawia kartę obok `console.warn`. Mapa działa, filtr województwa nie ma granic.
+- [x] **Zły plik szablonu przy otwarciu modalu** — `prewarmDocxTemplateCache` w `phase6.ts` (`MAP-E-TEMPLATE-BYTES`). Zły base64 w `getWordTemplateBytes` zostawia kartę. Osobno od `MAP-E-WORD-TEMPLATE` (brak `{{ }}` przy `npm run generate`).
 
 `refreshClusterIcons` przy wyjątku loguje do konsoli i zostawia stare ikony klastrów. To rysunek, nie zapis.
 
@@ -95,13 +95,13 @@ Błąd jest połknięty albo widać go tylko w konsoli. Mapa idzie dalej jakby n
 
 Komunikat jest, ale mały, poza ekranem albo znika, zanim da się go przeczytać. Powód często zostaje tylko w konsoli.
 
-- [ ] **Zbiorcze protokoły gubią powód i adres** — `runBulkDocGenerate` w `phase6.ts`. `catch` robi `console.error` i licznik. Na ekranie zostaje „Nie udało się: N”, toast 6 s na dole (do zamknięcia tylko wtedy, gdy był też błąd Bolęcina). Wiersz rejestru mógł już wejść, a Word paść — tego rozróżnienia nie widać.
-- [ ] **Błąd stawek zbiorczych kasuje się przy edycji** — `validateBulkRatesFields` czyści czerwony `bulk-rates-status`, gdy pola są poprawne. „Błąd sieci przy sklepie 3/10” znika po kolejnym znaku w kwocie.
-- [ ] **Zbiorcze stawki: część sklepów już w arkuszu** — `runBulkRatesSave` w `phase6.ts` (`MAP-E-BULK-RATES-PARTIAL`). Przy błędzie sklepu 3/10 sklepy 1–2 są zapisane, a status mówi tylko o miejscu przerwania. `catch` nie bierze `err`. Nieznany `resp.error` spada do „Zapis nieudany.” (`saveRateErrorMessage`).
-- [ ] **Podpowiedź 12 px zamiast błędu** — `doc-filter-info` i `bulk-rates-status` mają styl podpowiedzi (12 px, szary). Zdanie „Nie udało się pobrać danych transportu…” stoi nad przyciskiem „Pobierz .docx”, a przycisk i tak się włącza.
-- [ ] **Harmonogram: błąd nad scrollem** — `#harmonogram-group-status` to 12 px pod tytułem. Przycisk awizacji jest na karcie niżej. Po błędzie tekst jest powyżej widoku. „Odśwież” woła `harmonogramLoad`, które na starcie czyści status. `catch` przy pobraniu, grupowaniu, odłączeniu, zapisie i awizacji nie bierze obiektu błędu — zostaje stałe zdanie, bez szczegółu.
-- [ ] **Po zapisie harmonogramu sukces chowa błąd listy** — `groupHarmonogram` i `saveHarmonogram` w `buildMapHarmonogram.ts` (`MAP-E-HARM-RELOAD`). Zapis się udaje, potem `harmonogramLoad()`. Ta funkcja przy błędzie sieci ustawia status i i tak się rozwiązuje, a zewnętrzne `.then` wpisuje „Zapisano…”. Lista może być nieodświeżona, a na ekranie jest sukces.
-- [ ] **Admin: jedna linia na dole formularza** — `#manual-admin-status`, 12 px, za polami. Długi panel trzeba zjechać w dół. Otwarcie panelu czyści status (`openManualAdminModal`).
+- [x] **Zbiorcze protokoły gubią powód i adres** — `runBulkDocGenerate` w `phase6.ts` (`MAP-E-BULK-GENERATE`). Karta ma adres, etap (`rejestr nie zapisany` albo `Word nie powstał, wiersz rejestru mógł już wejść`) i surowy powód.
+- [x] **Błąd stawek zbiorczych kasuje się przy edycji** — `validateBulkRatesFields` czyści tylko status `validation`. Błąd zapisu (`data-status-source="save"`) zostaje po kolejnym znaku w kwocie. Sieć i `ok: false` idą na kartę `MAP-E-BULK-RATES`.
+- [x] **Zbiorcze stawki: część sklepów już w arkuszu** — `runBulkRatesSave` (`MAP-E-BULK-RATES-PARTIAL`). Skutek mówi, ile sklepów już weszło i przy którym adresie przerwano. `catch` bierze `err`. Nieznany `resp.error` jest w zdaniu i w `technicznie`.
+- [x] **Podpowiedź 12 px zamiast błędu** — błąd pobrania danych transportu nie wpisuje się w `doc-filter-info`. Zostaje karta `MAP-E-DOC-NUMBER`. Podpowiedź nad przyciskiem to znowu liczba worków.
+- [x] **Harmonogram: błąd nad scrollem** — błąd pobrania, grupowania, odłączenia, zapisu i awizacji idzie na kartę `MAP-E-HARMONOGRAM`. `catch` bierze obiekt błędu. Walidacja zaznaczenia zostaje na statusie panelu.
+- [x] **Po zapisie harmonogramu sukces chowa błąd listy** — `groupHarmonogram` i `saveHarmonogram` (`MAP-E-HARM-RELOAD`). `harmonogramLoad` zwraca, czy lista doszła. Przy błędzie nie ma „Zapisano”.
+- [x] **Admin: jedna linia na dole formularza** — nieudany zapis idzie na kartę `MAP-E-ADMIN-SAVE` u góry mapy. Krótki status w panelu zostaje. Otwarcie panelu dalej czyści ten status, karta nie.
 - [ ] **Pusty szablon Word** — `warnIfWordTemplateMissingPlaceholders` w `wordMapSupport.ts` pisze tylko `console.warn` przy `npm run generate`. Na mapie protokół się pobiera, pola `{{ }}` zostają puste.
 - [ ] **Popraw adres przy generowaniu mapy** — `phase7.ts` łapie błąd arkusza referencji i loguje „Reference sheet skipped”. Mapa powstaje bez poprawek adresów. W logu CI łatwo to przegapić.
 - [x] **Składanie jednego Worda znika po 6 s** — `finishWithNumber` w `phase6.ts` (`MAP-E-DOC-RENDER`). Wyjątek z `renderDocxAndDownload` (zły tag, puste pole szablonu) zostaje na karcie do **Zamknij**. Surowy komunikat jest w polu `technicznie`.

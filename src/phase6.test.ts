@@ -1203,14 +1203,109 @@ showMapErrorCard({
       const body = html.slice(start, end);
       expect(start).toBeGreaterThan(-1);
       expect(end).toBeGreaterThan(start);
-      expect(body).toContain("code: 'MAP-E-BULK-PARTIAL'");
+      expect(body).toContain("code: 'MAP-E-BULK-GENERATE'");
       expect(body).toContain('Część protokołów zbiorczych się nie udała.');
       expect(body).toContain('Nie udało się wygenerować protokołów zbiorczych.');
+      expect(body).toContain('Word nie powstał, wiersz rejestru mógł już wejść');
+      expect(body).toContain('rejestr nie zapisany');
       expect(body).toContain("code: 'MAP-E-WORD-LIBS'");
       expect(body).toContain("place: 'phase6.ts runBulkDocGenerate'");
       expect(body).toContain('showAwizacjaNotice_(head, bolecinError, null, false)');
       expect(body).not.toContain('head +=');
       expect(body).not.toContain('showMapNotice(');
+    });
+
+    it('test_loadBulkTransportDates_when_fetch_or_ok_false_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      const body = html.slice(
+        html.indexOf('function loadBulkTransportDates('),
+        html.indexOf('function podwykoOptionMatchesQuery('),
+      );
+      expect(body.split("code: 'MAP-E-TRANSPORT-DATES'").length - 1).toBe(2);
+      expect(body).toContain('Nie udało się pobrać ostatnich dat transportu.');
+      expect(body).toContain('Pinezki są bez ostatniego odbioru. Filtr worków nie odcina starych dat.');
+      expect(body).toContain("place: 'phase6.ts loadBulkTransportDates'");
+      expect(body).toContain("String(resp && resp.error ? resp.error : 'ok: false')");
+      expect(body).toContain('String(err && err.message || err)');
+      expect(body).toContain('window.__transportDatesLoaded = true');
+    });
+
+    it('test_loadDocModalData_when_preview_fails_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      const single = html.slice(
+        html.indexOf('function loadDocModalData('),
+        html.indexOf('function findPodwykoIdxByLabel('),
+      );
+      const bulk = html.slice(
+        html.indexOf('function loadBulkDocModalData('),
+        html.indexOf('function loadDocModalData('),
+      );
+      expect(single.split("code: 'MAP-E-DOC-NUMBER'").length - 1).toBe(2);
+      expect(single).toContain('Nie udało się pobrać numeru protokołu.');
+      expect(single).toContain('Nie udało się pobrać danych transportu do protokołu.');
+      expect(single).toContain("place: 'phase6.ts loadDocModalData'");
+      expect(single).not.toContain('Nie udało się pobrać danych transportu —');
+      expect(bulk.split("code: 'MAP-E-BULK-DOC-NUMBER'").length - 1).toBe(2);
+      expect(bulk).toContain('Nie udało się podejrzeć numeru protokołów zbiorczych.');
+      expect(bulk).toContain("place: 'phase6.ts loadBulkDocModalData'");
+      expect(bulk).toContain("finishBulkLoading('')");
+    });
+
+    it('test_route_name_and_rate_when_lookup_fails_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      const rate = html.slice(
+        html.indexOf('function lookupRouteRateNow('),
+        html.indexOf('function applyShownRouteName('),
+      );
+      const fresh = html.slice(
+        html.indexOf('function proposeFreshRouteName('),
+        html.indexOf('function resolveRouteFieldsBeforeSave('),
+      );
+      const resolve = html.slice(
+        html.indexOf('function resolveRouteFieldsBeforeSave('),
+        html.indexOf('function isBolecinMiejsce_('),
+      );
+      expect(rate).toContain("code: 'MAP-E-ROUTE-RATE'");
+      expect(rate).toContain('Nie udało się pobrać stawki trasy.');
+      expect(rate).toContain("place: 'phase6.ts lookupRouteRateNow'");
+      expect(rate).toContain('if (ticket !== routeRateRequest) return;');
+      expect(fresh).toContain("code: 'MAP-E-ROUTE-NAME-FRESH'");
+      expect(fresh).toContain('Zapis przerwany, żeby nie nadać numeru, który już jest.');
+      expect(fresh).toContain("place: 'phase6.ts proposeFreshRouteName'");
+      expect(fresh).not.toContain('return fromNames([]);');
+      expect(resolve).toContain('if (proposal == null) return null;');
+      expect(resolve).toContain("code: 'MAP-E-ROUTE-FULL'");
+      expect(resolve).not.toContain('alert(');
+    });
+
+    it('test_readMapJson_when_body_is_not_json_should_keep_the_caller_effect_and_switch_the_code', () => {
+      const html = protocolHtml();
+      const reader = html.slice(html.indexOf('function readMapJson_('), html.indexOf('function mapApiErrorCard_('));
+      const chooser = html.slice(html.indexOf('function mapApiErrorCard_('), html.indexOf('var mapNoticeHideTimer'));
+      expect(reader).toContain('notJson: true');
+      expect(reader).toContain('res.status === 401');
+      expect(chooser).toContain("notJson ? 'MAP-E-NOT-JSON'");
+      expect(chooser).toContain('resp.status === 401');
+      expect(html).toContain('return readMapJson_(res)');
+      expect(html).toContain("partial ? 'MAP-E-BULK-RATES-PARTIAL' : 'MAP-E-BULK-RATES'");
+      expect(html).toContain("data-status-source");
+      expect(html).toContain("code: 'MAP-E-AUTH-MISMATCH'");
+      expect(html).not.toContain('hasło Pages i Worker się różnią. Skontaktuj się z administratorem.');
+    });
+
+    it('test_prewarm_and_voivodeship_when_they_fail_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      const prewarm = html.slice(
+        html.indexOf('function prewarmDocxTemplateCache('),
+        html.indexOf('var docxLibsPromise'),
+      );
+      expect(prewarm).toContain("code: 'MAP-E-TEMPLATE-BYTES'");
+      expect(prewarm).toContain('Szablon Word jest uszkodzony.');
+      expect(prewarm).toContain("place: 'phase6.ts prewarmDocxTemplateCache'");
+      expect(html).toContain("code: 'MAP-E-VOIVODESHIP'");
+      expect(html).toContain('Nie udało się wczytać granic województw.');
+      expect(html).toContain("place: 'phase6.ts fetchWojewodztwaGeoJson'");
+      expect(html).toContain('Nie załadowano granic województw.');
     });
 
     it('test_showAwizacjaNotice_when_awizacja_saved_should_hide_success_notice', () => {
@@ -1236,12 +1331,15 @@ showMapErrorCard({
         html.indexOf('function onRouteCheckboxChange('),
       );
       const loadingOn = refresh.indexOf('setRouteNameFieldLoading(true)');
-      const catchEmpty = refresh.indexOf('.catch(function () {\n        return [];\n      })');
+      const catchFail = refresh.indexOf(".catch(function (err) {");
       const loadingOff = refresh.indexOf('setRouteNameFieldLoading(false)');
       expect(loadingOn).toBeGreaterThan(-1);
-      expect(catchEmpty).toBeGreaterThan(loadingOn);
-      expect(loadingOff).toBeGreaterThan(catchEmpty);
-      // try/catch wokół namesBlocking/propose — wyjątek nie zostawia pustego pola w ciszy.
+      expect(catchFail).toBeGreaterThan(loadingOn);
+      expect(loadingOff).toBeGreaterThan(catchFail);
+      expect(refresh).toContain("code: 'MAP-E-ROUTE-NAME'");
+      expect(refresh).toContain('names.failed');
+      expect(refresh).not.toContain('return [];');
+      // try/catch wokół namesBlocking/propose — wyjątek nie proponuje numeru z pustej listy.
       expect(refresh).toContain('catch (eOcc)');
       expect(refresh).toContain('catch (eProp)');
     });
@@ -2101,6 +2199,7 @@ __api = {
       api: ResolveApi;
       els: Record<string, FakeEl>;
       alerts: string[];
+      cards: Array<{ code?: string; summary?: string }>;
     } {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
         templateBase64: 'UEsDBA==',
@@ -2111,6 +2210,7 @@ __api = {
         'doc-inp-trasa': { value: 'GPW-23.09.26-01' },
       };
       const alerts: string[] = [];
+      const cards: Array<{ code?: string; summary?: string }> = [];
       const confirmAnswers: boolean[] = [];
       const pendingFetches: Array<(resp: { ok?: boolean; names?: string[] }) => void> = [];
 
@@ -2133,6 +2233,9 @@ __api = {
         },
         alert(msg: string) {
           alerts.push(String(msg));
+        },
+        showMapErrorCard(report: { code?: string; summary?: string }) {
+          cards.push(report || {});
         },
         fetchTransportGet() {
           return new Promise<{ ok?: boolean; names?: string[] }>((resolve) => {
@@ -2185,6 +2288,7 @@ __api = {
         api: { ...api, pendingFetches },
         els,
         alerts,
+        cards,
       };
     }
 
@@ -2258,7 +2362,7 @@ __api = {
     });
 
     it('test_resolveRouteFieldsBeforeSave_when_new_route_no_free_number_should_abort', async () => {
-      const { api, alerts } = loadResolveRouteFields();
+      const { api, alerts, cards } = loadResolveRouteFields();
       api.setExistingRate('GPW-23.09.26-01', '750');
       api.setConfirmAnswers([true]);
 
@@ -2276,7 +2380,9 @@ __api = {
 
       const result = await pending;
       expect(result).toBeNull();
-      expect(alerts.some((m) => m.includes('Brak wolnego numeru'))).toBe(true);
+      expect(alerts).toEqual([]);
+      expect(cards.some((card) => card.code === 'MAP-E-ROUTE-FULL')).toBe(true);
+      expect(cards.some((card) => String(card.summary).includes('Brak wolnego numeru'))).toBe(true);
       expect(api.getState().routeNameMode).toBe('continue');
     });
   });

@@ -32,5 +32,11 @@ describe('buildMapHarmonogram', () => {
     expect(script).toContain('harmonogramSetLoading');
     expect(script).toContain('harmonogram-card-head');
     expect(script).toContain('harmonogram-id');
+    expect(script).toContain("code: 'MAP-E-HARMONOGRAM'");
+    expect(script).toContain("code: 'MAP-E-HARM-RELOAD'");
+    expect(script).toContain('W skrypcie mapy brakuje właściwości BOLECIN_SHEETS_ID.');
+    expect(script).toContain('return readMapJson_(res)');
+    expect(script).not.toContain("raw.indexOf('BOLECIN_SHEETS_ID') >= 0 ? raw");
+    expect(script).toContain('if (!reloaded)');
   });
 });

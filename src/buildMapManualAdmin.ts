@@ -243,7 +243,24 @@ ${referenceFormatsBrowserScript()}
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }).then(function(res) { return res.json(); });
+      }).then(function(res) { return readMapJson_(res); });
+    }
+
+    function reportManualAdminSave_(summary, resp, err) {
+      if ((resp && resp.status === 401) || (err && err.status === 401)) return;
+      var technical = 'brak treści błędu';
+      if (resp && resp.notJson && resp.technical) technical = String(resp.technical);
+      else if (resp && resp.error) technical = String(resp.error);
+      else if (err) technical = String(err && err.message || err);
+      setManualAdminStatus(summary, 'error');
+      if (typeof mapApiErrorCard_ !== 'function') return;
+      mapApiErrorCard_({
+        code: 'MAP-E-ADMIN-SAVE',
+        summary: summary,
+        effect: 'Zapis nie wszedł do arkusza. Formularz zostaje otwarty.',
+        place: 'buildMapManualAdmin.ts bindManualAdminUi',
+        technical: technical
+      }, resp, err);
     }
 
     function rateValidFromFromPicker(value) {
@@ -276,9 +293,19 @@ ${referenceFormatsBrowserScript()}
       var sep = TRANSPORT_WEBAPP_URL.indexOf('?') >= 0 ? '&' : '?';
       setManualAdminBusy(null, true, 'Ładowanie słowników…');
       return fetch(TRANSPORT_WEBAPP_URL + sep + 'action=listReferenceData')
-        .then(function(r) { return r.json(); })
+        .then(function(r) { return readMapJson_(r); })
         .then(function(resp) {
-          if (!resp || !resp.ok || !resp.data) return;
+          if (!resp || !resp.ok) {
+            mapApiErrorCard_({
+              code: 'MAP-E-ADMIN-DICTS',
+              summary: 'Nie udało się pobrać słowników admina.',
+              effect: 'Lista podwykonawców zostaje ta z mapy. Nowych wpisów z arkusza nie widać.',
+              place: 'buildMapManualAdmin.ts loadReferenceDataFromWebApp',
+              technical: String(resp && resp.error ? resp.error : 'ok: false')
+            }, resp, null);
+            return;
+          }
+          if (!resp.data) return;
           if (resp.data.podwykoLista) {
             (resp.data.podwykoLista || []).forEach(applyReferencePodwykoEntry);
           } else {
@@ -292,7 +319,15 @@ ${referenceFormatsBrowserScript()}
           }
           fillRateContractorOptions();
         })
-        .catch(function() {})
+        .catch(function(err) {
+          mapApiErrorCard_({
+            code: 'MAP-E-ADMIN-DICTS',
+            summary: 'Nie udało się pobrać słowników admina.',
+            effect: 'Lista podwykonawców zostaje ta z mapy. Nowych wpisów z arkusza nie widać.',
+            place: 'buildMapManualAdmin.ts loadReferenceDataFromWebApp',
+            technical: String(err && err.message || err)
+          }, null, err);
+        })
         .then(function() {
           setManualAdminBusy(null, false);
         });
@@ -629,7 +664,7 @@ ${referenceFormatsBrowserScript()}
             dane: dane
           }).then(function(resp) {
             if (!resp || !resp.ok) {
-              setManualAdminStatus(resp && resp.error === 'duplicate' ? 'Duplikat na liście.' : 'Zapis nieudany.', 'error');
+              reportManualAdminSave_(resp && resp.error === 'duplicate' ? 'Duplikat na liście.' : 'Zapis nieudany.', resp, null);
               return;
             }
             applyReferencePodwykoEntry(resp.entry);
@@ -639,8 +674,8 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-lista-adres').value = '';
             document.getElementById('manual-admin-lista-nip').value = '';
             document.getElementById('manual-admin-lista-bdo').value = '';
-          }).catch(function() {
-            setManualAdminStatus('Zapis nieudany.', 'error');
+          }).catch(function(err) {
+            reportManualAdminSave_('Zapis nieudany.', null, err);
           }).then(function() {
             setManualAdminBusy(listaSubmit, false);
           });
@@ -667,12 +702,12 @@ ${referenceFormatsBrowserScript()}
             uwagi: String((document.getElementById('manual-admin-popraw-uwagi') || {}).value || '').trim()
           }).then(function(resp) {
             if (!resp || !resp.ok) {
-              setManualAdminStatus('Zapis poprawki nieudany.', 'error');
+              reportManualAdminSave_('Zapis poprawki nieudany.', resp, null);
               return;
             }
             setManualAdminStatus('Zapisano poprawkę — odśwież mapę (npm run generate), aby zobaczyć pinezkę.', 'ok');
-          }).catch(function() {
-            setManualAdminStatus('Zapis poprawki nieudany.', 'error');
+          }).catch(function(err) {
+            reportManualAdminSave_('Zapis poprawki nieudany.', null, err);
           }).then(function() {
             setManualAdminBusy(poprawSubmit, false);
           });
@@ -705,15 +740,15 @@ ${referenceFormatsBrowserScript()}
               if (code === 'amount') msg = 'Nieprawidłowa kwota.';
               if (code === 'shop') msg = 'Wybierz sklep i podwykonawcę.';
               if (code === 'no_webapp') msg = 'Brak adresu Web App.';
-              setManualAdminStatus(msg, 'error');
+              reportManualAdminSave_(msg, resp, null);
               return;
             }
             setManualAdminStatus(formatRateSaveOkMessage(resp, false), 'ok');
             document.getElementById('manual-admin-stawki-podjazd').value = '';
             document.getElementById('manual-admin-stawki-worek').value = '';
             document.getElementById('manual-admin-stawki-od-kiedy').value = '';
-          }).catch(function() {
-            setManualAdminStatus('Zapis nieudany.', 'error');
+          }).catch(function(err) {
+            reportManualAdminSave_('Zapis nieudany.', null, err);
           }).then(function() {
             setManualAdminBusy(stawkiSubmit, false);
           });
@@ -747,7 +782,7 @@ ${referenceFormatsBrowserScript()}
               if (code === 'amount') msg = 'Nieprawidłowa kwota.';
               if (code === 'shop') msg = 'Wybierz sklep i podwykonawcę.';
               if (code === 'no_webapp') msg = 'Brak adresu Web App.';
-              setManualAdminStatus(msg, 'error');
+              reportManualAdminSave_(msg, resp, null);
               return;
             }
             setManualAdminStatus(formatRateSaveOkMessage(resp, true), 'ok');
@@ -755,8 +790,8 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-harmonogram-worek').value = '';
             setDayMultiValue('manual-admin-harmonogram-dni', '');
             document.getElementById('manual-admin-harmonogram-od-kiedy').value = '';
-          }).catch(function() {
-            setManualAdminStatus('Zapis nieudany.', 'error');
+          }).catch(function(err) {
+            reportManualAdminSave_('Zapis nieudany.', null, err);
           }).then(function() {
             setManualAdminBusy(harmonogramSubmit, false);
           });

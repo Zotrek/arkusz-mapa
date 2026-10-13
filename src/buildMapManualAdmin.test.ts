@@ -92,6 +92,30 @@ describe('buildMapManualAdmin', () => {
     expect(saved).not.toContain('generate');
   });
 
+  it('test_loadReferenceDataFromWebApp_when_dicts_fail_should_show_dismissible_error_card', () => {
+    const script = manualAdminBrowserScript();
+    const body = script.slice(
+      script.indexOf('function loadReferenceDataFromWebApp('),
+      script.indexOf('function parseManualLatLon('),
+    );
+    expect(body.split("code: 'MAP-E-ADMIN-DICTS'").length - 1).toBe(2);
+    expect(body).toContain('Nie udało się pobrać słowników admina.');
+    expect(body).toContain('Lista podwykonawców zostaje ta z mapy.');
+    expect(body).toContain("place: 'buildMapManualAdmin.ts loadReferenceDataFromWebApp'");
+    expect(body).toContain('String(err && err.message || err)');
+    expect(body).toContain('return readMapJson_(r)');
+  });
+
+  it('test_manualAdminSave_when_response_has_error_should_show_dismissible_error_card', () => {
+    const script = manualAdminBrowserScript();
+    const saves = script.slice(script.indexOf('function reportManualAdminSave_('));
+    expect(saves.split("code: 'MAP-E-ADMIN-SAVE'").length - 1).toBe(1);
+    expect(saves).toContain('resp.error');
+    expect(saves).toContain('Zapis poprawki nieudany.');
+    expect(saves).toContain("place: 'buildMapManualAdmin.ts bindManualAdminUi'");
+    expect(script).toContain('return readMapJson_(res)');
+  });
+
   it('test_manualAdminBrowserScript_when_built_should_wire_bulk_rates_contractor_combobox', () => {
     const script = manualAdminBrowserScript();
     expect(script).toContain("setupRateCombobox('bulk-rates-podwykonawca'");

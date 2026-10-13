@@ -98,10 +98,19 @@ export const SITE_PASSWORD_FETCH_SNIPPET = `(function () {
   function maybeMismatchAlert(res) {
     if (mismatchAlerted || res.status !== 503) return;
     mismatchAlerted = true;
-    res.clone().json().then(function (body) {
-      if (body && body.error === 'proxy_auth_mismatch') {
-        alert('Błąd konfiguracji serwera: hasło Pages i Worker się różnią. Skontaktuj się z administratorem.');
-      }
+    res.clone().text().then(function (text) {
+      var body = null;
+      try { body = JSON.parse(text); } catch (e) { body = null; }
+      if (!body || body.error !== 'proxy_auth_mismatch') return;
+      var report = {
+        code: 'MAP-E-AUTH-MISMATCH',
+        summary: 'Hasło Pages i Worker się różnią.',
+        effect: 'Mapa nie pobierze danych, dopóki hasła w Cloudflare Pages i Worker nie będą takie same.',
+        place: 'sitePasswordFetchSnippet.ts maybeMismatchAlert',
+        technical: 'HTTP 503 proxy_auth_mismatch'
+      };
+      if (typeof showMapErrorCard === 'function') showMapErrorCard(report);
+      else alert(report.summary + '\\n' + report.effect);
     }).catch(function () {});
   }
 

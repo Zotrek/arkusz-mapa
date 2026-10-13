@@ -1985,6 +1985,44 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       stack.appendChild(card);
       stack.hidden = false;
     }
+    /** Body, które nie jest JSON (logowanie Google, limit). 401 zostaje na overlayu sesji. */
+    function readMapJson_(res) {
+      return res.text().then(function (text) {
+        var body = String(text == null ? '' : text);
+        if (body.charCodeAt(0) === 0xFEFF) body = body.slice(1);
+        body = body.trim();
+        if (res.status === 401) {
+          return { ok: false, error: 'unauthorized', status: 401 };
+        }
+        var first = body.charAt(0);
+        if (first === '{' || first === '[') {
+          try { return JSON.parse(body); } catch (eParse) {}
+        }
+        var snippet = body.replace(/\\s+/g, ' ').slice(0, 160);
+        return {
+          ok: false,
+          error: 'not_json',
+          notJson: true,
+          status: res.status,
+          technical: 'HTTP ' + res.status + (snippet ? ': ' + snippet : '')
+        };
+      });
+    }
+    function mapApiErrorCard_(report, resp, err) {
+      if ((resp && resp.status === 401) || (err && err.status === 401)) return;
+      var notJson = !!((resp && resp.notJson) || (err && err.notJson));
+      var technical = report && report.technical;
+      if (notJson) {
+        technical = String((resp && resp.technical) || (err && err.technical) || (err && err.message) || 'nie-JSON');
+      }
+      showMapErrorCard({
+        code: notJson ? 'MAP-E-NOT-JSON' : (report && report.code),
+        summary: report && report.summary,
+        effect: report && report.effect,
+        place: report && report.place,
+        technical: technical
+      });
+    }
     var mapNoticeHideTimer = 0;
     function showMapNotice(message, kind, options) {
       var el = document.getElementById('map-app-notice');
@@ -2043,6 +2081,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
               }
             }
           });
+        } else if (!resp || resp.ok === false) {
+          mapApiErrorCard_({
+            code: 'MAP-E-TRANSPORT-DATES',
+            summary: 'Nie udało się pobrać ostatnich dat transportu.',
+            effect: 'Pinezki są bez ostatniego odbioru. Filtr worków nie odcina starych dat.',
+            place: 'phase6.ts loadBulkTransportDates',
+            technical: String(resp && resp.error ? resp.error : 'ok: false')
+          }, resp, null);
         }
         window.__transportDateByKey = byKey;
         window.__transportKtoOdbieraByKey = ktoByKey;
@@ -2050,6 +2096,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }).catch(function (err) {
         console.error(err);
         window.__transportDatesLoaded = true;
+        mapApiErrorCard_({
+          code: 'MAP-E-TRANSPORT-DATES',
+          summary: 'Nie udało się pobrać ostatnich dat transportu.',
+          effect: 'Pinezki są bez ostatniego odbioru. Filtr worków nie odcina starych dat.',
+          place: 'phase6.ts loadBulkTransportDates',
+          technical: String(err && err.message || err)
+        }, null, err);
       }).then(function () {
         return refreshAllMarkerDisplaysAfterTransport();
       }).catch(function (err) {
@@ -2300,14 +2353,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       return TRANSPORT_WEBAPP_URL + (parts.length ? sep + parts.join('&') : '');
     }
     function fetchTransportGet(params) {
-      return fetch(transportApiUrl(params)).then(function (res) { return res.json(); });
+      return fetch(transportApiUrl(params)).then(function (res) { return readMapJson_(res); });
     }
     function appendTransportRow(payload) {
       return fetch(TRANSPORT_WEBAPP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
-      }).then(function (res) { return res.json(); });
+      }).then(function (res) { return readMapJson_(res); });
     }
     function setDocModalMode(mode) {
       window.__docModalMode = mode;
@@ -2408,8 +2461,24 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       if (transportApiEnabled) {
         return fetchTransportGet({ action: 'previewNumber' }).then(function (resp) {
+          if (!resp || resp.ok === false) {
+            mapApiErrorCard_({
+              code: 'MAP-E-BULK-DOC-NUMBER',
+              summary: 'Nie udało się podejrzeć numeru protokołów zbiorczych.',
+              effect: 'Modal idzie dalej bez podglądu numeru. Zapis i tak nadaje numery.',
+              place: 'phase6.ts loadBulkDocModalData',
+              technical: String(resp && resp.error ? resp.error : 'ok: false')
+            }, resp, null);
+          }
           finishBulkLoading(resp && resp.ok ? String(resp.numer || '') : '');
-        }).catch(function () {
+        }).catch(function (err) {
+          mapApiErrorCard_({
+            code: 'MAP-E-BULK-DOC-NUMBER',
+            summary: 'Nie udało się podejrzeć numeru protokołów zbiorczych.',
+            effect: 'Modal idzie dalej bez podglądu numeru. Zapis i tak nadaje numery.',
+            place: 'phase6.ts loadBulkDocModalData',
+            technical: String(err && err.message || err)
+          }, null, err);
           finishBulkLoading('');
         });
       }
@@ -2443,6 +2512,15 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
       var cachedCutoff = window.__transportDatesLoaded ? getPointTransportCutoff(p) : null;
       return fetchTransportGet({ action: 'modalData', podmiot: podmiot, adres: p.adres }).then(function (resp) {
+        if (!resp || resp.ok === false) {
+          mapApiErrorCard_({
+            code: 'MAP-E-DOC-NUMBER',
+            summary: 'Nie udało się pobrać numeru protokołu.',
+            effect: 'Numer zostaje pusty. Przycisk pobierania i tak się włączy.',
+            place: 'phase6.ts loadDocModalData',
+            technical: String(resp && resp.error ? resp.error : 'ok: false')
+          }, resp, null);
+        }
         if (resp && resp.ok && numEl) {
           numEl.value = String(resp.numer || '');
           window.__docPreviewNumer = String(resp.numer || '');
@@ -2463,10 +2541,15 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         rebuildDocPreparedLists(window.__docFilteredSeals);
       }).catch(function (err) {
         console.error(err);
-        if (filterInfo) {
-          filterInfo.textContent = 'Nie udało się pobrać danych transportu — użyto worków do odebrania (bez odebranych z harmonogramu).';
-        }
+        mapApiErrorCard_({
+          code: 'MAP-E-DOC-NUMBER',
+          summary: 'Nie udało się pobrać danych transportu do protokołu.',
+          effect: 'Użyto worków do odebrania, bez odcięcia od ostatniego transportu. Numer zostaje pusty.',
+          place: 'phase6.ts loadDocModalData',
+          technical: String(err && err.message || err)
+        }, null, err);
         window.__docFilteredSeals = sealRowsForCollection(p.sealRows || []);
+        updateDocFilterInfo((p.sealRows || []).length, window.__docFilteredSeals.length, null);
         rebuildDocPreparedLists(window.__docFilteredSeals);
       }).then(function () {
         finishLoading();
@@ -2834,13 +2917,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var ok = podjazdOk && worekOk && routePairOk && routePriceOk;
       if (!ok) {
         if (!podjazdOk || !worekOk || (isHarm && !routePriceOk && routePairOk)) {
-          setBulkRatesStatus('Kwoty mogą zawierać tylko liczby (opcjonalnie z przecinkiem/kropką).', 'error');
+          setBulkRatesStatus('Kwoty mogą zawierać tylko liczby (opcjonalnie z przecinkiem/kropką).', 'error', 'validation');
         } else {
-          setBulkRatesStatus('Nazwa trasy i cena za trasę muszą być razem albo obie puste.', 'error');
+          setBulkRatesStatus('Nazwa trasy i cena za trasę muszą być razem albo obie puste.', 'error', 'validation');
         }
       } else {
         var statusEl = document.getElementById('bulk-rates-status');
-        if (statusEl && statusEl.style.color) setBulkRatesStatus('');
+        if (statusEl && statusEl.getAttribute('data-status-source') === 'validation') setBulkRatesStatus('');
       }
       return ok;
     }
@@ -2855,11 +2938,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       return value || '';
     }
-    function setBulkRatesStatus(msg, kind) {
+    function setBulkRatesStatus(msg, kind, source) {
       var el = document.getElementById('bulk-rates-status');
       if (!el) return;
       el.textContent = msg || '';
       el.style.color = kind === 'error' ? '#b02a37' : '';
+      if (!msg) el.removeAttribute('data-status-source');
+      else el.setAttribute('data-status-source', source || (kind === 'error' ? 'save' : 'info'));
     }
     function renderBulkRatesPointsList(shops) {
       var listEl = document.getElementById('bulk-rates-points-list');
@@ -2930,6 +3015,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (code === 'route') return 'Nazwa trasy i cena za trasę muszą być razem albo obie puste.';
       if (code === 'shop') return 'Wybierz podwykonawcę.';
       if (code === 'no_webapp') return 'Brak adresu Web App.';
+      if (code) return 'Zapis nieudany (' + String(code) + ').';
       return 'Zapis nieudany.';
     }
     function runBulkRatesSave() {
@@ -2984,6 +3070,27 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           'ok'
         );
       }
+      function reportBulkRatesStop_(shop, resp, err) {
+        if ((resp && resp.status === 401) || (err && err.status === 401)) return;
+        var savedBefore = done;
+        var label = shop && (shop.label || shop.adres) ? String(shop.label || shop.adres) : '';
+        var reason = err
+          ? String(err && err.message || err)
+          : saveRateErrorMessage(resp && resp.error);
+        var partial = savedBefore > 0;
+        setBulkRatesStatus(reason, 'error', 'save');
+        mapApiErrorCard_({
+          code: partial ? 'MAP-E-BULK-RATES-PARTIAL' : 'MAP-E-BULK-RATES',
+          summary: partial
+            ? 'Zapis stawek przerwany. Wcześniejsze sklepy są już w arkuszu.'
+            : 'Nie udało się zapisać stawek.',
+          effect: 'Przerwano przy sklepie ' + (savedBefore + 1) + '/' + shops.length
+            + (label ? ' (' + label + ')' : '')
+            + (partial ? '. Zapisane wcześniej: ' + savedBefore + '.' : '. Żaden sklep z tej serii nie został zapisany.'),
+          place: 'phase6.ts runBulkRatesSave',
+          technical: String((resp && resp.notJson && resp.technical) || (resp && resp.error) || reason)
+        }, resp, err);
+      }
       function saveNext() {
         if (done >= shops.length) {
           finishBulkRatesSave(true);
@@ -3009,17 +3116,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         postReferencePayload(payload).then(function (resp) {
           if (!resp || !resp.ok) {
             finishBulkRatesSave(false);
-            setBulkRatesStatus(
-              'Błąd przy sklepie ' + (done + 1) + '/' + shops.length + ': ' + saveRateErrorMessage(resp && resp.error),
-              'error'
-            );
+            reportBulkRatesStop_(shop, resp, null);
             return;
           }
           done += 1;
           saveNext();
-        }).catch(function () {
+        }).catch(function (err) {
           finishBulkRatesSave(false);
-          setBulkRatesStatus('Błąd sieci przy sklepie ' + (done + 1) + '/' + shops.length + '.', 'error');
+          reportBulkRatesStop_(shop, null, err);
         });
       }
       saveNext();
@@ -3040,7 +3144,16 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
     function prewarmDocxTemplateCache() {
       if (!wordDocEnabled || !WORD_TEMPLATE_B64) return;
-      try { getWordTemplateBytes(); } catch (e) { console.warn(e); }
+      try { getWordTemplateBytes(); } catch (e) {
+        console.warn(e);
+        showMapErrorCard({
+          code: 'MAP-E-TEMPLATE-BYTES',
+          summary: 'Szablon Word jest uszkodzony.',
+          effect: 'Protokół nie powstanie, dopóki plik szablonu nie da się odczytać.',
+          place: 'phase6.ts prewarmDocxTemplateCache',
+          technical: String(e && e.message || e)
+        });
+      }
     }
     var docxLibsPromise = null;
     function loadScriptOnce(src) {
@@ -3228,13 +3341,32 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         if (ticket !== routeRateRequest) return;
         var current = document.getElementById('doc-inp-trasa');
         if (!current || String(current.value).trim() !== trimmed) return;
+        if (!resp || resp.ok === false) {
+          mapApiErrorCard_({
+            code: 'MAP-E-ROUTE-RATE',
+            summary: 'Nie udało się pobrać stawki trasy.',
+            effect: 'Pole stawki zostaje puste. Zapis może nie znać stawki już zapisanej na tej trasie.',
+            place: 'phase6.ts lookupRouteRateNow',
+            technical: String(resp && resp.error ? resp.error : 'ok: false')
+          }, resp, null);
+          return;
+        }
         var looked = typeof routeRateFromLookup === 'function' ? routeRateFromLookup(resp && resp.stawka) : '';
         if (looked !== '') {
           routeRateBaselineName = trimmed;
           routeRateBaseline = looked;
         }
         rateEl.value = routeRateToKeep(rateEl.value, resp && resp.stawka, routeRateTouched);
-      }).catch(function () {}).then(function () {
+      }).catch(function (err) {
+        if (ticket !== routeRateRequest) return;
+        mapApiErrorCard_({
+          code: 'MAP-E-ROUTE-RATE',
+          summary: 'Nie udało się pobrać stawki trasy.',
+          effect: 'Pole stawki zostaje puste. Zapis może nie znać stawki już zapisanej na tej trasie.',
+          place: 'phase6.ts lookupRouteRateNow',
+          technical: String(err && err.message || err)
+        }, null, err);
+      }).then(function () {
         setTransportDatesLoading(false);
       });
     }
@@ -3347,7 +3479,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
             occupied = namesBlockingNewRoute(names || [], routeNameMode === 'new' ? lastRouteName : '');
           }
         } catch (eOcc) {
-          occupied = names || [];
+          showMapErrorCard({
+            code: 'MAP-E-ROUTE-NAME',
+            summary: 'Nie udało się sprawdzić zajętych nazw tras.',
+            effect: 'Nazwa nie została zaproponowana, żeby nie wziąć numeru, który już jest.',
+            place: 'phase6.ts refreshRouteNameField',
+            technical: String(eOcc && eOcc.message || eOcc)
+          });
+          return;
         }
         var proposal = '';
         try {
@@ -3355,7 +3494,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
             proposal = proposeRouteName(occupied, contractor, date);
           }
         } catch (eProp) {
-          proposal = '';
+          showMapErrorCard({
+            code: 'MAP-E-ROUTE-NAME',
+            summary: 'Nie udało się wyliczyć nazwy trasy.',
+            effect: 'Pole nazwy zostaje puste, żeby nie zaproponować numeru, który już jest.',
+            place: 'phase6.ts refreshRouteNameField',
+            technical: String(eProp && eProp.message || eProp)
+          });
+          return;
         }
         applyShownRouteName(routeNameToShow({
           sessionLastName: '',
@@ -3391,12 +3537,33 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var ticket = routeNameProposeTicket;
       setRouteNameFieldLoading(true);
       fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
-        return resp && Array.isArray(resp.names) ? resp.names : [];
-      }).catch(function () {
-        return [];
+        if (resp && resp.status === 401) return { failed: true, status: 401, technical: 'HTTP 401' };
+        if (!resp || !Array.isArray(resp.names)) {
+          return {
+            failed: true,
+            notJson: !!(resp && resp.notJson),
+            status: resp && resp.status,
+            technical: resp && resp.notJson
+              ? String(resp.technical || 'nie-JSON')
+              : String(resp && resp.error ? resp.error : 'brak listy names')
+          };
+        }
+        return resp.names;
+      }).catch(function (err) {
+        return { failed: true, technical: String(err && err.message || err) };
       }).then(function (names) {
         setRouteNameFieldLoading(false);
         if (ticket !== routeNameProposeTicket) return;
+        if (names && names.failed) {
+          mapApiErrorCard_({
+            code: 'MAP-E-ROUTE-NAME',
+            summary: 'Nie udało się pobrać zajętych nazw tras.',
+            effect: 'Nazwa nie została zaproponowana, żeby nie wziąć numeru, który już jest.',
+            place: 'phase6.ts refreshRouteNameField',
+            technical: names.technical
+          }, names, null);
+          return;
+        }
         propose(names);
       });
     }
@@ -3531,16 +3698,34 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function proposeFreshRouteName(currentName) {
       var contractor = contractorShortNameForRoute();
       var date = pickupDateForRoute();
+      function failFresh(technical, resp) {
+        mapApiErrorCard_({
+          code: 'MAP-E-ROUTE-NAME-FRESH',
+          summary: 'Nie udało się pobrać zajętych nazw tras.',
+          effect: 'Zapis przerwany, żeby nie nadać numeru, który już jest. Stawka poprzedniej trasy nie została zmieniona.',
+          place: 'phase6.ts proposeFreshRouteName',
+          technical: String(technical || 'brak listy names')
+        }, resp || null, null);
+        return null;
+      }
       function fromNames(names) {
-        var occupied = typeof namesBlockingNewRoute === 'function'
-          ? namesBlockingNewRoute(names || [], currentName)
-          : (names || []).concat([currentName]);
-        return proposeRouteName(occupied, contractor, date);
+        try {
+          var occupied = typeof namesBlockingNewRoute === 'function'
+            ? namesBlockingNewRoute(names || [], currentName)
+            : (names || []).concat([currentName]);
+          return proposeRouteName(occupied, contractor, date);
+        } catch (err) {
+          return failFresh(err && err.message || err);
+        }
       }
       if (!transportApiEnabled) return Promise.resolve(fromNames([]));
       return fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
-        return fromNames(resp && Array.isArray(resp.names) ? resp.names : []);
-      }).catch(function () { return fromNames([]); });
+        if (resp && resp.status === 401) return null;
+        if (!resp || !Array.isArray(resp.names)) {
+          return failFresh(resp && resp.notJson ? resp.technical : (resp && resp.error), resp);
+        }
+        return fromNames(resp.names);
+      }).catch(function (err) { return failFresh(err && err.message || err, null); });
     }
     function resolveRouteFieldsBeforeSave(fields) {
       if (!fields || typeof routeRateConflictsWithExisting !== 'function') return Promise.resolve(fields);
@@ -3552,8 +3737,15 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (choice === 'cancel') return Promise.resolve(null);
       if (choice === 'update-all') return Promise.resolve(fields);
       return proposeFreshRouteName(name).then(function (proposal) {
+        if (proposal == null) return null;
         if (!proposal) {
-          alert('Brak wolnego numeru trasy (01–99). Zapis przerwany, stawka poprzedniej trasy nie została zmieniona.');
+          showMapErrorCard({
+            code: 'MAP-E-ROUTE-FULL',
+            summary: 'Brak wolnego numeru trasy (01–99).',
+            effect: 'Zapis przerwany. Stawka poprzedniej trasy nie została zmieniona.',
+            place: 'phase6.ts resolveRouteFieldsBeforeSave',
+            technical: 'numery 01–99 zajęte'
+          });
           return null;
         }
         var nameEl = document.getElementById('doc-inp-trasa');
@@ -3753,10 +3945,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       ensureDocxLibrariesLoaded().then(function () {
         var generated = 0;
         var failed = 0;
+        var failures = [];
         var chain = Promise.resolve();
         jobs.forEach(function (job, jobIdx) {
+          var shopAdres = '';
           chain = chain.then(function () {
             var p = adresy[job.pointIdx];
+            shopAdres = p && p.adres ? String(p.adres) : '';
             if (!p) return Promise.resolve();
             if (filterInfo) {
               filterInfo.textContent = 'Generowanie ' + (jobIdx + 1) + ' / ' + jobs.length + ': ' + p.adres;
@@ -3779,13 +3974,24 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
             assignBolecinAwizacja_(transportPayload, form.mdOpt);
             return appendTransportRow(transportPayload).then(function (resp) {
               if (!resp || !resp.ok) {
-                throw new Error(resp && resp.error ? resp.error : 'błąd API');
+                var apiErr = new Error(
+                  resp && resp.notJson
+                    ? String(resp.technical || 'nie-JSON')
+                    : (resp && resp.error ? String(resp.error) : 'błąd API')
+                );
+                apiErr.bulkStage = 'rejestr';
+                throw apiErr;
               }
               if (resp.bolecinError && !bolecinError) bolecinError = String(resp.bolecinError);
               rememberRouteAfterSuccessfulSave(form.routeFields);
               var numerZlecenia = String(resp.numer || '');
               var preparedLists = buildDocListsFromSealRows(job.filteredSeals);
-              renderDocxAndDownload(p, form.pr, form.md, form.prOpt, form.dz, form.dzPlik, numerZlecenia, job.filteredSeals, preparedLists, { closeModal: false });
+              try {
+                renderDocxAndDownload(p, form.pr, form.md, form.prOpt, form.dz, form.dzPlik, numerZlecenia, job.filteredSeals, preparedLists, { closeModal: false });
+              } catch (renderErr) {
+                renderErr.bulkStage = 'word';
+                throw renderErr;
+              }
               updateTransportCutoffAfterAppend(p, form.dz, form.prOpt.label);
               if (typeof markerEntries !== 'undefined') {
                 markerEntries.forEach(function (entry) {
@@ -3798,19 +4004,29 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           }).catch(function (err) {
             console.error(err);
             failed += 1;
+            var stageNote = err && err.bulkStage === 'word'
+              ? 'Word nie powstał, wiersz rejestru mógł już wejść'
+              : 'rejestr nie zapisany';
+            failures.push((shopAdres || 'bez adresu') + ' — ' + stageNote + ' — ' + String(err && err.message || err));
           });
         });
         return chain.then(function () {
           if (failed > 0) {
             var bulkTotal = generated + failed;
+            var anyWord = false;
+            var fi;
+            for (fi = 0; fi < failures.length; fi++) {
+              if (failures[fi].indexOf('Word nie powstał') >= 0) anyWord = true;
+            }
             showMapErrorCard({
-              code: 'MAP-E-BULK-PARTIAL',
+              code: 'MAP-E-BULK-GENERATE',
               summary: generated > 0
                 ? 'Część protokołów zbiorczych się nie udała.'
                 : 'Nie udało się wygenerować protokołów zbiorczych.',
-              effect: 'Wygenerowano ' + generated + ' z ' + bulkTotal + '. Nie udało się: ' + failed + '.',
+              effect: 'Wygenerowano ' + generated + ' z ' + bulkTotal + '. Nie udało się: ' + failed + '.'
+                + (anyWord ? ' Tam, gdzie padł Word, wiersz rejestru mógł już być w arkuszu.' : ''),
               place: 'phase6.ts runBulkDocGenerate',
-              technical: 'nieudane: ' + failed + ' z ' + bulkTotal
+              technical: failures.join(' | ')
             });
           }
           var head = (failed === 0 || generated > 0)
@@ -3937,13 +4153,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           finishWithNumber(numerWpisany, true);
           appendTransportRow(transportPayload).then(function (resp) {
             if (!resp || !resp.ok) {
-              showMapErrorCard({
+              mapApiErrorCard_({
                 code: 'MAP-E-REGISTER-SAVE',
                 summary: 'Dokument pobrany, ale zapis w arkuszu nie powiódł się.',
                 effect: 'Protokół jest na dysku. Wiersz rejestru transportu może nie być w arkuszu.',
                 place: 'phase6.ts runDocGenerate',
                 technical: String(resp && resp.error ? resp.error : 'błąd API')
-              });
+              }, resp, null);
               return;
             }
             rememberRouteAfterSuccessfulSave(form.routeFields);
@@ -3960,13 +4176,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
             );
           }).catch(function (err) {
             console.error(err);
-            showMapErrorCard({
+            mapApiErrorCard_({
               code: 'MAP-E-REGISTER-SAVE',
               summary: 'Dokument pobrany, ale nie udało się zapisać transportu w arkuszu.',
               effect: 'Protokół jest na dysku. Sprawdź połączenie i URL Web App.',
               place: 'phase6.ts runDocGenerate',
               technical: String(err && err.message || err)
-            });
+            }, null, err);
           }).then(function () {
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
@@ -3975,13 +4191,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         }
         appendTransportRow(transportPayload).then(function (resp) {
           if (!resp || !resp.ok) {
-            showMapErrorCard({
+            mapApiErrorCard_({
               code: 'MAP-E-REGISTER-SAVE',
               summary: 'Nie udało się zapisać transportu w arkuszu.',
               effect: 'Dokument się nie pobrał. Wiersz rejestru nie wszedł.',
               place: 'phase6.ts runDocGenerate',
               technical: String(resp && resp.error ? resp.error : 'błąd API')
-            });
+            }, resp, null);
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
             return;
@@ -3997,13 +4213,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           finishWithNumber(String(resp.numer || ''));
         }).catch(function (err) {
           console.error(err);
-          showMapErrorCard({
+          mapApiErrorCard_({
             code: 'MAP-E-REGISTER-SAVE',
             summary: 'Nie udało się zapisać transportu w arkuszu.',
             effect: 'Dokument się nie pobrał. Sprawdź połączenie i URL Web App (TRANSPORT_WEBAPP_URL).',
             place: 'phase6.ts runDocGenerate',
             technical: String(err && err.message || err)
-          });
+          }, null, err);
           if (okBtn) okBtn.disabled = false;
           setTransportDatesLoading(false);
         });
@@ -4094,8 +4310,15 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           style: { color: '#c00', weight: 3, fill: false }
         }).addTo(map);
       })
-      .catch(function() {
+      .catch(function(err) {
         console.warn('Nie załadowano granic województw.');
+        showMapErrorCard({
+          code: 'MAP-E-VOIVODESHIP',
+          summary: 'Nie udało się wczytać granic województw.',
+          effect: 'Filtr województwa nie ma granic do trafienia. Pinezki i reszta mapy działają.',
+          place: 'phase6.ts fetchWojewodztwaGeoJson',
+          technical: String(err && err.message || err || 'Nie załadowano granic województw.')
+        });
       })
       .then(function() {
         if (typeof setTransportDatesLoading === 'function') {
