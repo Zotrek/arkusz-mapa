@@ -72,7 +72,9 @@
  * POST protokołu z awizujBolecin: true (miejsce Bolęcin/Biosystem, także w miejsceZrzutuDane)
  *   dopisuje jeden wiersz tego odbioru do arkusza Bolęcin: okno awizacji, nr rejestracyjny
  *   w kolumnie awizacja, rodzaj transportu oraz adres, nazwa, data, kto, miejsce,
- *   rodzaj zbiórki i worki (iloscWorkow). Ta sama trójka adres+data+kto nadpisuje istniejący wiersz.
+ *   rodzaj zbiórki i worki (iloscWorkow). Zbiorcza awizacja podaje bolecinAdres, bolecinNazwa,
+ *   bolecinRodzajZbiorki i bolecinWorki (suma) — wtedy jeden wspólny wiersz, nie osobny na protokół.
+ *   Ta sama trójka adres+data+kto nadpisuje istniejący wiersz.
  *   Błąd zapisu Bolęcina nie cofa wiersza rejestru: odpowiedź ma numer i bolecinError.
  * migrateRegisterLayoutRates_ — V1→V3 (wywołanie ręczne). V2→V3: migrateRegisterLayoutTransportOdbył.
  *
@@ -3202,16 +3204,22 @@ function wantsProtocolBolecin_(body) {
 }
 
 function protocolBolecinFields_(body) {
-  var worki = body.iloscWorkow != null ? String(body.iloscWorkow) : '';
+  function prefer_(primary, fallback) {
+    var text = collapseText_(primary);
+    if (text) {
+      return text;
+    }
+    return collapseText_(fallback);
+  }
   return {
     oknoAwizacji: collapseText_(body.oknoAwizacji),
-    adres: collapseText_(body.adresSklepu),
-    nazwa: collapseText_(body.podmiotHandlowy),
+    adres: prefer_(body.bolecinAdres, body.adresSklepu),
+    nazwa: prefer_(body.bolecinNazwa, body.podmiotHandlowy),
     data: collapseText_(body.dataOdbioru),
     kto: collapseText_(body.ktoOdbiera),
     miejsce: collapseText_(body.miejsceZrzutu),
-    rodzajZbiorki: collapseText_(body.rodzajZbiorki),
-    worki: collapseText_(worki),
+    rodzajZbiorki: prefer_(body.bolecinRodzajZbiorki, body.rodzajZbiorki),
+    worki: prefer_(body.bolecinWorki, body.iloscWorkow != null ? String(body.iloscWorkow) : ''),
     rodzajTransportu: collapseText_(body.rodzajTransportu),
     awizacja: collapseText_(body.awizacja),
   };

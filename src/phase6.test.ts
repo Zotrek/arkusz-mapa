@@ -868,6 +868,11 @@ describe('phase6', () => {
       expect(html).toContain('Rodzaj transportu');
       expect(html).toContain('id="bolecin-aw-worki"');
       expect(html).toContain('function iloscWorkowFromAwizacja_');
+      expect(html).toContain('function assignBulkBolecinAwizacja_');
+      expect(html).toContain('bolecinWorki');
+      expect(html).toContain('bolecinAdres');
+      expect(html).not.toContain('data-bolecin-worki');
+      expect(html).not.toContain('workiByPoint');
       expect(html).toContain('__bolecinAwizacjaForm');
       expect(html).toContain('miejsceZrzutuDane');
       expect(html).toContain('bolecinError');
@@ -1319,6 +1324,74 @@ showMapErrorCard({
       expect(text.textContent).toContain('Awizacja dopisana do arkusza Bolęcin.');
       timers[0]();
       expect(notice.hidden).toBe(true);
+    });
+
+    it('test_assignBulkBolecinAwizacja_when_many_protocols_should_sum_bags_into_one_row', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const start = html.indexOf('function joinAwizacjaLabels_(');
+      const end = html.indexOf('function fillBolecinAwizacjaSummary_(');
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const sandbox: Record<string, unknown> = {
+        adresy: [
+          { adres: 'ul. B 2', podmiotHandlowy: 'Firma B' },
+          { adres: 'ul. A 1', podmiotHandlowy: 'Firma A' },
+          { adres: 'ul. B 2', podmiotHandlowy: 'Firma B' },
+        ],
+        window: {
+          __docBulkPointJobs: [
+            { pointIdx: 0, filteredSeals: [{}, {}] },
+            { pointIdx: 1, filteredSeals: [{}, {}, {}] },
+            { pointIdx: 2, filteredSeals: [{}] },
+          ],
+          __bolecinAwizacjaChoice: {
+            add: true,
+            nr: 'WX9',
+            okno: '8-12',
+            rodzaj: 'bus',
+            worki: '9',
+          },
+        },
+        aggregateRodzajZbiorkiFromSealRows(rows: unknown[]) {
+          return rows.length > 2 ? 'mechaniczna' : 'ręczna';
+        },
+        miejsceIsBolecin_() {
+          return true;
+        },
+      };
+      runInNewContext(
+        `${html.slice(start, end)}
+__api = {
+  assignBulkBolecinAwizacja_: assignBulkBolecinAwizacja_,
+  collectBulkAwizacjaParts_: collectBulkAwizacjaParts_
+};`,
+        sandbox,
+      );
+      const api = sandbox.__api as {
+        assignBulkBolecinAwizacja_: (payload: Record<string, unknown>, mdOpt: { dane: string }) => void;
+        collectBulkAwizacjaParts_: () => { adres: string; nazwa: string; rodzaj: string; worki: string };
+      };
+      expect(api.collectBulkAwizacjaParts_()).toEqual({
+        adres: 'ul. B 2; ul. A 1',
+        nazwa: 'Firma B; Firma A',
+        rodzaj: 'ręczna; mechaniczna',
+        worki: '6',
+      });
+      const payload: Record<string, unknown> = { iloscWorkow: 2, adresSklepu: 'ul. B 2' };
+      api.assignBulkBolecinAwizacja_(payload, { dane: 'Biosystem Bolęcin' });
+      expect(payload.awizujBolecin).toBe(true);
+      expect(payload.iloscWorkow).toBe(2);
+      expect(payload.bolecinAdres).toBe('ul. B 2; ul. A 1');
+      expect(payload.bolecinNazwa).toBe('Firma B; Firma A');
+      expect(payload.bolecinWorki).toBe('9');
+      expect(payload.awizacja).toBe('WX9');
+      (sandbox.window as { __bolecinAwizacjaChoice: { worki: string } }).__bolecinAwizacjaChoice.worki = '';
+      const fallback: Record<string, unknown> = {};
+      api.assignBulkBolecinAwizacja_(fallback, { dane: 'Bolęcin' });
+      expect(fallback.bolecinWorki).toBe('6');
     });
 
     it('test_buildMapHtml_when_route_name_fetch_fails_should_still_clear_loading_indicator', () => {

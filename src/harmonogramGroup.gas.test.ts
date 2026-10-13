@@ -191,6 +191,31 @@ describe('harmonogramGroup gas parity', () => {
       rodzajTransportu: 'bus',
       awizacja: 'WX12345',
     });
+    expect(
+      gas.protocolBolecinFields_({
+        oknoAwizacji: '8-10',
+        adresSklepu: 'ul. Jedna',
+        podmiotHandlowy: 'Firma A',
+        dataOdbioru: '10.10.2026',
+        ktoOdbiera: 'Janex',
+        miejsceZrzutu: 'Bolęcin',
+        rodzajZbiorki: 'ręczna',
+        iloscWorkow: 2,
+        rodzajTransportu: 'bus',
+        awizacja: 'WX12345',
+        bolecinAdres: 'ul. Jedna; ul. Druga',
+        bolecinNazwa: 'Firma A; Firma B',
+        bolecinRodzajZbiorki: 'ręczna; mechaniczna',
+        bolecinWorki: '7',
+      }),
+    ).toMatchObject({
+      adres: 'ul. Jedna; ul. Druga',
+      nazwa: 'Firma A; Firma B',
+      rodzajZbiorki: 'ręczna; mechaniczna',
+      worki: '7',
+      kto: 'Janex',
+      data: '10.10.2026',
+    });
   });
 
   it('test_doPost_when_bolecin_write_fails_should_keep_register_response', () => {
