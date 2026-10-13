@@ -1147,6 +1147,34 @@ ${harmonogramDaysPickerCss()}
       border-radius: 999px; border: 1px solid rgba(13, 148, 136, 0.22);
       background: var(--map-accent-soft); font-size: 11px; font-weight: 700; color: var(--map-accent-deep);
     }
+    /* map-error-template */
+    .map-error-stack {
+      position: fixed; z-index: 27000; top: 12px; left: 50%; transform: translateX(-50%);
+      width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .map-error-stack[hidden] { display: none !important; }
+    .map-error-card {
+      pointer-events: auto; padding: 14px 16px; border-radius: 12px;
+      background: rgba(255,255,255,0.97); border: 1px solid rgba(176,42,55,0.4);
+      box-shadow: 0 10px 28px rgba(15,23,42,0.18); color: var(--map-ink); text-align: left;
+    }
+    .map-error-card-title { margin: 0 0 6px; font-size: 14px; font-weight: 700; line-height: 1.35; color: #b02a37; }
+    .map-error-card-effect { margin: 0 0 6px; font-size: 13.5px; font-weight: 500; line-height: 1.45; color: var(--map-ink); }
+    .map-error-card-continue { margin: 0 0 10px; font-size: 13.5px; font-weight: 600; line-height: 1.45; color: var(--map-ink); }
+    .map-error-card-label { display: block; margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--map-muted); }
+    .map-error-card-report {
+      width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 8px 10px; min-height: 7.2em;
+      border-radius: 8px; border: 1px solid rgba(148,163,184,0.55); background: #f8fafc; color: #334155;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical;
+    }
+    .map-error-card-actions { display: flex; justify-content: space-between; gap: 8px; }
+    .map-error-card-actions button {
+      margin: 0; padding: 6px 12px; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .map-error-card-copy { border: 1px solid rgba(15,118,110,0.45); background: #fff; color: #0f766e; }
+    .map-error-card-dismiss { border: 1px solid rgba(176,42,55,0.35); background: #fff; color: #b02a37; }
+    /* /map-error-template */
 ${
   transportApiEnabled
     ? `    .map-transport-loader { position: fixed; z-index: 25000; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
@@ -1156,20 +1184,32 @@ ${
     @keyframes map-logo-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: 0.55; } }
     .map-app-notice {
       position: fixed; z-index: 26000; left: 50%; bottom: 28px; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: stretch; gap: 10px;
       max-width: min(420px, calc(100vw - 24px)); padding: 14px 18px; border-radius: 12px;
       background: rgba(255,255,255,0.97); border: 1px solid rgba(13,148,136,0.35);
       box-shadow: 0 10px 28px rgba(15,23,42,0.18); font-size: 13px; font-weight: 600;
-      color: var(--map-ink); line-height: 1.45; white-space: pre-line; text-align: left;
+      color: var(--map-ink); line-height: 1.45; text-align: left;
+    }
+    .map-app-notice.is-persist {
+      top: 16px; bottom: auto; max-width: min(480px, calc(100vw - 24px));
     }
     .map-app-notice[hidden] { display: none !important; }
     .map-app-notice.is-ok { border-color: rgba(15,118,110,0.45); color: #0f766e; }
     .map-app-notice.is-error { border-color: rgba(176,42,55,0.4); color: #b02a37; }
+    .map-app-notice-text { margin: 0; white-space: pre-line; }
+    .map-app-notice-close {
+      align-self: flex-end; margin: 0; padding: 6px 12px; border-radius: 8px;
+      border: 1px solid rgba(176,42,55,0.35); background: #fff; color: #b02a37;
+      font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .map-app-notice-close[hidden] { display: none !important; }
 `
     : ''
 }${referenceAdminEnabled ? manualAdminCss() : ''}${referenceAdminEnabled ? harmonogramPanelCss() : ''}${docStyles}  </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="map-error-stack" class="map-error-stack" aria-live="polite" hidden></div>
 ${
   transportApiEnabled
     ? `  <div id="map-transport-loader" class="map-transport-loader" role="status" aria-live="polite" aria-busy="true">
@@ -1178,7 +1218,10 @@ ${
       <span id="map-transport-loader-label">Pobieranie danych transportu…</span>
     </div>
   </div>
-  <div id="map-app-notice" class="map-app-notice" role="status" aria-live="polite" hidden></div>
+  <div id="map-app-notice" class="map-app-notice" role="status" aria-live="polite" hidden>
+    <p id="map-app-notice-text" class="map-app-notice-text"></p>
+    <button type="button" id="map-app-notice-close" class="map-app-notice-close" hidden>Zamknij</button>
+  </div>
 `
     : ''
 }${wordModal}${bulkRatesModal}${referenceAdminEnabled ? manualAdminHtml() : ''}${referenceAdminEnabled ? harmonogramPanelHtml() : ''}  <script>
@@ -1849,20 +1892,130 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       else mapLoaderDepth = Math.max(0, mapLoaderDepth - 1);
       syncMapLoaderUi(message || null);
     }
-    var mapNoticeHideTimer = 0;
-    function showMapNotice(message, kind) {
-      var el = document.getElementById('map-app-notice');
-      if (!el) {
-        window.alert(message);
+    function mapErrorOneLine_(value) {
+      return String(value == null ? '' : value).replace(/\\s+/g, ' ').trim();
+    }
+    function mapErrorReportText(report) {
+      var code = mapErrorOneLine_(report && report.code) || 'MAP-E-UNKNOWN';
+      var place = mapErrorOneLine_(report && report.place) || 'nieznane miejsce';
+      var summary = mapErrorOneLine_(report && report.summary) || 'Coś się nie udało.';
+      var effect = mapErrorOneLine_(report && report.effect) || 'Część danych może być niekompletna.';
+      var technical = mapErrorOneLine_(report && report.technical) || 'brak szczegółu';
+      return [
+        'ARKUSZ-MAPA-ERROR',
+        'kod: ' + code,
+        'miejsce: ' + place,
+        'objaw: ' + summary,
+        'skutek: ' + effect,
+        'technicznie: ' + technical
+      ].join('\\n');
+    }
+    /** Karta błędu u góry mapy. Nie blokuje kliknięć w mapę. Znika po Zamknij. */
+    function showMapErrorCard(report) {
+      var summary = mapErrorOneLine_(report && report.summary) || 'Coś się nie udało.';
+      var effect = mapErrorOneLine_(report && report.effect) || 'Część danych może być niekompletna.';
+      var reportText = mapErrorReportText(report);
+      var stack = document.getElementById('map-error-stack');
+      if (!stack) {
+        window.alert(summary + '\\n' + effect + '\\nMożesz dalej pracować na mapie.\\n\\n' + reportText);
         return;
       }
-      el.textContent = message || '';
-      el.classList.remove('is-ok', 'is-error');
+      var card = document.createElement('article');
+      card.className = 'map-error-card';
+      var title = document.createElement('h2');
+      title.className = 'map-error-card-title';
+      title.textContent = summary;
+      var effectEl = document.createElement('p');
+      effectEl.className = 'map-error-card-effect';
+      effectEl.textContent = effect;
+      var continueEl = document.createElement('p');
+      continueEl.className = 'map-error-card-continue';
+      continueEl.textContent = 'Możesz dalej pracować na mapie.';
+      var label = document.createElement('label');
+      label.className = 'map-error-card-label';
+      label.textContent = 'Raport do wklejenia w czacie';
+      var field = document.createElement('textarea');
+      field.className = 'map-error-card-report';
+      field.readOnly = true;
+      field.spellcheck = false;
+      field.rows = 6;
+      field.value = reportText;
+      label.appendChild(field);
+      var actions = document.createElement('div');
+      actions.className = 'map-error-card-actions';
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'map-error-card-copy';
+      copyBtn.textContent = 'Kopiuj raport';
+      var closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'map-error-card-dismiss';
+      closeBtn.textContent = 'Zamknij';
+      function markCopy(ok) {
+        copyBtn.textContent = ok ? 'Skopiowano' : 'Zaznaczono — skopiuj ręcznie';
+      }
+      copyBtn.addEventListener('click', function () {
+        field.focus();
+        field.select();
+        var text = field.value || '';
+        var copied = false;
+        try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+        if (copied) {
+          markCopy(true);
+          return;
+        }
+        var clipboard = navigator.clipboard;
+        if (clipboard && clipboard.writeText) {
+          clipboard.writeText(text).then(function () { markCopy(true); }).catch(function () { markCopy(false); });
+          return;
+        }
+        markCopy(false);
+      });
+      closeBtn.addEventListener('click', function () {
+        if (card.parentNode) card.parentNode.removeChild(card);
+        if (!stack.querySelector('.map-error-card')) stack.hidden = true;
+      });
+      actions.appendChild(copyBtn);
+      actions.appendChild(closeBtn);
+      card.appendChild(title);
+      card.appendChild(effectEl);
+      card.appendChild(continueEl);
+      card.appendChild(label);
+      card.appendChild(actions);
+      stack.appendChild(card);
+      stack.hidden = false;
+    }
+    var mapNoticeHideTimer = 0;
+    function showMapNotice(message, kind, options) {
+      var el = document.getElementById('map-app-notice');
+      var textEl = document.getElementById('map-app-notice-text');
+      var closeBtn = document.getElementById('map-app-notice-close');
+      var persist = !!(options && options.persist);
+      if (!el || !textEl) {
+        if (message) window.alert(message);
+        return;
+      }
+      textEl.textContent = message || '';
+      el.classList.remove('is-ok', 'is-error', 'is-persist');
       if (kind === 'ok') el.classList.add('is-ok');
       if (kind === 'error') el.classList.add('is-error');
+      if (persist) el.classList.add('is-persist');
+      if (closeBtn) {
+        closeBtn.hidden = !persist;
+        if (!closeBtn.getAttribute('data-bound')) {
+          closeBtn.setAttribute('data-bound', '1');
+          closeBtn.onclick = function () {
+            if (mapNoticeHideTimer) window.clearTimeout(mapNoticeHideTimer);
+            mapNoticeHideTimer = 0;
+            el.hidden = true;
+          };
+        }
+      }
       el.hidden = !message;
+      el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
       if (mapNoticeHideTimer) window.clearTimeout(mapNoticeHideTimer);
-      if (!message) return;
+      mapNoticeHideTimer = 0;
+      if (!message || persist) return;
       mapNoticeHideTimer = window.setTimeout(function () {
         el.hidden = true;
         mapNoticeHideTimer = 0;
@@ -3423,13 +3576,28 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (!mdOpt) return false;
       return isBolecinMiejsce_(mdOpt.label) || isBolecinMiejsce_(mdOpt.dane);
     }
+    function bolecinErrorPlain_(raw) {
+      var text = String(raw || '').replace(/^Error:\\s*/, '');
+      if (text.indexOf('BOLECIN_SHEETS_ID') >= 0) {
+        return 'W skrypcie mapy brakuje właściwości BOLECIN_SHEETS_ID.\\nUstaw ID arkusza Bolęcin: Apps Script → Project settings → Script properties.';
+      }
+      return text;
+    }
     function bolecinResultNote_(bolecinError, choice) {
       var picked = choice || window.__bolecinAwizacjaChoice;
       if (!picked || !picked.add) return '';
       if (bolecinError) {
-        return 'Protokół zapisany. Awizacja nie weszła do arkusza Bolęcin.\\n' + bolecinError;
+        return 'Protokół jest zapisany. Awizacja nie weszła do arkusza Bolęcin.\\n' + bolecinErrorPlain_(bolecinError);
       }
       return 'Awizacja dopisana do arkusza Bolęcin.';
+    }
+    function showAwizacjaNotice_(prefix, bolecinError, choice, forceError) {
+      var note = bolecinResultNote_(bolecinError, choice);
+      var message = prefix || '';
+      if (note) message = message ? message + '\\n' + note : note;
+      if (!message) return;
+      var isError = !!bolecinError || !!forceError;
+      showMapNotice(message, isError ? 'error' : 'ok', bolecinError ? { persist: true } : null);
     }
     function iloscWorkowFromAwizacja_(autoCount, pointIdx) {
       var choice = window.__bolecinAwizacjaChoice;
@@ -3633,30 +3801,34 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           });
         });
         return chain.then(function () {
-          var awizacjaNote = bolecinResultNote_(bolecinError);
+          if (failed > 0) {
+            var bulkTotal = generated + failed;
+            showMapErrorCard({
+              code: 'MAP-E-BULK-PARTIAL',
+              summary: generated > 0
+                ? 'Część protokołów zbiorczych się nie udała.'
+                : 'Nie udało się wygenerować protokołów zbiorczych.',
+              effect: 'Wygenerowano ' + generated + ' z ' + bulkTotal + '. Nie udało się: ' + failed + '.',
+              place: 'phase6.ts runBulkDocGenerate',
+              technical: 'nieudane: ' + failed + ' z ' + bulkTotal
+            });
+          }
+          var head = (failed === 0 || generated > 0)
+            ? ('Wygenerowano ' + generated + ' protokołów.')
+            : '';
           clearBulkSelection();
           closeDocModal();
-          if (failed > 0) {
-            showMapNotice(
-              'Wygenerowano ' + generated + ' protokołów.\\nNie udało się: ' + failed + '.' +
-                (awizacjaNote ? '\\n' + awizacjaNote : ''),
-              'error'
-            );
-          } else if (bolecinError) {
-            showMapNotice(
-              'Wygenerowano ' + generated + ' protokołów.\\n' + awizacjaNote,
-              'error'
-            );
-          } else {
-            showMapNotice(
-              'Wygenerowano ' + generated + ' protokołów.' + (awizacjaNote ? '\\n' + awizacjaNote : ''),
-              'ok'
-            );
-          }
+          showAwizacjaNotice_(head, bolecinError, null, false);
         });
       }).catch(function (err) {
         console.error(err);
-        showMapNotice('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.', 'error');
+        showMapErrorCard({
+          code: 'MAP-E-WORD-LIBS',
+          summary: 'Nie udało się załadować bibliotek Word (PizZip/docxtemplater).',
+          effect: 'Protokoły zbiorcze się nie pobrały. Sprawdź połączenie z internetem i spróbuj ponownie.',
+          place: 'phase6.ts runBulkDocGenerate',
+          technical: String(err && err.message || err)
+        });
       }).then(function () {
         if (okBtn) okBtn.disabled = false;
         setTransportDatesLoading(false);
@@ -3701,13 +3873,25 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         return ensureDocxLibrariesLoaded().then(function () {
           try {
             if (!numerZlecenia) {
-              showMapNotice('Brak numeru zlecenia transportowego.', 'error');
+              showMapErrorCard({
+                code: 'MAP-E-NO-NUMBER',
+                summary: 'Brak numeru zlecenia transportowego.',
+                effect: 'Dokument się nie pobrał. Arkusz nie nadał numeru.',
+                place: 'phase6.ts finishWithNumber',
+                technical: 'pusty numer'
+              });
               return;
             }
             renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists);
           } catch (err) {
             console.error(err);
-            showMapNotice('Nie udało się utworzyć dokumentu. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}, …) i spróbuj ponownie.', 'error');
+            showMapErrorCard({
+              code: 'MAP-E-DOC-RENDER',
+              summary: 'Nie udało się utworzyć dokumentu.',
+              effect: 'Plik Word się nie pobrał. Sprawdź szablon (tagi {{miejsce_zaladunku}}, {{przewoznik}}, {{numer_zlecenia_transportowego}}) i spróbuj ponownie.',
+              place: 'phase6.ts finishWithNumber',
+              technical: String(err && err.message || err)
+            });
           } finally {
             if (!keepLoading) {
               if (okBtn) okBtn.disabled = false;
@@ -3716,7 +3900,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           }
         }).catch(function (err) {
           console.error(err);
-          showMapNotice('Nie udało się załadować bibliotek Word (PizZip/docxtemplater). Sprawdź połączenie z internetem.', 'error');
+          showMapErrorCard({
+            code: 'MAP-E-WORD-LIBS',
+            summary: 'Nie udało się załadować bibliotek Word (PizZip/docxtemplater).',
+            effect: 'Dokument się nie pobrał. Sprawdź połączenie z internetem i spróbuj ponownie.',
+            place: 'phase6.ts finishWithNumber',
+            technical: String(err && err.message || err)
+          });
           if (!keepLoading) {
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
@@ -3747,11 +3937,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           finishWithNumber(numerWpisany, true);
           appendTransportRow(transportPayload).then(function (resp) {
             if (!resp || !resp.ok) {
-              showMapNotice(
-                'Dokument pobrany, ale zapis w arkuszu nie powiódł się.\\n' +
-                  (resp && resp.error ? resp.error : 'błąd API'),
-                'error'
-              );
+              showMapErrorCard({
+                code: 'MAP-E-REGISTER-SAVE',
+                summary: 'Dokument pobrany, ale zapis w arkuszu nie powiódł się.',
+                effect: 'Protokół jest na dysku. Wiersz rejestru transportu może nie być w arkuszu.',
+                place: 'phase6.ts runDocGenerate',
+                technical: String(resp && resp.error ? resp.error : 'błąd API')
+              });
               return;
             }
             rememberRouteAfterSuccessfulSave(form.routeFields);
@@ -3761,14 +3953,20 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
                 if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
               });
             }
-            var awizacjaNote = bolecinResultNote_(resp.bolecinError, awizacjaChoice);
-            showMapNotice(
-              'Dokument pobrany.\\nZapisano transport: ' + numerWpisany + (awizacjaNote ? '\\n' + awizacjaNote : ''),
-              resp.bolecinError ? 'error' : 'ok'
+            showAwizacjaNotice_(
+              'Dokument pobrany.\\nZapisano transport: ' + numerWpisany,
+              resp.bolecinError,
+              awizacjaChoice
             );
           }).catch(function (err) {
             console.error(err);
-            showMapNotice('Dokument pobrany, ale nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App.', 'error');
+            showMapErrorCard({
+              code: 'MAP-E-REGISTER-SAVE',
+              summary: 'Dokument pobrany, ale nie udało się zapisać transportu w arkuszu.',
+              effect: 'Protokół jest na dysku. Sprawdź połączenie i URL Web App.',
+              place: 'phase6.ts runDocGenerate',
+              technical: String(err && err.message || err)
+            });
           }).then(function () {
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
@@ -3777,11 +3975,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         }
         appendTransportRow(transportPayload).then(function (resp) {
           if (!resp || !resp.ok) {
-            showMapNotice(
-              'Nie udało się zapisać transportu w arkuszu.\\n' +
-                (resp && resp.error ? resp.error : 'błąd API'),
-              'error'
-            );
+            showMapErrorCard({
+              code: 'MAP-E-REGISTER-SAVE',
+              summary: 'Nie udało się zapisać transportu w arkuszu.',
+              effect: 'Dokument się nie pobrał. Wiersz rejestru nie wszedł.',
+              place: 'phase6.ts runDocGenerate',
+              technical: String(resp && resp.error ? resp.error : 'błąd API')
+            });
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
             return;
@@ -3793,12 +3993,17 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
               if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
             });
           }
-          var awizacjaNote = bolecinResultNote_(resp.bolecinError, awizacjaChoice);
-          if (awizacjaNote) showMapNotice(awizacjaNote, resp.bolecinError ? 'error' : 'ok');
+          showAwizacjaNotice_('', resp.bolecinError, awizacjaChoice);
           finishWithNumber(String(resp.numer || ''));
         }).catch(function (err) {
           console.error(err);
-          showMapNotice('Nie udało się zapisać transportu w arkuszu. Sprawdź połączenie i URL Web App (TRANSPORT_WEBAPP_URL).', 'error');
+          showMapErrorCard({
+            code: 'MAP-E-REGISTER-SAVE',
+            summary: 'Nie udało się zapisać transportu w arkuszu.',
+            effect: 'Dokument się nie pobrał. Sprawdź połączenie i URL Web App (TRANSPORT_WEBAPP_URL).',
+            place: 'phase6.ts runDocGenerate',
+            technical: String(err && err.message || err)
+          });
           if (okBtn) okBtn.disabled = false;
           setTransportDatesLoading(false);
         });

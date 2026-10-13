@@ -931,6 +931,301 @@ result = proposeRouteName(
       expect(context.result).toBe('GPW-23.09.26-01');
     });
 
+    function loadAwizacjaNotice() {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const noticeStart = html.indexOf('function showMapNotice(');
+      const noticeEnd = html.indexOf('function loadBulkTransportDates(');
+      const plainStart = html.indexOf('function bolecinErrorPlain_(');
+      const plainEnd = html.indexOf('function iloscWorkowFromAwizacja_(');
+      expect(noticeStart).toBeGreaterThan(-1);
+      expect(noticeEnd).toBeGreaterThan(noticeStart);
+      expect(plainStart).toBeGreaterThan(-1);
+      expect(plainEnd).toBeGreaterThan(plainStart);
+
+      const classes = new Set<string>();
+      const notice = {
+        hidden: true,
+        classList: {
+          add(name: string) { classes.add(name); },
+          remove(...names: string[]) { names.forEach((name) => classes.delete(name)); },
+          contains(name: string) { return classes.has(name); },
+        },
+        setAttribute() {},
+      };
+      const text = { textContent: '' };
+      const close = { hidden: true, attrs: {} as Record<string, string>, onclick: undefined as (() => void) | undefined };
+      const timers: Array<() => void> = [];
+      const sandbox: Record<string, unknown> = {
+        document: {
+          getElementById(id: string) {
+            if (id === 'map-app-notice') return notice;
+            if (id === 'map-app-notice-text') return text;
+            if (id === 'map-app-notice-close') return close;
+            return null;
+          },
+        },
+        window: {
+          setTimeout(fn: () => void) {
+            timers.push(fn);
+            return timers.length;
+          },
+          clearTimeout() {},
+          __bolecinAwizacjaChoice: null,
+        },
+        __api: null,
+      };
+      close.attrs = {};
+      Object.assign(close, {
+        getAttribute(name: string) {
+          return Object.prototype.hasOwnProperty.call(close.attrs, name) ? close.attrs[name] : null;
+        },
+        setAttribute(name: string, value: string) {
+          close.attrs[name] = value;
+        },
+      });
+      runInNewContext(
+        `var mapNoticeHideTimer = 0;
+${html.slice(noticeStart, noticeEnd)}
+${html.slice(plainStart, plainEnd)}
+__api = { showAwizacjaNotice_: showAwizacjaNotice_ };`,
+        sandbox,
+      );
+      const api = sandbox.__api as { showAwizacjaNotice_: (...args: unknown[]) => void };
+      return { api, notice, text, close, timers, classes };
+    }
+
+    it('test_showAwizacjaNotice_when_bolecin_sheets_id_missing_should_keep_plain_error_until_dismissed', () => {
+      const { api, notice, text, close, timers, classes } = loadAwizacjaNotice();
+      api.showAwizacjaNotice_(
+        'Wygenerowano 1 protokołów.',
+        'Error: Brak Script property BOLECIN_SHEETS_ID — ustaw ID arkusza Bolęcin',
+        { add: true },
+      );
+      expect(notice.hidden).toBe(false);
+      expect(classes.has('is-persist')).toBe(true);
+      expect(classes.has('is-error')).toBe(true);
+      expect(close.hidden).toBe(false);
+      expect(timers).toHaveLength(0);
+      expect(text.textContent).toContain('Protokół jest zapisany. Awizacja nie weszła do arkusza Bolęcin.');
+      expect(text.textContent).toContain('W skrypcie mapy brakuje właściwości BOLECIN_SHEETS_ID.');
+      expect(text.textContent).not.toContain('Error:');
+      close.onclick?.();
+      expect(notice.hidden).toBe(true);
+    });
+
+    it('test_showMapErrorCard_when_shown_should_stay_until_dismissed_and_copy_a_debug_report', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain('id="map-error-stack"');
+      expect(html).toContain('pointer-events: none');
+      expect(html).toContain('.map-error-card {\n      pointer-events: auto');
+      expect(html).toContain('Możesz dalej pracować na mapie.');
+
+      const start = html.indexOf('function mapErrorOneLine_(');
+      const end = html.indexOf('var mapNoticeHideTimer');
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+
+      function createNode() {
+        const node: {
+          children: ReturnType<typeof createNode>[];
+          parentNode: ReturnType<typeof createNode> | null;
+          hidden: boolean;
+          className: string;
+          textContent: string;
+          value: string;
+          selected: boolean;
+          listeners: Record<string, () => void>;
+          appendChild: (child: ReturnType<typeof createNode>) => ReturnType<typeof createNode>;
+          removeChild: (child: ReturnType<typeof createNode>) => void;
+          addEventListener: (type: string, fn: () => void) => void;
+          focus: () => void;
+          select: () => void;
+          querySelector: (sel: string) => ReturnType<typeof createNode> | null;
+        } = {
+          children: [],
+          parentNode: null,
+          hidden: false,
+          className: '',
+          textContent: '',
+          value: '',
+          selected: false,
+          listeners: {},
+          appendChild(child) {
+            child.parentNode = node;
+            node.children.push(child);
+            return child;
+          },
+          removeChild(child) {
+            const index = node.children.indexOf(child);
+            if (index >= 0) node.children.splice(index, 1);
+            child.parentNode = null;
+          },
+          addEventListener(type, fn) {
+            node.listeners[type] = fn;
+          },
+          focus() {},
+          select() {
+            node.selected = true;
+          },
+          querySelector(sel) {
+            const className = sel.slice(1);
+            const walk = (current: typeof node): typeof node | null => {
+              if (current !== node && current.className.split(/\s+/).includes(className)) return current;
+              for (const child of current.children) {
+                const found = walk(child);
+                if (found) return found;
+              }
+              return null;
+            };
+            return walk(node);
+          },
+        };
+        return node;
+      }
+
+      const stack = createNode();
+      stack.hidden = true;
+      const copied: string[] = [];
+      const sandbox: Record<string, unknown> = {
+        document: {
+          getElementById(id: string) {
+            return id === 'map-error-stack' ? stack : null;
+          },
+          createElement() {
+            return createNode();
+          },
+        },
+        navigator: {
+          clipboard: {
+            writeText(text: string) {
+              copied.push(text);
+              const promise = {
+                then(fn: () => void) {
+                  fn();
+                  return promise;
+                },
+                catch() {
+                  return promise;
+                },
+              };
+              return promise;
+            },
+          },
+        },
+        window: { alert() {} },
+      };
+      runInNewContext(
+        `${html.slice(start, end)}
+showMapErrorCard({
+  code: 'MAP-E-TRANSPORT-DATES',
+  summary: 'Nie udało się pobrać ostatnich dat transportu.',
+  effect: 'Pinezki są bez ostatniego odbioru.',
+  place: 'phase6.ts loadBulkTransportDates',
+  technical: 'Failed to fetch'
+});`,
+        sandbox,
+      );
+
+      expect(stack.hidden).toBe(false);
+      expect(stack.children).toHaveLength(1);
+      const card = stack.children[0];
+      expect(card.children[0].textContent).toBe('Nie udało się pobrać ostatnich dat transportu.');
+      expect(card.children[1].textContent).toBe('Pinezki są bez ostatniego odbioru.');
+      expect(card.children[2].textContent).toBe('Możesz dalej pracować na mapie.');
+      const field = card.children[3].children[0];
+      expect(field.value).toBe(
+        [
+          'ARKUSZ-MAPA-ERROR',
+          'kod: MAP-E-TRANSPORT-DATES',
+          'miejsce: phase6.ts loadBulkTransportDates',
+          'objaw: Nie udało się pobrać ostatnich dat transportu.',
+          'skutek: Pinezki są bez ostatniego odbioru.',
+          'technicznie: Failed to fetch',
+        ].join('\n'),
+      );
+      card.children[4].children[0].listeners.click();
+      expect(copied).toEqual([field.value]);
+      expect(field.selected).toBe(true);
+      card.children[4].children[1].listeners.click();
+      expect(stack.children).toHaveLength(0);
+      expect(stack.hidden).toBe(true);
+    });
+
+    function protocolHtml() {
+      return buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+    }
+
+    it('test_runDocGenerate_when_register_save_fails_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      const start = html.indexOf('if (manualNumer) {');
+      const end = html.indexOf('var numerManual = numEl', start);
+      const body = html.slice(start, end);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      expect(body.split("code: 'MAP-E-REGISTER-SAVE'").length - 1).toBe(4);
+      expect(body).toContain('Dokument pobrany, ale zapis w arkuszu nie powiódł się.');
+      expect(body).toContain('Dokument pobrany, ale nie udało się zapisać transportu w arkuszu.');
+      expect(body).toContain('Nie udało się zapisać transportu w arkuszu.');
+      expect(body).toContain("place: 'phase6.ts runDocGenerate'");
+      expect(body).toContain("String(resp && resp.error ? resp.error : 'błąd API')");
+      expect(body).toContain('String(err && err.message || err)');
+      expect(body).not.toContain('showMapNotice(');
+    });
+
+    it('test_finishWithNumber_when_number_word_libs_or_render_fails_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      const start = html.indexOf('function finishWithNumber(');
+      const end = html.indexOf('if (transportApiEnabled)', start);
+      const body = html.slice(start, end);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      expect(body).toContain("code: 'MAP-E-NO-NUMBER'");
+      expect(body).toContain('Brak numeru zlecenia transportowego.');
+      expect(body).toContain("code: 'MAP-E-DOC-RENDER'");
+      expect(body).toContain('Nie udało się utworzyć dokumentu.');
+      expect(body).toContain("code: 'MAP-E-WORD-LIBS'");
+      expect(body).toContain('Nie udało się załadować bibliotek Word (PizZip/docxtemplater).');
+      expect(body).toContain("place: 'phase6.ts finishWithNumber'");
+      expect(body).toContain('String(err && err.message || err)');
+      expect(body).not.toContain('showMapNotice(');
+    });
+
+    it('test_runBulkDocGenerate_when_some_protocols_or_word_libs_fail_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      const start = html.indexOf('function runBulkDocGenerate(');
+      const end = html.indexOf('function runDocGenerate(');
+      const body = html.slice(start, end);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      expect(body).toContain("code: 'MAP-E-BULK-PARTIAL'");
+      expect(body).toContain('Część protokołów zbiorczych się nie udała.');
+      expect(body).toContain('Nie udało się wygenerować protokołów zbiorczych.');
+      expect(body).toContain("code: 'MAP-E-WORD-LIBS'");
+      expect(body).toContain("place: 'phase6.ts runBulkDocGenerate'");
+      expect(body).toContain('showAwizacjaNotice_(head, bolecinError, null, false)');
+      expect(body).not.toContain('head +=');
+      expect(body).not.toContain('showMapNotice(');
+    });
+
+    it('test_showAwizacjaNotice_when_awizacja_saved_should_hide_success_notice', () => {
+      const { api, notice, text, close, timers, classes } = loadAwizacjaNotice();
+      api.showAwizacjaNotice_('Wygenerowano 1 protokołów.', '', { add: true });
+      expect(notice.hidden).toBe(false);
+      expect(classes.has('is-persist')).toBe(false);
+      expect(classes.has('is-ok')).toBe(true);
+      expect(close.hidden).toBe(true);
+      expect(timers).toHaveLength(1);
+      expect(text.textContent).toContain('Awizacja dopisana do arkusza Bolęcin.');
+      timers[0]();
+      expect(notice.hidden).toBe(true);
+    });
+
     it('test_buildMapHtml_when_route_name_fetch_fails_should_still_clear_loading_indicator', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
         templateBase64: 'UEsDBA==',
