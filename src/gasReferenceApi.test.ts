@@ -38,6 +38,14 @@ class FakeRange {
     return this.sheet.cell(this.row, this.col);
   }
 
+  getRow(): number {
+    return this.row;
+  }
+
+  getColumn(): number {
+    return this.col;
+  }
+
   setValues(values: Cell[][]): void {
     for (let r = 0; r < values.length; r += 1) {
       for (let c = 0; c < values[r].length; c += 1) {
@@ -112,6 +120,43 @@ class FakeSheet {
 
   getRange(row: number, col: number, numRows?: number, numCols?: number): FakeRange {
     return new FakeRange(this, row, col, numRows ?? 1, numCols ?? 1);
+  }
+
+  createTextFinder(pattern: string) {
+    const sheet = this;
+    const state = { regex: false, caseSensitive: false };
+    const api = {
+      useRegularExpression(on: boolean) {
+        state.regex = on;
+        return api;
+      },
+      matchCase(on: boolean) {
+        state.caseSensitive = on;
+        return api;
+      },
+      matchEntireCell(_on: boolean) {
+        return api;
+      },
+      findAll(): FakeRange[] {
+        const hits: Array<{ row: number; col: number }> = [];
+        const flags = state.caseSensitive ? '' : 'i';
+        const re = state.regex ? new RegExp(pattern, flags) : null;
+        for (const [key, value] of sheet.cells) {
+          if (value == null || value === '') continue;
+          const [rowText, colText] = key.split(',');
+          const text = String(value);
+          const ok = re
+            ? re.test(text)
+            : state.caseSensitive
+              ? text.includes(pattern)
+              : text.toLowerCase().includes(pattern.toLowerCase());
+          if (ok) hits.push({ row: Number(rowText), col: Number(colText) });
+        }
+        hits.sort((a, b) => a.row - b.row || a.col - b.col);
+        return hits.map((hit) => new FakeRange(sheet, hit.row, hit.col, 1, 1));
+      },
+    };
+    return api;
   }
 
   appendRow(values: Cell[]): void {

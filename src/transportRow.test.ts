@@ -67,6 +67,14 @@ class FakeRange {
     return this.sheet.cell(this.row, this.col);
   }
 
+  getRow(): number {
+    return this.row;
+  }
+
+  getColumn(): number {
+    return this.col;
+  }
+
   setValues(values: Cell[][]): void {
     this.sheet.writes.push({
       row: this.row,
@@ -141,6 +149,43 @@ class FakeSheet {
 
   getRange(row: number, col: number, numRows?: number, numCols?: number): FakeRange {
     return new FakeRange(this, row, col, numRows ?? 1, numCols ?? 1);
+  }
+
+  createTextFinder(pattern: string) {
+    const sheet = this;
+    const state = { regex: false, caseSensitive: false };
+    const api = {
+      useRegularExpression(on: boolean) {
+        state.regex = on;
+        return api;
+      },
+      matchCase(on: boolean) {
+        state.caseSensitive = on;
+        return api;
+      },
+      matchEntireCell(_on: boolean) {
+        return api;
+      },
+      findAll(): FakeRange[] {
+        const hits: Array<{ row: number; col: number }> = [];
+        const flags = state.caseSensitive ? '' : 'i';
+        const re = state.regex ? new RegExp(pattern, flags) : null;
+        for (const [key, value] of sheet.cells) {
+          if (value == null || value === '') continue;
+          const [rowText, colText] = key.split(',');
+          const text = String(value);
+          const ok = re
+            ? re.test(text)
+            : state.caseSensitive
+              ? text.includes(pattern)
+              : text.toLowerCase().includes(pattern.toLowerCase());
+          if (ok) hits.push({ row: Number(rowText), col: Number(colText) });
+        }
+        hits.sort((a, b) => a.row - b.row || a.col - b.col);
+        return hits.map((hit) => new FakeRange(sheet, hit.row, hit.col, 1, 1));
+      },
+    };
+    return api;
   }
 
   appendRow(values: Cell[]): void {
@@ -853,6 +898,29 @@ describe('routeRateByName_', () => {
     sheet.put(2, 15, '');
 
     expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('150');
+  });
+
+  it('test_routeRateByName_when_name_is_outside_trasa_column_should_return_empty', () => {
+    const sheet = new FakeSheet();
+    sheet.put(2, 13, 'trasa-a');
+    sheet.put(2, 12, '150');
+
+    expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('');
+  });
+
+  it('test_routeRateByName_when_cell_has_surrounding_spaces_should_match_trimmed', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, '  trasa-a  ', '10', '');
+
+    expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('10');
+  });
+
+  it('test_routeRateByName_when_name_contains_dots_should_not_treat_them_as_wildcards', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'GPW-23X09X26-01', '1', '');
+    seedRouteRow(sheet, 3, 'GPW-23.09.26-01', '2', '');
+
+    expect(loadGas(sheet).routeRateByName_('GPW-23.09.26-01')).toBe('2');
   });
 });
 

@@ -734,36 +734,53 @@ function listOccupiedRouteNames_() {
 /**
  * Stawka z ostatniego nierozliczonego wiersza o tym tekście w kolumnie Trasa.
  * Skan legacy + miesięczne. Rozliczony `tak` pomija.
+ * Szuka komórki nazwy, nie wczytuje całych kolumn. Pełny getValues na dużym
+ * rejestrze Google zamyka Web App stroną HTML HTTP 500, zanim doGet zwróci JSON.
  */
 function routeRateByName_(name) {
   var wanted = String(name == null ? '' : name).trim();
   if (!wanted) {
     return '';
   }
+  var pattern = '^\\s*' + wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$';
   var found = null;
   var sheets = listRegisterSheets_('report');
   var s;
   for (s = 0; s < sheets.length; s++) {
     var sheet = sheets[s].sheet;
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 2) {
+    if (sheet.getLastRow() < 2) {
       continue;
     }
-    var numRows = lastRow - 1;
-    var names = sheet.getRange(2, COL.trasa, numRows, 1).getValues();
-    var rates = sheet.getRange(2, COL.stawkaTrasy, numRows, 1).getValues();
-    var settled = sheet.getRange(2, COL.rozliczony, numRows, 1).getValues();
+    var hits = sheet
+      .createTextFinder(pattern)
+      .useRegularExpression(true)
+      .matchCase(true)
+      .matchEntireCell(true)
+      .findAll();
+    if (!hits || !hits.length) {
+      continue;
+    }
+    hits.sort(function (a, b) {
+      return a.getRow() - b.getRow();
+    });
     var i;
-    for (i = 0; i < numRows; i++) {
-      var rowName = String(names[i][0] == null ? '' : names[i][0]).trim();
+    for (i = 0; i < hits.length; i++) {
+      var cell = hits[i];
+      if (cell.getColumn() !== COL.trasa || cell.getRow() < 2) {
+        continue;
+      }
+      var rowName = String(cell.getValue() == null ? '' : cell.getValue()).trim();
       if (rowName !== wanted) {
         continue;
       }
-      var flag = String(settled[i][0] == null ? '' : settled[i][0]).trim().toLowerCase();
+      var row = cell.getRow();
+      var flag = String(sheet.getRange(row, COL.rozliczony).getValue() || '')
+        .trim()
+        .toLowerCase();
       if (flag === 'tak') {
         continue;
       }
-      var rate = rates[i][0];
+      var rate = sheet.getRange(row, COL.stawkaTrasy).getValue();
       found = rate == null || rate === '' ? '' : String(rate).trim();
     }
   }

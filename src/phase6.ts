@@ -1982,6 +1982,30 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       stack.appendChild(card);
       stack.hidden = false;
     }
+    /** Tekst ze strony HTML (tytuł i treść), bez znaczników. Surowy DOCTYPE zasłania wyjątek Google. */
+    function mapHtmlSnippet_(body) {
+      var raw = String(body || '');
+      var title = '';
+      var titleMatch = raw.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i);
+      if (titleMatch && titleMatch[1]) {
+        title = titleMatch[1].replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+      }
+      var text = raw
+        .replace(new RegExp('<script[\\\\s\\\\S]*?<' + '/script>', 'gi'), ' ')
+        .replace(new RegExp('<style[\\\\s\\\\S]*?<' + '/style>', 'gi'), ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/\\s+/g, ' ')
+        .trim();
+      if (title && text.indexOf(title) === -1) text = (title + ' — ' + text).trim();
+      if (text.length > 280) text = text.slice(0, 280);
+      return text;
+    }
     /** Body, które nie jest JSON (logowanie Google, limit). 401 zostaje na overlayu sesji. */
     function readMapJson_(res) {
       return res.text().then(function (text) {
@@ -1995,7 +2019,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         if (first === '{' || first === '[') {
           try { return JSON.parse(body); } catch (eParse) {}
         }
-        var snippet = body.replace(/\\s+/g, ' ').slice(0, 160);
+        var snippet = mapHtmlSnippet_(body);
         return {
           ok: false,
           error: 'not_json',

@@ -1291,6 +1291,18 @@ showMapErrorCard({
       expect(reader).toContain('res.status === 401');
       expect(chooser).toContain("notJson ? 'MAP-E-NOT-JSON'");
       expect(chooser).toContain('resp.status === 401');
+      expect(reader).toContain('mapHtmlSnippet_(body)');
+      const snippetSrc = html.slice(
+        html.indexOf('function mapHtmlSnippet_('),
+        html.indexOf('function readMapJson_('),
+      );
+      const snippet = runInNewContext(`${snippetSrc}\nmapHtmlSnippet_;`) as (body: string) => string;
+      const page =
+        '<!DOCTYPE html><html><head><title>Error</title><style>body{color:red}</style></head><body><p>Exception: Service Spreadsheets failed while accessing document</p></body></html>';
+      const shown = snippet(page);
+      expect(shown).toContain('Exception: Service Spreadsheets failed while accessing document');
+      expect(shown).not.toContain('<!DOCTYPE');
+      expect(shown).not.toContain('<head>');
       expect(html).toContain('return readMapJson_(res)');
       expect(html).toContain("partial ? 'MAP-E-BULK-RATES-PARTIAL' : 'MAP-E-BULK-RATES'");
       expect(html).toContain("data-status-source");
