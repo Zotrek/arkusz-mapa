@@ -4,7 +4,7 @@
  * Wymagania:
  *   REQ-5.1: zapytanie do Nominatim (q + format=json + limit=1 + countrycodes=pl)
  *   REQ-5.2: adresy bez ulicy (ulica pusta/brak) – query bez ulicy
- *   REQ-5.3: brak wyniku/błąd -> adres trafia do "Błędne adresy"
+ *   REQ-5.3: brak wyniku Nominatim -> adres trafia do "Błędne adresy"; awaria sieci albo HTTP bez treści -> MAP-E-GEOCODE-NET, bez kubełka błędnych
  *   REQ-5.4: odczyt lat/lon i województwa
  */
 
@@ -582,12 +582,14 @@ describe('phase5', () => {
         json: async () => [],
       });
       const sleepFn = vi.fn().mockResolvedValue(undefined);
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
       const result = await executePhase5(grouped, {
         fetchFn,
         sleepFn,
         userAgent: 'arkusz-mapa-test',
         rateLimitMs: 1,
+        logger,
       });
 
       expect(result.geocoded).toEqual([]);
@@ -602,6 +604,7 @@ describe('phase5', () => {
           liczbaWystapien: 2,
         },
       ]);
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('test_executePhase5_when_first_query_fails_and_second_succeeds_should_use_fallback_query', async () => {
@@ -1394,21 +1397,92 @@ describe('phase5', () => {
       expect(result.rowsBledneAdresy).toHaveLength(0);
     });
 
-    it('test_executePhase5_when_fetch_fails_should_mark_rows_as_bad_addresses', async () => {
+    it('test_executePhase5_when_fetch_fails_should_skip_bad_bucket_and_log_geocode_net', async () => {
       const row = makeRow();
       const grouped = asGrouped([row]);
 
       const fetchFn = vi.fn().mockRejectedValue(new Error('network failed'));
       const sleepFn = vi.fn().mockResolvedValue(undefined);
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const writeFileFn = vi.fn().mockResolvedValue(undefined);
 
       const result = await executePhase5(grouped, {
         fetchFn,
         sleepFn,
         userAgent: 'arkusz-mapa-test',
         rateLimitMs: 1,
+        requestRetries: 0,
+        logger,
+        cacheFilePath: '/tmp/phase5-net.json',
+        dataCacheFilePath: '/tmp/phase5-net-data.json',
+        actionsCacheFilePath: '/tmp/phase5-net-actions.json',
+        readFileFn: vi.fn().mockRejectedValue(new Error('missing')),
+        writeFileFn,
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
       });
 
       expect(result.geocoded).toEqual([]);
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+      expect(result.groupedBledneAdresy).toEqual([]);
+      expect(result.badUniqueAddresses).toBe(0);
+      const report = String(logger.error.mock.calls[0]?.[0]);
+      expect(report).toContain('ARKUSZ-MAPA-ERROR');
+      expect(report).toContain('kod: MAP-E-GEOCODE-NET');
+      expect(report).toContain('miejsce: phase5.ts executePhase5');
+      expect(report).toContain(row.address);
+      expect(report).toContain('technicznie: network failed');
+      const written = writeFileFn.mock.calls.map((call) => String(call[1])).join('\n');
+      expect(written).not.toContain(row.address);
+    });
+
+    it('test_executePhase5_when_nominatim_http_error_should_log_status_and_skip_bad_bucket', async () => {
+      const row = makeRow();
+      const grouped = asGrouped([row]);
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+      const result = await executePhase5(grouped, {
+        fetchFn: vi.fn().mockResolvedValue({
+          ok: false,
+          status: 503,
+          json: async () => [],
+        }),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+        requestRetries: 0,
+        logger,
+      });
+
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+      expect(result.groupedBledneAdresy).toEqual([]);
+      expect(result.badUniqueAddresses).toBe(0);
+      const report = String(logger.error.mock.calls[0]?.[0]);
+      expect(report).toContain('kod: MAP-E-GEOCODE-NET');
+      expect(report).toContain('technicznie: HTTP 503');
+      expect(report).toContain(row.address);
+    });
+
+    it('test_executePhase5_when_first_query_has_no_response_and_later_http_ok_empty_should_mark_bad', async () => {
+      const row = makeRow();
+      const grouped = asGrouped([row]);
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+      const result = await executePhase5(grouped, {
+        fetchFn: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('timeout'))
+          .mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => [],
+          }),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+        requestRetries: 0,
+        logger,
+      });
+
       expect(result.rowsBledneAdresy).toHaveLength(1);
       expect(result.groupedBledneAdresy).toEqual([
         {
@@ -1416,6 +1490,7 @@ describe('phase5', () => {
           liczbaWystapien: 1,
         },
       ]);
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('test_executePhase5_when_cache_has_suspicious_ok_should_use_cached_coordinates', async () => {
@@ -1687,6 +1762,95 @@ describe('phase5', () => {
         entries: Record<string, { wojewodztwo?: string }>;
       };
       expect(saved.entries[row.address]?.wojewodztwo).toBe('Pomorskie');
+    });
+
+    it('test_executePhase5_when_voivodeship_geojson_fails_should_log_build_error_and_keep_unknown', async () => {
+      const row = makeRow({
+        kodPocztowy: '80-806',
+        miasto: 'Gdańsk',
+        ulica: 'TARG SIENNY',
+        numerBudynku: '7',
+        address: '80-806 Gdańsk TARG SIENNY 7',
+      });
+      const grouped = asGrouped([row]);
+      const cachePayload = JSON.stringify({
+        version: 2,
+        entries: {
+          [row.address]: {
+            status: 'ok',
+            lat: 54.3488736,
+            lng: 18.643381,
+            wojewodztwo: 'Nieznane',
+            updatedAt: '2026-03-18T11:31:58.552Z',
+          },
+        },
+      });
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+      const result = await executePhase5(grouped, {
+        fetchFn: vi.fn().mockRejectedValue(new Error('geojson down')),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        cacheFilePath: '/tmp/phase5-cache-woj.json',
+        dataCacheFilePath: '/tmp/phase5-cache-woj.json',
+        actionsCacheFilePath: '/tmp/phase5-cache-woj.json',
+        readFileFn: vi.fn().mockResolvedValue(cachePayload),
+        writeFileFn: vi.fn().mockResolvedValue(undefined),
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
+        logger,
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(result.geocoded[0].wojewodztwo).toBe('Nieznane');
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+      const report = String(logger.error.mock.calls[0]?.[0]);
+      expect(report).toContain('ARKUSZ-MAPA-ERROR');
+      expect(report).toContain('kod: MAP-E-VOIVODESHIP-BUILD');
+      expect(report).toContain('miejsce: phase5.ts loadWojewodztwaFeaturesForPhase5');
+      expect(report).toContain('technicznie: geojson down');
+    });
+
+    it('test_executePhase5_when_voivodeship_geojson_empty_should_log_build_error', async () => {
+      const row = makeRow({
+        kodPocztowy: '80-806',
+        miasto: 'Gdańsk',
+        ulica: 'TARG SIENNY',
+        numerBudynku: '7',
+        address: '80-806 Gdańsk TARG SIENNY 7',
+      });
+      const grouped = asGrouped([row]);
+      const cachePayload = JSON.stringify({
+        version: 2,
+        entries: {
+          [row.address]: {
+            status: 'ok',
+            lat: 54.3488736,
+            lng: 18.643381,
+            wojewodztwo: 'Nieznane',
+            updatedAt: '2026-03-18T11:31:58.552Z',
+          },
+        },
+      });
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+      await executePhase5(grouped, {
+        fetchFn: vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({ type: 'FeatureCollection', features: [] }),
+        }),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        cacheFilePath: '/tmp/phase5-cache-woj-empty.json',
+        dataCacheFilePath: '/tmp/phase5-cache-woj-empty.json',
+        actionsCacheFilePath: '/tmp/phase5-cache-woj-empty.json',
+        readFileFn: vi.fn().mockResolvedValue(cachePayload),
+        writeFileFn: vi.fn().mockResolvedValue(undefined),
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
+        logger,
+      });
+
+      const report = String(logger.error.mock.calls[0]?.[0]);
+      expect(report).toContain('kod: MAP-E-VOIVODESHIP-BUILD');
+      expect(report).toContain('technicznie: features.length === 0');
     });
 
     it('test_executePhase5_when_popraw_adres_without_woj_should_enrich_from_lat_lng', async () => {

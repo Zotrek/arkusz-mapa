@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import PizZip from 'pizzip';
 import type { SheetRow } from './sheets.js';
 import {
   buildListaPlombNumbered,
@@ -34,6 +35,7 @@ import {
   DOCX_UWAGI_NOTICE_FONT_SIZE_PT,
   DOC_LISTA_PLOMB_PLACEHOLDER_ROWS,
   DOC_DEFAULT_SEAL_NUMBER_LENGTH,
+  warnIfWordTemplateMissingPlaceholders,
 } from './wordMapSupport.js';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
@@ -502,5 +504,34 @@ describe('wordMapSupport', () => {
     const merged = mergeAdjacentXmlTextRuns(xml);
     expect(merged).toContain('{{miejsce_zaladunku}}');
     expect(merged).not.toContain('{{miejsce_za</w:t></w:r><w:r>');
+  });
+
+  it('test_warnIfWordTemplateMissingPlaceholders_when_no_mustache_should_log_map_error', () => {
+    const zip = new PizZip();
+    zip.file('word/document.xml', '<w:document><w:t>brak znacznikow</w:t></w:document>');
+    const buf = zip.generate({ type: 'nodebuffer' }) as Buffer;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    warnIfWordTemplateMissingPlaceholders(buf);
+
+    const report = String(spy.mock.calls[0]?.[0]);
+    expect(report).toContain('ARKUSZ-MAPA-ERROR');
+    expect(report).toContain('kod: MAP-E-WORD-TEMPLATE');
+    expect(report).toContain('miejsce: wordMapSupport.ts warnIfWordTemplateMissingPlaceholders');
+    expect(report).toContain('pola zostaną puste');
+    expect(report).toContain('word/document.xml bez {{');
+    spy.mockRestore();
+  });
+
+  it('test_warnIfWordTemplateMissingPlaceholders_when_mustache_present_should_stay_quiet', () => {
+    const zip = new PizZip();
+    zip.file('word/document.xml', '<w:document><w:t>{{miejsce_zaladunku}}</w:t></w:document>');
+    const buf = zip.generate({ type: 'nodebuffer' }) as Buffer;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    warnIfWordTemplateMissingPlaceholders(buf);
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

@@ -6,6 +6,7 @@
 import { readFile } from 'node:fs/promises';
 import PizZip from 'pizzip';
 import * as XLSX from 'xlsx';
+import { logArkuszMapaError } from './mapErrorReport.js';
 import type { SheetRow } from './sheets.js';
 
 const HEADER_HINT = /^(przew|miejsce|nazwa|podwykon|lista|lp\.?|nr\.?|#)/iu;
@@ -927,11 +928,14 @@ function wordDocumentXmlContainsDoubleMustache(buf: Buffer): boolean {
 
 export function warnIfWordTemplateMissingPlaceholders(buf: Buffer): void {
   if (!wordDocumentXmlContainsDoubleMustache(buf)) {
-    console.warn(
-      '[arkusz-mapa] Szablon Word nie zawiera znaczników {{ ... }} w treści — pola się nie wypełnią. ' +
-        'Dodaj w pusty.docx m.in. {{miejsce_zaladunku}}, {{przewoznik}}, {{miejsce_dostawy}}, {{data_zaladunku}}, {{@lista_plomb_xml}} (lista 14 pt) lub {{lista_plomb}}, {{rodzaj_zbiorki}} ' +
-        '(najlepiej wklej cały znacznik naraz). Szczegóły: arkusz-mapa/docs/SZABLON_WORD_tagi.txt',
-    );
+    logArkuszMapaError(undefined, {
+      code: 'MAP-E-WORD-TEMPLATE',
+      place: 'wordMapSupport.ts warnIfWordTemplateMissingPlaceholders',
+      summary: 'Szablon Word nie zawiera znaczników {{ }}.',
+      effect: 'Protokół się pobierze, ale pola zostaną puste.',
+      technical:
+        'word/document.xml bez {{ — oczekiwane m.in. {{miejsce_zaladunku}}, {{przewoznik}}, {{miejsce_dostawy}}, {{data_zaladunku}}, {{@lista_plomb_xml}} lub {{lista_plomb}}, {{rodzaj_zbiorki}}',
+    });
   }
 }
 

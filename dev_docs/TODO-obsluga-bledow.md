@@ -1,10 +1,10 @@
 # TODO: obsługa błędów na mapie
 
-Zrobione: błąd awizacji Bolęcin zostaje u góry do kliknięcia **Zamknij**. Brak `BOLECIN_SHEETS_ID` jest po polsku, nie jako surowy wyjątek. Na karcie są też: zapis rejestru (`MAP-E-REGISTER-SAVE`), brak numeru (`MAP-E-NO-NUMBER`), biblioteki Word (`MAP-E-WORD-LIBS`), zbiorcze protokoły z adresem i etapem (`MAP-E-BULK-GENERATE`, wcześniej sam licznik `MAP-E-BULK-PARTIAL`), składanie jednego protokołu (`MAP-E-DOC-RENDER`), ostatnie daty transportu (`MAP-E-TRANSPORT-DATES`), podgląd numeru (`MAP-E-DOC-NUMBER`, `MAP-E-BULK-DOC-NUMBER`), nazwa i stawka trasy (`MAP-E-ROUTE-NAME`, `MAP-E-ROUTE-NAME-FRESH`, `MAP-E-ROUTE-RATE`), brak wolnego numeru (`MAP-E-ROUTE-FULL`), słowniki i zapis admina (`MAP-E-ADMIN-DICTS`, `MAP-E-ADMIN-SAVE`), granice województw (`MAP-E-VOIVODESHIP`), zły base64 szablonu (`MAP-E-TEMPLATE-BYTES`), kody harmonogramu (`MAP-E-HARMONOGRAM`), odświeżenie po zapisie (`MAP-E-HARM-RELOAD`), odpowiedź inna niż JSON (`MAP-E-NOT-JSON`), stawki zbiorcze (`MAP-E-BULK-RATES`, `MAP-E-BULK-RATES-PARTIAL`) i różne hasło Pages/Worker (`MAP-E-AUTH-MISMATCH`).
+Zrobione: błąd awizacji Bolęcin zostaje u góry do kliknięcia **Zamknij**. Brak `BOLECIN_SHEETS_ID` jest po polsku, nie jako surowy wyjątek. Na karcie są też: zapis rejestru (`MAP-E-REGISTER-SAVE`), brak numeru (`MAP-E-NO-NUMBER`), biblioteki Word (`MAP-E-WORD-LIBS`), zbiorcze protokoły z adresem i etapem (`MAP-E-BULK-GENERATE`, wcześniej sam licznik `MAP-E-BULK-PARTIAL`), składanie jednego protokołu (`MAP-E-DOC-RENDER`), ostatnie daty transportu (`MAP-E-TRANSPORT-DATES`), podgląd numeru (`MAP-E-DOC-NUMBER`, `MAP-E-BULK-DOC-NUMBER`), nazwa i stawka trasy (`MAP-E-ROUTE-NAME`, `MAP-E-ROUTE-NAME-FRESH`, `MAP-E-ROUTE-RATE`), brak wolnego numeru (`MAP-E-ROUTE-FULL`), słowniki i zapis admina (`MAP-E-ADMIN-DICTS`, `MAP-E-ADMIN-SAVE`), granice województw (`MAP-E-VOIVODESHIP`), zły base64 szablonu (`MAP-E-TEMPLATE-BYTES`), kody harmonogramu (`MAP-E-HARMONOGRAM`), odświeżenie po zapisie (`MAP-E-HARM-RELOAD`), odpowiedź inna niż JSON (`MAP-E-NOT-JSON`), stawki zbiorcze (`MAP-E-BULK-RATES`, `MAP-E-BULK-RATES-PARTIAL`) i różne hasło Pages/Worker (`MAP-E-AUTH-MISMATCH`). Przy `npm run generate` ten sam blok `ARKUSZ-MAPA-ERROR` idzie w log: pusty szablon Word (`MAP-E-WORD-TEMPLATE`), pominięty arkusz referencji (`MAP-E-REFERENCE-SKIP`), Nominatim bez odpowiedzi (`MAP-E-GEOCODE-NET`) i GeoJSON województw (`MAP-E-VOIVODESHIP-BUILD`).
 
 ## Szablon karty
 
-Funkcja `showMapErrorCard` jest w wygenerowanej mapie (`phase6.ts`). Kody z listy, których nie ma w „Zrobione”, jeszcze nie są podpięte.
+Funkcja `showMapErrorCard` jest w wygenerowanej mapie (`phase6.ts`). Kody z listy są podpięte. Przy generowaniu mapy ten sam blok idzie w log (`mapErrorReport.ts`), bo karty wtedy nie ma.
 
 Karta stoi u góry, na środku. Nie zasłania mapy: pinezki, filtry i formularze dalej działają. Znika po **Zamknij**, nie chowa się sama.
 
@@ -31,7 +31,7 @@ showMapErrorCard({
 });
 ```
 
-Walidacja formularza zostaje na `alert`. Kody z listy, których nie ma w „Zrobione”, są umową na podpięcie. Punkty „trudne do zobaczenia” użyją tej samej karty.
+Walidacja formularza zostaje na `alert`. Kody z listy są podpięte: na mapie karta, przy `npm run generate` ten sam blok w logu.
 
 | Kod | Kiedy |
 | --- | --- |
@@ -102,8 +102,8 @@ Komunikat jest, ale mały, poza ekranem albo znika, zanim da się go przeczytać
 - [x] **Harmonogram: błąd nad scrollem** — błąd pobrania, grupowania, odłączenia, zapisu i awizacji idzie na kartę `MAP-E-HARMONOGRAM`. `catch` bierze obiekt błędu. Walidacja zaznaczenia zostaje na statusie panelu.
 - [x] **Po zapisie harmonogramu sukces chowa błąd listy** — `groupHarmonogram` i `saveHarmonogram` (`MAP-E-HARM-RELOAD`). `harmonogramLoad` zwraca, czy lista doszła. Przy błędzie nie ma „Zapisano”.
 - [x] **Admin: jedna linia na dole formularza** — nieudany zapis idzie na kartę `MAP-E-ADMIN-SAVE` u góry mapy. Krótki status w panelu zostaje. Otwarcie panelu dalej czyści ten status, karta nie.
-- [ ] **Pusty szablon Word** — `warnIfWordTemplateMissingPlaceholders` w `wordMapSupport.ts` pisze tylko `console.warn` przy `npm run generate`. Na mapie protokół się pobiera, pola `{{ }}` zostają puste.
-- [ ] **Popraw adres przy generowaniu mapy** — `phase7.ts` łapie błąd arkusza referencji i loguje „Reference sheet skipped”. Mapa powstaje bez poprawek adresów. W logu CI łatwo to przegapić.
+- [x] **Pusty szablon Word** — `warnIfWordTemplateMissingPlaceholders` w `wordMapSupport.ts` (`MAP-E-WORD-TEMPLATE`). Przy `npm run generate` brak `{{ }}` w `word/document.xml` wypisuje blok `ARKUSZ-MAPA-ERROR` przez `console.error`. Protokół dalej się buduje, pola zostaną puste.
+- [x] **Popraw adres przy generowaniu mapy** — `runPhase7Pipeline` w `phase7.ts` (`MAP-E-REFERENCE-SKIP`). Błąd arkusza referencji zostawia blok w `logger.error`. Mapa powstaje bez poprawek adresów.
 - [x] **Składanie jednego Worda znika po 6 s** — `finishWithNumber` w `phase6.ts` (`MAP-E-DOC-RENDER`). Wyjątek z `renderDocxAndDownload` (zły tag, puste pole szablonu) zostaje na karcie do **Zamknij**. Surowy komunikat jest w polu `technicznie`.
-- [ ] **Nominatim przy generowaniu myli sieć z błędnym adresem** — `executePhase5` w `phase5.ts` (`MAP-E-GEOCODE-NET`). Brak odpowiedzi albo `!response.ok` (ten drugi bez logu statusu) kończy adres w błędnych. Mapa powstaje, pinezka jest w złym kubełku. W logu jest `warn` albo cisza.
-- [ ] **Województwo z GeoJSON przy generowaniu** — `loadWojewodztwaFeaturesForPhase5` w `phase5.ts` (`MAP-E-VOIVODESHIP-BUILD`). Pusty albo nieudany GeoJSON to `logger.warn`, uzupełnianie z lat/lng odpada. Osobno od `MAP-E-VOIVODESHIP` (filtr na otwartej mapie, `console.warn`).
+- [x] **Nominatim przy generowaniu myli sieć z błędnym adresem** — `executePhase5` w `phase5.ts` (`MAP-E-GEOCODE-NET`). Brak odpowiedzi albo `!response.ok` (w `technicznie` jest status) nie wrzuca adresu do błędnych i nie zapisuje `status: bad` w cache. Pusta odpowiedź HTTP zostaje błędnym adresem. W logu jest blok `ARKUSZ-MAPA-ERROR`.
+- [x] **Województwo z GeoJSON przy generowaniu** — `loadWojewodztwaFeaturesForPhase5` w `phase5.ts` (`MAP-E-VOIVODESHIP-BUILD`). Pusty albo nieudany GeoJSON wypisuje blok `ARKUSZ-MAPA-ERROR`. Uzupełnianie z lat/lng odpada. Osobno od `MAP-E-VOIVODESHIP` (filtr na otwartej mapie, karta).

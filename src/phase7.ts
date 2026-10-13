@@ -12,6 +12,7 @@ import { executePhase3 } from './phase3.js';
 import { executePhase4 } from './phase4.js';
 import { executePhase5 } from './phase5.js';
 import { executePhase6 } from './phase6.js';
+import { logArkuszMapaError } from './mapErrorReport.js';
 import { loadReferenceDataFromSheets } from './referenceData.js';
 import type { PoprawAdresEntry } from './poprawAdres.js';
 
@@ -92,6 +93,7 @@ export interface Phase7Deps {
   executePhase5: typeof executePhase5;
   executePhase4: typeof executePhase4;
   executePhase6: typeof executePhase6;
+  loadReferenceDataFromSheets: typeof loadReferenceDataFromSheets;
   logger: LoggerLike;
 }
 
@@ -122,6 +124,7 @@ const defaultDeps: Phase7Deps = {
   executePhase5,
   executePhase4,
   executePhase6,
+  loadReferenceDataFromSheets,
   logger: {
     info: console.log,
     error: console.error,
@@ -214,7 +217,7 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   try {
     const referenceData = await withGoogleApiRetry(
       'loadReferenceDataFromSheets',
-      () => loadReferenceDataFromSheets(sheetsClient!, getTransportSheetsId()),
+      () => deps.loadReferenceDataFromSheets(sheetsClient!, getTransportSheetsId()),
       deps.logger,
     );
     poprawAdresIndex = referenceData.poprawAdresIndex;
@@ -225,11 +228,13 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
       );
     }
   } catch (error) {
-    const log = deps.logger.warn ?? deps.logger.info;
-    log(
-      'Reference sheet (popraw adres) skipped: %s',
-      error instanceof Error ? error.message : String(error),
-    );
+    logArkuszMapaError(deps.logger, {
+      code: 'MAP-E-REFERENCE-SKIP',
+      place: 'phase7.ts loadReferenceDataFromSheets',
+      summary: 'Nie udało się wczytać arkusza referencji (popraw adres).',
+      effect: 'Mapa powstaje bez poprawek adresów.',
+      technical: error instanceof Error ? error.message : String(error),
+    });
   }
 
   deps.logger.info('Executing phase 5 (geocoding)');

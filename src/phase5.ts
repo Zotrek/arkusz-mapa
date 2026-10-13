@@ -11,6 +11,7 @@ import {
   GEOJSON_WOJEWODZTWA_URL,
 } from './config.js';
 import { normalizeCityForCompare, normalizeCityFromSheet } from './cityNormalize.js';
+import { logArkuszMapaError } from './mapErrorReport.js';
 import { nominatimAsciiQueryVariant } from './polishText.js';
 import type { AddressGroup } from './phase3.js';
 import type { SheetRow } from './sheets.js';
@@ -160,6 +161,7 @@ export interface ExecutePhase5Options {
   logger?: {
     info?: (message: string, ...args: unknown[]) => void;
     warn?: (message: string, ...args: unknown[]) => void;
+    error?: (message: string, ...args: unknown[]) => void;
   };
   readFileFn?: (path: string, encoding: BufferEncoding) => Promise<string>;
   writeFileFn?: (path: string, content: string, encoding: BufferEncoding) => Promise<void>;
@@ -1106,16 +1108,25 @@ async function loadWojewodztwaFeaturesForPhase5(
       options.wojewodztwaGeoJsonUrl ?? GEOJSON_WOJEWODZTWA_URL,
     );
     if (features.length === 0) {
-      logger?.warn?.('Phase 5: GeoJSON województw pusty — pomijam uzupełnianie z lat/lng');
+      logArkuszMapaError(logger, {
+        code: 'MAP-E-VOIVODESHIP-BUILD',
+        place: 'phase5.ts loadWojewodztwaFeaturesForPhase5',
+        summary: 'GeoJSON województw jest pusty.',
+        effect: 'Uzupełnianie województwa z lat/lng odpada. Zostaje wartość z geokodowania albo „Nieznane”.',
+        technical: 'features.length === 0',
+      });
       return null;
     }
     logger?.info?.('Phase 5: załadowano GeoJSON województw (%d polygonów)', features.length);
     return features;
   } catch (err) {
-    logger?.warn?.(
-      'Phase 5: nie udało się pobrać GeoJSON województw — pomijam uzupełnianie z lat/lng (%s)',
-      err instanceof Error ? err.message : String(err),
-    );
+    logArkuszMapaError(logger, {
+      code: 'MAP-E-VOIVODESHIP-BUILD',
+      place: 'phase5.ts loadWojewodztwaFeaturesForPhase5',
+      summary: 'Nie udało się pobrać GeoJSON województw.',
+      effect: 'Uzupełnianie województwa z lat/lng odpada. Zostaje wartość z geokodowania albo „Nieznane”.',
+      technical: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -1412,6 +1423,7 @@ export async function executePhase5(
   const etaLogIntervalMs = 5 * 60 * 1000;
   let lastEtaLogMs = progressStartMs;
   let processedAddresses = 0;
+  let networkSkippedAddresses = 0;
   logger?.info?.(
     'Phase 5: start geocoding %d unique addresses in %d batches (batchSize=%d)',
     total,
@@ -1483,6 +1495,9 @@ export async function executePhase5(
         const sampleRow = group.rows[0];
         const queries = buildGeocodingQueries(sampleRow);
         let bestPick: CandidatePickResult | undefined;
+        let sawHttpOk = false;
+        let httpStatus = 0;
+        let netMessage = '';
 
         for (const query of queries) {
           const url = buildNominatimUrl(query);
@@ -1518,15 +1533,18 @@ export async function executePhase5(
           }
 
           if (!response) {
-            logger?.warn?.('Phase 5: all attempts failed for address: %s (%s)', address, String(lastError));
+            netMessage = lastError instanceof Error ? lastError.message : String(lastError ?? 'brak odpowiedzi');
             await sleepFn(rateLimitMs);
             continue;
           }
 
           if (!response.ok) {
+            httpStatus = response.status;
             await sleepFn(rateLimitMs);
             continue;
           }
+
+          sawHttpOk = true;
 
           const payload = (await response.json()) as NominatimResult[];
           const picked = pickBestCandidate(payload, sampleRow);
@@ -1596,6 +1614,18 @@ export async function executePhase5(
               updatedAt: new Date().toISOString(),
             });
           }
+        } else if (queries.length > 0 && !sawHttpOk) {
+          networkSkippedAddresses += 1;
+          const technical =
+            [httpStatus ? `HTTP ${httpStatus}` : '', netMessage].filter(Boolean).join('; ') || 'brak odpowiedzi';
+          logArkuszMapaError(logger, {
+            code: 'MAP-E-GEOCODE-NET',
+            place: 'phase5.ts executePhase5',
+            summary: `Nominatim nie odpowiedział dla adresu ${address}.`,
+            effect:
+              'Adres nie trafia do błędnych. Pinezki nie ma na tej mapie. Następne generowanie spróbuje ponownie.',
+            technical,
+          });
         } else {
           rowsBledneAdresy.push(...group.rows);
           groupedBledneAdresy.push({
@@ -1652,7 +1682,8 @@ export async function executePhase5(
           geocodedUniqueAddresses -
           geocodedNoPostcodeUniqueAddresses -
           uncertainUniqueAddresses -
-          cityOnlyUniqueAddresses,
+          cityOnlyUniqueAddresses -
+          networkSkippedAddresses,
       );
       logger?.info?.(
         'Phase 5: cache saved after batch (%d entries). Progress: ok=%d, ok_no_postcode=%d, uncertain=%d, city_only=%d unique, processed=%d/%d',
@@ -1681,11 +1712,12 @@ export async function executePhase5(
       geocodedUniqueAddresses -
       geocodedNoPostcodeUniqueAddresses -
       uncertainUniqueAddresses -
-      cityOnlyUniqueAddresses,
+      cityOnlyUniqueAddresses -
+      networkSkippedAddresses,
   );
   const badAddressRows = rowsBledneAdresy.length;
   logger?.info?.(
-    'Phase 5: done. unique=%d, batches=%d, ok=%d, ok_no_postcode=%d, uncertain=%d, city_only=%d, bad=%d, badRows=%d',
+    'Phase 5: done. unique=%d, batches=%d, ok=%d, ok_no_postcode=%d, uncertain=%d, city_only=%d, bad=%d, network=%d, badRows=%d',
     total,
     totalBatches,
     geocodedUniqueAddresses,
@@ -1693,6 +1725,7 @@ export async function executePhase5(
     uncertainUniqueAddresses,
     cityOnlyUniqueAddresses,
     badUniqueAddresses,
+    networkSkippedAddresses,
     badAddressRows,
   );
   return {

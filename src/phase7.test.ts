@@ -258,6 +258,75 @@ describe('phase7 pipeline', () => {
     expect(deps.createSheetsClient).toHaveBeenCalledTimes(2);
   });
 
+  it('test_runPhase7Pipeline_when_reference_sheet_fails_should_log_skip_and_continue', async () => {
+    const rows = [makeRow()];
+    const grouped = new Map<string, { address: string; count: number; rows: SheetRow[] }>();
+    grouped.set(rows[0].address, { address: rows[0].address, count: 1, rows });
+    const logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
+
+    const deps = {
+      getConfig: vi.fn(() => ({
+        sheetsId: 'sheet-id',
+        credentialsPath: '/tmp/sa.json',
+        outputDir: '/tmp/out',
+        geoJsonUrl: 'https://example.com/woj.json',
+      })),
+      createSheetsClient: vi.fn(() => ({ client: true })),
+      loadSourceRows: vi.fn(async () => ({
+        sheetTitle: 'Arkusz1',
+        headers: ['A'],
+        rows,
+      })),
+      loadReferenceDataFromSheets: vi.fn(async () => {
+        throw new Error('sheet down');
+      }),
+      executePhase3: vi.fn(() => ({
+        rowsDuplikatyPlomb: [],
+        rowsBezDuplikatow: rows,
+        groupedByAddress: grouped,
+      })),
+      executePhase5: vi.fn(async () => ({
+        geocoded: [],
+        geocodedNoPostcode: [],
+        uncertainGeocoded: [],
+        cityOnlyGeocoded: [],
+        rowsBledneAdresy: [],
+        rowsNiepewneWyniki: [],
+        groupedNiepewneAdresy: [],
+        groupedBledneAdresy: [],
+        totalBatches: 0,
+        geocodedUniqueAddresses: 0,
+        geocodedNoPostcodeUniqueAddresses: 0,
+        uncertainUniqueAddresses: 0,
+        cityOnlyUniqueAddresses: 0,
+        badUniqueAddresses: 0,
+      })),
+      executePhase4: vi.fn(async () => undefined),
+      executePhase6: vi.fn(async () => ({
+        fileName: 'mapa.html',
+        filePath: '/tmp/out/mapa.html',
+        htmlContent: '<html></html>',
+      })),
+      isCopyOdebraneZHarmonogramuEnabled: vi.fn(() => false),
+      executeOdebraneZHarmonogramu: vi.fn(),
+      logger,
+    };
+
+    const result = await runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>);
+
+    expect(result.mapFilePath).toContain('/tmp/out/');
+    expect(deps.executePhase5).toHaveBeenCalledWith(
+      grouped,
+      expect.objectContaining({ poprawAdresIndex: undefined }),
+    );
+    const report = String(logger.error.mock.calls[0]?.[0]);
+    expect(report).toContain('ARKUSZ-MAPA-ERROR');
+    expect(report).toContain('kod: MAP-E-REFERENCE-SKIP');
+    expect(report).toContain('miejsce: phase7.ts loadReferenceDataFromSheets');
+    expect(report).toContain('technicznie: sheet down');
+    expect(report).toContain('Mapa powstaje bez poprawek adresów.');
+  });
+
   it('test_runPhase7Pipeline_when_copy_odebrane_enabled_should_run_before_phase3', async () => {
     const order: string[] = [];
     const rows = [makeRow()];
