@@ -157,7 +157,7 @@ Przykład POST (body):
 
 Klucze `trasa` i `stawkaTrasy` są opcjonalne. Są w body tylko przy odbiorze z trasy. Bez klucza `trasa` nowy wiersz nie wypełnia kolumn 11 i 12. Pusta `stawkaTrasy` zostaje pusta na nowym wierszu i nie czyści stawki na pozostałych wierszach tej nazwy. Kwota, także `0`, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 11.
 
-Kolumny 13 i 14 (**Stawka za podjazd**, **Stawka za worek**) wypełnia makro ze snapshotu **Bazy stawek** (adres z kolumny 2 + **Kto odbiera** + **Data odbioru**). Remis albo brak pary → puste. Kolumna 10 = **transport się odbył**. Komentarze trafiają na kolumny 19–20.
+Kolumny 13 i 14 (**Stawka za podjazd**, **Stawka za worek**) wypełnia makro ze snapshotu **Bazy stawek** (adres z kolumny 2 + **Kto odbiera** + **Data odbioru**). Remis albo brak pary → puste. Zapis `saveRate` i ręczny wpis w Excelu nie ruszają już dopisanych wierszy. Workflow **Pages + odebrane** uzupełnia później tylko puste komórki na nierozliczonych wierszach `Na zgłoszenie` (legacy `Arkusz1` też, gdy ma te kolumny). Wypełnionej stawki i wiersza z **Rozliczony** `tak` nie nadpisuje. Kolumna 10 = **transport się odbył**. Komentarze trafiają na kolumny 19–20.
 
 Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy, makro wpisuje nagłówki 10–20, jeśli te komórki są puste. To tekst nagłówka, nie pusta komórka. Kolumn 1–9 nie rusza i nie przesuwa. W tym samym kroku, raz, zakłada na kolumnie 10 listę `tak` / `nie` (inne wartości też da się wpisać, także z Excela) i przekreślenie całego wiersza, gdy komórka ma `nie`. Przekreślenie jest regułą formatowania arkusza, nie klasą na stronie. Aplikacja rozliczeń tych nagłówków nie wpisuje. Brak kolumny / pusta wartość = transport się odbył.
 

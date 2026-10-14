@@ -401,6 +401,10 @@ describe('phase7 pipeline', () => {
           dataDo: '28.09.2026',
         };
       }),
+      fillMissingReportRates: vi.fn(async () => {
+        order.push('fillMissingReportRates');
+        return { filledCells: 2, skippedSheets: 0 };
+      }),
       executePhase3: vi.fn(() => {
         order.push('executePhase3');
         return { rowsDuplikatyPlomb: [], rowsBezDuplikatow: rows, groupedByAddress: grouped };
@@ -441,12 +445,19 @@ describe('phase7 pipeline', () => {
       'executeOdebraneZHarmonogramu',
       'syncBazaCenHarmonogram',
       'syncZestawienieHarmonogram',
+      'fillMissingReportRates',
       'executePhase3',
       'executePhase5',
       'executePhase4',
       'executePhase6',
     ]);
     expect(result.odebraneAppendedCount).toBe(1);
+    expect(result.reportRatesFilledCount).toBe(2);
+    expect(deps.fillMissingReportRates).toHaveBeenCalledWith(
+      { client: true },
+      expect.objectContaining({ spreadsheetId: 'ewidencja-sheet-id' }),
+      expect.anything(),
+    );
     expect(deps.executeOdebraneZHarmonogramu).toHaveBeenCalledWith(
       { client: true },
       expect.objectContaining({ targetSpreadsheetId: 'ewidencja-sheet-id' }),

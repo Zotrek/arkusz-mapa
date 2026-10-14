@@ -44,6 +44,8 @@
  *   Kwota, także 0, idzie od razu na pozostałe nierozliczone wiersze z tym samym tekstem w kolumnie 11.
  *   Kolumny 13–14 (Stawka za podjazd / Stawka za worek) zawsze ze snapshotu Bazy stawek
  *   (adres po normalizacji al./pl./Św. + kto odbiera + data odbioru). Remis albo brak pary → puste.
+ *   Późniejszy wpis w Bazie stawek (także ręcznie w Excelu) sam nie wraca do wiersza.
+ *   Puste komórki na nierozliczonych Na zgłoszenie uzupełnia pipeline Pages + odebrane.
  *   Kolumna 10 = transport się odbył. Komentarze 1–2 na kolumnach 19–20.
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate | saveRateHarmonogram
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)

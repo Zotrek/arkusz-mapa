@@ -51,6 +51,7 @@ Workflow: `.github/workflows/arkusz-mapa-pages-odebrane.yml` — mapa **+** kopi
 Ten sam przebieg potem:
 1. uzupełnia zakładkę `Baza cen harmonogram` (adres, podwykonawca, dni; cen nie nadpisuje);
 2. buduje / odświeża zakładkę **`zestawienie z harmonogramu`** (1 wiersz = odbiór, Ilość worków = suma; Rodzaj zbiórki z Tryb zbiórki na workach; dni podjazdu bez worków = 0, nazwy kontrahenta/punktu z odebrane tego adresu; sync **tylko uzupełnia / aktualizuje nierozliczone** — nigdy nie czyści zakładki; przy update Ilość worków tylko w górę — usunięcie worków z „odebrane” nie cofa sumy; `Rozliczony=tak` nie jest nadpisywany; wiersz pojawia się **dzień po** teoretycznej dacie odbioru — 01.10 → dopisanie 02.10, Data odbioru = 01.10).
+3. uzupełnia puste **Stawka za podjazd** / **Stawka za worek** na nierozliczonych wierszach `Na zgłoszenie {miesiąc}` (oraz legacy `Arkusz1`, gdy ma te kolumny) ze snapshotu `Baza stawek`. Wypełnionej komórki i wiersza `Rozliczony=tak` nie nadpisuje. Remis tej samej daty zostawia puste.
 
 Rozliczenia w trybie Harmonogram czytają i zatwierdzają na `zestawienie z harmonogramu`.
 

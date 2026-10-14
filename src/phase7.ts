@@ -7,6 +7,7 @@ import { isCopyOdebraneZHarmonogramuEnabled } from './harmonogramDays.js';
 import { syncBazaCenHarmonogram } from './bazaCenHarmonogram.js';
 import { executeOdebraneZHarmonogramu } from './odebraneZHarmonogramu.js';
 import { syncZestawienieHarmonogram } from './syncZestawienieHarmonogram.js';
+import { fillMissingReportRates } from './fillReportRates.js';
 import { applyAddressAliases, createSheetsClient, loadAddressAliases, loadSourceRows } from './sheets.js';
 import { executePhase3 } from './phase3.js';
 import { executePhase4 } from './phase4.js';
@@ -87,6 +88,7 @@ export interface Phase7Deps {
   executeOdebraneZHarmonogramu: typeof executeOdebraneZHarmonogramu;
   syncBazaCenHarmonogram: typeof syncBazaCenHarmonogram;
   syncZestawienieHarmonogram: typeof syncZestawienieHarmonogram;
+  fillMissingReportRates: typeof fillMissingReportRates;
   isCopyOdebraneZHarmonogramuEnabled: typeof isCopyOdebraneZHarmonogramuEnabled;
   getEwidencjaOdbiorowSheetsId: typeof getEwidencjaOdbiorowSheetsId;
   executePhase3: typeof executePhase3;
@@ -109,6 +111,7 @@ export interface Phase7Result {
   uncertainAddressRowsCount: number;
   mapFilePath: string;
   odebraneAppendedCount: number;
+  reportRatesFilledCount: number;
 }
 
 const defaultDeps: Phase7Deps = {
@@ -118,6 +121,7 @@ const defaultDeps: Phase7Deps = {
   executeOdebraneZHarmonogramu,
   syncBazaCenHarmonogram,
   syncZestawienieHarmonogram,
+  fillMissingReportRates,
   isCopyOdebraneZHarmonogramuEnabled,
   getEwidencjaOdbiorowSheetsId,
   executePhase3,
@@ -161,6 +165,7 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   }
 
   let odebraneAppendedCount = 0;
+  let reportRatesFilledCount = 0;
   if (deps.isCopyOdebraneZHarmonogramuEnabled()) {
     const ewidencjaId = deps.getEwidencjaOdbiorowSheetsId();
     if (!ewidencjaId) {
@@ -208,6 +213,17 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
         ),
       deps.logger,
     );
+    const reportRates = await withGoogleApiRetry(
+      'fillMissingReportRates',
+      () =>
+        deps.fillMissingReportRates(
+          sheetsClient,
+          { spreadsheetId: ewidencjaId },
+          deps.logger,
+        ),
+      deps.logger,
+    );
+    reportRatesFilledCount = reportRates.filledCells;
   }
 
   deps.logger.info('Executing phase 3 (duplicates + grouping)');
@@ -288,6 +304,7 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
     uncertainAddressRowsCount: phase5.rowsNiepewneWyniki.length,
     mapFilePath: phase6.filePath,
     odebraneAppendedCount,
+    reportRatesFilledCount,
   };
 
   deps.logger.info('Sheets loaded from tab: %s', result.sheetTitle);

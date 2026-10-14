@@ -11,6 +11,9 @@ Co dostajecie po uruchomieniu
    Ta reguła na mapie działa zawsze (niezależnie od flagi kopiowania do ewidencji).
 2. Dopisanie do ewidencji punktów, które „wypadają” jako odebrane z harmonogramu — bez ręcznego przepisywania
    (tylko gdy włączona flaga COPY_ODEBRANE_Z_HARMONOGRAMU).
+3. Uzupełnienie pustych stawek za podjazd i za worek w rozliczeniach „Na zgłoszenie”,
+   gdy stawka pojawiła się w Bazie stawek dopiero po dopisaniu transportu.
+   Wiersz już rozliczony (Rozliczony = tak) i komórka, która już ma kwotę, zostają bez zmian.
 
 
 Które punkty trafiają na listę „odebrane”
@@ -27,7 +30,8 @@ W jednej partii ten sam numer plomby nie jest powielany.
 Różnica względem zwykłego „Pages”
 
 - Zwykłe Pages: odświeża mapę, nie uzupełnia ewidencji.
-- Pages + odebrane: odświeża mapę i uzupełnia ewidencję „odebrane z harmonogramu”.
+- Pages + odebrane: odświeża mapę, uzupełnia ewidencję „odebrane z harmonogramu”
+  i puste stawki za podjazd oraz za worek w rozliczeniach „Na zgłoszenie”.
 
 Jak uruchomić (ręcznie)
 
