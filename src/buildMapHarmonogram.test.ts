@@ -33,7 +33,9 @@ describe('buildMapHarmonogram', () => {
     expect(script).toContain('harmonogram-card-head');
     expect(script).toContain('harmonogram-id');
     expect(script).toContain("code: 'MAP-E-HARMONOGRAM'");
+    expect(script).toContain("'MAP-E-HARM-FORM'");
     expect(script).toContain("code: 'MAP-E-HARM-RELOAD'");
+    expect(script).not.toContain('if (validation || typeof showMapErrorCard');
     expect(script).toContain('W skrypcie mapy brakuje właściwości BOLECIN_SHEETS_ID.');
     expect(script).toContain('return readMapJson_(res)');
     expect(script).not.toContain("raw.indexOf('BOLECIN_SHEETS_ID') >= 0 ? raw");

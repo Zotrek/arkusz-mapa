@@ -1982,6 +1982,15 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       stack.appendChild(card);
       stack.hidden = false;
     }
+    function showMapFormError_(code, summary, effect, place, technical) {
+      showMapErrorCard({
+        code: code,
+        summary: summary,
+        effect: effect,
+        place: place,
+        technical: technical || summary
+      });
+    }
     /** Tekst ze strony HTML (tytuł i treść), bez znaczników. Surowy DOCTYPE zasłania wyjątek Google. */
     function mapHtmlSnippet_(body) {
       var raw = String(body || '');
@@ -2128,6 +2137,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         return refreshAllMarkerDisplaysAfterTransport();
       }).catch(function (err) {
         console.error(err);
+        showMapFormError_(
+          'MAP-E-MARKER-REFRESH',
+          'Daty transportu są pobrane, ale pinezki się nie odświeżyły.',
+          'Na mapie mogą zostać stare kolory i liczby worków. Odśwież stronę.',
+          'phase6.ts loadBulkTransportDates',
+          String(err && err.message || err)
+        );
       }).then(function () {
         setTransportDatesLoading(false);
       });
@@ -2766,7 +2782,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function openDocModal(pointIdx) {
       if (!wordDocEnabled) return;
       if (transportApiEnabled && !window.__transportDatesLoaded) {
-        alert('Poczekaj na pobranie danych transportu (w górnej części mapy).');
+        showMapFormError_(
+          'MAP-E-TRANSPORT-WAIT',
+          'Poczekaj na pobranie danych transportu.',
+          'Protokół otworzy się, gdy zniknie pasek ładowania u góry mapy.',
+          'phase6.ts openDocModal',
+          '__transportDatesLoaded === false'
+        );
         return;
       }
       window.__currentDocPointIdx = pointIdx;
@@ -2797,7 +2819,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function openBulkDocModal(indices) {
       if (!wordDocEnabled || !indices || indices.length === 0) return;
       if (transportApiEnabled && !window.__transportDatesLoaded) {
-        alert('Poczekaj na pobranie danych transportu (w górnej części mapy).');
+        showMapFormError_(
+          'MAP-E-TRANSPORT-WAIT',
+          'Poczekaj na pobranie danych transportu.',
+          'Protokół zbiorczy otworzy się, gdy zniknie pasek ładowania u góry mapy.',
+          'phase6.ts openBulkDocModal',
+          '__transportDatesLoaded === false'
+        );
         return;
       }
       window.__currentDocPointIdx = null;
@@ -2981,12 +3009,24 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     function openBulkRatesModal(indices) {
       if (!transportApiEnabled || !indices || indices.length === 0) return;
       if (typeof postReferencePayload !== 'function') {
-        alert('Brak połączenia z bazą stawek (TRANSPORT_WEBAPP_URL).');
+        showMapFormError_(
+          'MAP-E-RATES-OFFLINE',
+          'Brak połączenia z bazą stawek.',
+          'Stawki zbiorcze nie zapiszą się, dopóki mapa nie ma adresu TRANSPORT_WEBAPP_URL.',
+          'phase6.ts openBulkRatesModal',
+          'brak postReferencePayload'
+        );
         return;
       }
       var shops = uniqueBulkShopEntries(indices);
       if (shops.length === 0) {
-        alert('Brak adresów sklepów w zaznaczeniu.');
+        showMapFormError_(
+          'MAP-E-RATES-NO-ADDRESS',
+          'Brak adresów sklepów w zaznaczeniu.',
+          'Nie ma czego zapisać. Zaznacz pinezki, które mają adres sklepu.',
+          'phase6.ts openBulkRatesModal',
+          'uniqueBulkShopEntries puste'
+        );
         return;
       }
       window.__bulkRatesShops = shops;
@@ -3043,10 +3083,24 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var shops = window.__bulkRatesShops || [];
       if (shops.length === 0) {
         setBulkRatesStatus('Brak zaznaczonych sklepów.', 'error');
+        showMapFormError_(
+          'MAP-E-BULK-RATES-FORM',
+          'Brak zaznaczonych sklepów.',
+          'Zapis nie ruszył. Zaznacz pinezki i otwórz stawki ponownie.',
+          'phase6.ts runBulkRatesSave',
+          'pusta lista sklepów'
+        );
         return;
       }
       if (typeof postReferencePayload !== 'function' || typeof rateValidFromFromPicker !== 'function') {
         setBulkRatesStatus('Brak połączenia z bazą stawek.', 'error');
+        showMapFormError_(
+          'MAP-E-BULK-RATES-FORM',
+          'Brak połączenia z bazą stawek.',
+          'Zapis nie ruszył. Mapa nie ma połączenia z rejestrem stawek.',
+          'phase6.ts runBulkRatesSave',
+          'brak postReferencePayload albo rateValidFromFromPicker'
+        );
         return;
       }
       var target = getBulkRatesTarget();
@@ -3060,9 +3114,27 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       if (!podwykonawca) {
         setBulkRatesStatus('Wybierz podwykonawcę z listy.', 'error');
+        showMapFormError_(
+          'MAP-E-BULK-RATES-FORM',
+          'Wybierz podwykonawcę z listy.',
+          'Zapis nie ruszył. Wpisz fragment nazwy i wybierz pozycję z listy.',
+          'phase6.ts runBulkRatesSave',
+          'pusty podwykonawca'
+        );
         return;
       }
-      if (!validateBulkRatesFields()) return;
+      if (!validateBulkRatesFields()) {
+        var ratesStatusEl = document.getElementById('bulk-rates-status');
+        var ratesSummary = ratesStatusEl ? String(ratesStatusEl.textContent || '').trim() : '';
+        showMapFormError_(
+          'MAP-E-BULK-RATES-FORM',
+          ratesSummary || 'Popraw pola stawek.',
+          'Zapis nie ruszył. Popraw podświetlone pola.',
+          'phase6.ts runBulkRatesSave',
+          'walidacja formularza stawek'
+        );
+        return;
+      }
       var kwotaPodjazd = String((document.getElementById('bulk-rates-podjazd') || {}).value || '');
       var kwotaWorek = String((document.getElementById('bulk-rates-worek') || {}).value || '');
       var nazwaTrasy = '';
@@ -3636,7 +3708,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var prIdx = prVal ? prVal.value : '';
       var mdIdx = mdVal ? mdVal.value : '';
       if (prIdx === '' || mdIdx === '') {
-        alert('Wybierz przewoźnika i miejsce dostawy (wpisz fragment nazwy lub danych i wybierz z listy).');
+        showMapFormError_(
+          'MAP-E-DOC-FORM',
+          'Wybierz przewoźnika i miejsce dostawy.',
+          'Protokół nie powstanie bez obu pozycji z listy.',
+          'phase6.ts parseDocFormValues',
+          'pusty przewoźnik albo miejsce'
+        );
         return null;
       }
       var pi = parseInt(prIdx, 10);
@@ -3644,13 +3722,25 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var prOpt = PODWYKOLISTA[pi];
       var mdOpt = PODWYKOLISTA[mi];
       if (!prOpt || !mdOpt) {
-        alert('Błąd wyboru z listy.');
+        showMapFormError_(
+          'MAP-E-DOC-FORM',
+          'Błąd wyboru z listy.',
+          'Protokół nie powstanie. Wybierz przewoźnika i miejsce jeszcze raz.',
+          'phase6.ts parseDocFormValues',
+          'indeks spoza PODWYKOLISTA'
+        );
         return null;
       }
       var dateEl = document.getElementById('doc-inp-data-zaladunku');
       var ymd = dateEl ? String(dateEl.value).trim() : '';
       if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(ymd)) {
-        alert('Wybierz datę załadunku (kalendarz).');
+        showMapFormError_(
+          'MAP-E-DOC-DATE',
+          'Wybierz datę załadunku.',
+          'Protokół nie powstanie bez daty z kalendarza.',
+          'phase6.ts parseDocFormValues',
+          'data nie jest RRRR-MM-DD'
+        );
         return null;
       }
       var pe = ymd.split('-');
@@ -3659,7 +3749,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var d = parseInt(pe[2], 10);
       var chk = new Date(y, mo, d);
       if (chk.getFullYear() !== y || chk.getMonth() !== mo || chk.getDate() !== d) {
-        alert('Nieprawidłowa data załadunku.');
+        showMapFormError_(
+          'MAP-E-DOC-DATE',
+          'Nieprawidłowa data załadunku.',
+          'Protokół nie powstanie. Wybierz istniejącą datę.',
+          'phase6.ts parseDocFormValues',
+          'data spoza kalendarza'
+        );
         return null;
       }
       var dd = String(d).padStart(2, '0');
@@ -3806,11 +3902,25 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
     function showAwizacjaNotice_(prefix, bolecinError, choice, forceError) {
       var note = bolecinResultNote_(bolecinError, choice);
+      if (bolecinError || forceError) {
+        showMapFormError_(
+          'MAP-E-BOLECIN',
+          bolecinError
+            ? 'Protokół jest zapisany. Awizacja nie weszła do arkusza Bolęcin.'
+            : (prefix || 'Awizacja do Bolęcina się nie udała.'),
+          bolecinError
+            ? bolecinErrorPlain_(bolecinError)
+            : 'Możesz dalej pracować na mapie. Sprawdź arkusz Bolęcin.',
+          'phase6.ts showAwizacjaNotice_',
+          String(bolecinError || prefix || 'forceError')
+        );
+        if (prefix && bolecinError) showMapNotice(prefix, 'ok', null);
+        return;
+      }
       var message = prefix || '';
       if (note) message = message ? message + '\\n' + note : note;
       if (!message) return;
-      var isError = !!bolecinError || !!forceError;
-      showMapNotice(message, isError ? 'error' : 'ok', bolecinError ? { persist: true } : null);
+      showMapNotice(message, 'ok', null);
     }
     function iloscWorkowFromAwizacja_(autoCount) {
       var choice = window.__bolecinAwizacjaChoice;
@@ -3960,18 +4070,36 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
     function runBulkDocGenerate() {
       if (transportApiEnabled && !window.__docModalDataReady) {
-        alert('Poczekaj na załadowanie danych transportu.');
+        showMapFormError_(
+          'MAP-E-DOC-WAIT',
+          'Poczekaj na załadowanie danych transportu.',
+          'Generowanie zbiorcze ruszy, gdy modal skończy pobierać dane.',
+          'phase6.ts runBulkDocGenerate',
+          '__docModalDataReady === false'
+        );
         return;
       }
       if (!transportApiEnabled) {
-        alert('Tryb zbiorczy wymaga połączenia z rejestrem transportów (TRANSPORT_WEBAPP_URL).');
+        showMapFormError_(
+          'MAP-E-BULK-OFFLINE',
+          'Tryb zbiorczy wymaga połączenia z rejestrem transportów.',
+          'Protokoły zbiorcze nie powstaną bez TRANSPORT_WEBAPP_URL.',
+          'phase6.ts runBulkDocGenerate',
+          'transportApiEnabled === false'
+        );
         return;
       }
       var form = formForGenerate_();
       if (!form) return;
       var jobs = window.__docBulkPointJobs || [];
       if (jobs.length === 0) {
-        alert('Brak zaznaczonych punktów do protokołu.');
+        showMapFormError_(
+          'MAP-E-BULK-EMPTY',
+          'Brak zaznaczonych punktów do protokołu.',
+          'Nie ma czego generować. Zaznacz pinezki i otwórz modal ponownie.',
+          'phase6.ts runBulkDocGenerate',
+          '__docBulkPointJobs puste'
+        );
         return;
       }
       if (offerBolecinAwizacja_(form)) return;
@@ -4107,12 +4235,24 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         return;
       }
       if (transportApiEnabled && !window.__docModalDataReady) {
-        alert('Poczekaj na załadowanie danych transportu (numer i filtr worków).');
+        showMapFormError_(
+          'MAP-E-DOC-WAIT',
+          'Poczekaj na załadowanie danych transportu.',
+          'Dokument powstanie, gdy modal skończy pobierać numer i filtr worków.',
+          'phase6.ts runDocGenerate',
+          '__docModalDataReady === false'
+        );
         return;
       }
       var idx = window.__currentDocPointIdx;
       if (idx == null || idx < 0 || !adresy[idx]) {
-        alert('Błąd: brak punktu.');
+        showMapFormError_(
+          'MAP-E-DOC-POINT',
+          'Brak punktu na mapie.',
+          'Dokument się nie pobierze. Zamknij okno i wybierz pinezkę jeszcze raz.',
+          'phase6.ts runDocGenerate',
+          '__currentDocPointIdx poza adresy'
+        );
         return;
       }
       var form = formForGenerate_();
@@ -4629,7 +4769,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           bulkGenBtn.onclick = function () {
             var indices = getBulkSelectedIndices();
             if (indices.length === 0) {
-              alert('Zaznacz co najmniej jeden punkt na mapie.');
+              showMapFormError_(
+                'MAP-E-BULK-SELECT',
+                'Zaznacz co najmniej jeden punkt na mapie.',
+                'Zbiorczy protokół powstaje z zaznaczonych pinezek.',
+                'phase6.ts map-bulk-generate',
+                'puste zaznaczenie'
+              );
               return;
             }
             openBulkDocModal(indices);
@@ -4640,7 +4786,13 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
           bulkRatesBtn.onclick = function () {
             var indices = getBulkSelectedIndices();
             if (indices.length === 0) {
-              alert('Zaznacz co najmniej jeden punkt na mapie.');
+              showMapFormError_(
+                'MAP-E-BULK-SELECT',
+                'Zaznacz co najmniej jeden punkt na mapie.',
+                'Stawki zbiorcze zapisują się dla zaznaczonych pinezek.',
+                'phase6.ts map-bulk-rates',
+                'puste zaznaczenie'
+              );
               return;
             }
             openBulkRatesModal(indices);

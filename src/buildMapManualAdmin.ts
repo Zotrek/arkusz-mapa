@@ -246,6 +246,18 @@ ${referenceFormatsBrowserScript()}
       }).then(function(res) { return readMapJson_(res); });
     }
 
+    function reportManualAdminForm_(summary) {
+      setManualAdminStatus(summary, 'error');
+      if (typeof showMapErrorCard !== 'function') return;
+      showMapErrorCard({
+        code: 'MAP-E-ADMIN-FORM',
+        summary: summary,
+        effect: 'Zapis nie ruszył. Formularz zostaje otwarty.',
+        place: 'buildMapManualAdmin.ts bindManualAdminUi',
+        technical: summary
+      });
+    }
+
     function reportManualAdminSave_(summary, resp, err) {
       if ((resp && resp.status === 401) || (err && err.status === 401)) return;
       var technical = 'brak treści błędu';
@@ -642,7 +654,7 @@ ${referenceFormatsBrowserScript()}
           var nip = String((document.getElementById('manual-admin-lista-nip') || {}).value || '').trim();
           var bdo = String((document.getElementById('manual-admin-lista-bdo') || {}).value || '').trim();
           if (!nazwa && !protokol && !adres && !nip && !bdo) {
-            setManualAdminStatus('Podaj co najmniej nazwę lub dane podwykonawcy.', 'error');
+            reportManualAdminForm_('Podaj co najmniej nazwę lub dane podwykonawcy.');
             return;
           }
           if (!nazwa) nazwa = protokol || adres;
@@ -686,9 +698,9 @@ ${referenceFormatsBrowserScript()}
       if (poprawSubmit) {
         poprawSubmit.addEventListener('click', function() {
           var adres = String((document.getElementById('manual-admin-popraw-adres') || {}).value || '').trim();
-          if (!adres) { setManualAdminStatus('Podaj adres.', 'error'); return; }
+          if (!adres) { reportManualAdminForm_('Podaj adres.'); return; }
           var coords = parseManualLatLon('manual-admin-popraw-lat', 'manual-admin-popraw-lon');
-          if (coords.error) { setManualAdminStatus(coords.error, 'error'); return; }
+          if (coords.error) { reportManualAdminForm_(coords.error); return; }
           var wojewodztwo = String((document.getElementById('manual-admin-popraw-wojewodztwo') || {}).value || '').trim();
           setManualAdminBusy(poprawSubmit, true, 'Zapisuję poprawkę…');
           postReferencePayload({
@@ -720,7 +732,7 @@ ${referenceFormatsBrowserScript()}
           var sklep = String((document.getElementById('manual-admin-stawki-sklep-value') || {}).value || '').trim();
           var podwykonawca = String((document.getElementById('manual-admin-stawki-podwykonawca-value') || {}).value || '').trim();
           if (!sklep || !podwykonawca) {
-            setManualAdminStatus('Wybierz sklep i podwykonawcę.', 'error');
+            reportManualAdminForm_('Wybierz sklep i podwykonawcę.');
             return;
           }
           setManualAdminBusy(stawkiSubmit, true, 'Zapisuję stawkę…');
@@ -761,7 +773,7 @@ ${referenceFormatsBrowserScript()}
           var sklep = String((document.getElementById('manual-admin-harmonogram-sklep-value') || {}).value || '').trim();
           var podwykonawca = String((document.getElementById('manual-admin-harmonogram-podwykonawca-value') || {}).value || '').trim();
           if (!sklep || !podwykonawca) {
-            setManualAdminStatus('Wybierz sklep i podwykonawcę.', 'error');
+            reportManualAdminForm_('Wybierz sklep i podwykonawcę.');
             return;
           }
           setManualAdminBusy(harmonogramSubmit, true, 'Zapisuję stawkę harmonogramu…');

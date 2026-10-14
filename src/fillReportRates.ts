@@ -70,6 +70,17 @@ function headerIndex(headers: string[], name: string): number {
   return -1;
 }
 
+/** Żywy arkusz ma „Adres sklepu” / „Cena…”, zapis z mapy zakłada „Sklep” / „Kwota…”. */
+function headerIndexAny(headers: string[], names: string[]): number {
+  for (const name of names) {
+    const index = headerIndex(headers, name);
+    if (index >= 0) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 function cellText(row: unknown[] | undefined, index: number): string {
   return String(row?.[index] ?? '').trim();
 }
@@ -188,11 +199,11 @@ export function reportRegisterSheetNamesFromTitles(titles: string[]): string[] {
 }
 
 export function parseReportRateRows(headers: string[], rows: unknown[][]): ReportRateRow[] {
-  const ixShop = headerIndex(headers, 'Sklep');
+  const ixShop = headerIndexAny(headers, ['Sklep', 'Adres sklepu']);
   const ixContractor = headerIndex(headers, 'Podwykonawca');
-  const ixPickup = headerIndex(headers, 'Kwota za podjazd');
-  const ixBag = headerIndex(headers, 'Kwota za worek');
-  const ixFrom = headerIndex(headers, 'Od kiedy obowiązuje');
+  const ixPickup = headerIndexAny(headers, ['Kwota za podjazd', 'Cena za podjazd']);
+  const ixBag = headerIndexAny(headers, ['Kwota za worek', 'Cena za worek']);
+  const ixFrom = headerIndexAny(headers, ['Od kiedy obowiązuje', 'Od kiedy obowiązuje cena']);
   if (ixShop < 0 || ixContractor < 0 || ixPickup < 0 || ixBag < 0 || ixFrom < 0) {
     return [];
   }

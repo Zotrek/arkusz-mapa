@@ -951,6 +951,7 @@ result = proposeRouteName(
       expect(plainEnd).toBeGreaterThan(plainStart);
 
       const classes = new Set<string>();
+      const cards: Array<{ code?: string; summary?: string; effect?: string; technical?: string }> = [];
       const notice = {
         hidden: true,
         classList: {
@@ -980,6 +981,15 @@ result = proposeRouteName(
           clearTimeout() {},
           __bolecinAwizacjaChoice: null,
         },
+        showMapFormError_(
+          code: string,
+          summary: string,
+          effect: string,
+          _place: string,
+          technical: string,
+        ) {
+          cards.push({ code, summary, effect, technical });
+        },
         __api: null,
       };
       close.attrs = {};
@@ -999,26 +1009,29 @@ __api = { showAwizacjaNotice_: showAwizacjaNotice_ };`,
         sandbox,
       );
       const api = sandbox.__api as { showAwizacjaNotice_: (...args: unknown[]) => void };
-      return { api, notice, text, close, timers, classes };
+      return { api, notice, text, close, timers, classes, cards };
     }
 
-    it('test_showAwizacjaNotice_when_bolecin_sheets_id_missing_should_keep_plain_error_until_dismissed', () => {
-      const { api, notice, text, close, timers, classes } = loadAwizacjaNotice();
+    it('test_showAwizacjaNotice_when_bolecin_sheets_id_missing_should_show_error_card_and_keep_success_notice', () => {
+      const { api, notice, text, timers, classes, cards } = loadAwizacjaNotice();
       api.showAwizacjaNotice_(
         'Wygenerowano 1 protokołów.',
         'Error: Brak Script property BOLECIN_SHEETS_ID — ustaw ID arkusza Bolęcin',
         { add: true },
       );
+      expect(cards).toHaveLength(1);
+      expect(cards[0]?.code).toBe('MAP-E-BOLECIN');
+      expect(cards[0]?.summary).toContain('Awizacja nie weszła do arkusza Bolęcin.');
+      expect(cards[0]?.effect).toContain('W skrypcie mapy brakuje właściwości BOLECIN_SHEETS_ID.');
+      expect(cards[0]?.effect).not.toContain('Error:');
+      expect(cards[0]?.technical).toContain('BOLECIN_SHEETS_ID');
       expect(notice.hidden).toBe(false);
-      expect(classes.has('is-persist')).toBe(true);
-      expect(classes.has('is-error')).toBe(true);
-      expect(close.hidden).toBe(false);
-      expect(timers).toHaveLength(0);
-      expect(text.textContent).toContain('Protokół jest zapisany. Awizacja nie weszła do arkusza Bolęcin.');
-      expect(text.textContent).toContain('W skrypcie mapy brakuje właściwości BOLECIN_SHEETS_ID.');
+      expect(classes.has('is-ok')).toBe(true);
+      expect(classes.has('is-error')).toBe(false);
+      expect(classes.has('is-persist')).toBe(false);
+      expect(timers).toHaveLength(1);
+      expect(text.textContent).toBe('Wygenerowano 1 protokołów.');
       expect(text.textContent).not.toContain('Error:');
-      close.onclick?.();
-      expect(notice.hidden).toBe(true);
     });
 
     it('test_showMapErrorCard_when_shown_should_stay_until_dismissed_and_copy_a_debug_report', () => {
@@ -1233,6 +1246,8 @@ showMapErrorCard({
       expect(body).toContain("String(resp && resp.error ? resp.error : 'ok: false')");
       expect(body).toContain('String(err && err.message || err)');
       expect(body).toContain('window.__transportDatesLoaded = true');
+      expect(body).toContain("'MAP-E-MARKER-REFRESH'");
+      expect(body).toContain('pinezki się nie odświeżyły');
     });
 
     it('test_loadDocModalData_when_preview_fails_should_show_dismissible_error_card', () => {
@@ -1325,9 +1340,33 @@ showMapErrorCard({
       expect(html).toContain('Nie załadowano granic województw.');
     });
 
+    it('test_map_guards_when_user_is_blocked_should_show_dismissible_error_card', () => {
+      const html = protocolHtml();
+      expect(html).not.toContain("alert('Poczekaj");
+      expect(html).not.toContain("alert('Brak");
+      expect(html).not.toContain("alert('Wybierz");
+      expect(html).not.toContain("alert('Błąd");
+      expect(html).not.toContain("alert('Nieprawidłowa");
+      expect(html).not.toContain("alert('Tryb");
+      expect(html).not.toContain("alert('Zaznacz");
+      expect(html).toContain("'MAP-E-TRANSPORT-WAIT'");
+      expect(html).toContain("'MAP-E-DOC-FORM'");
+      expect(html).toContain("'MAP-E-DOC-DATE'");
+      expect(html).toContain("'MAP-E-DOC-WAIT'");
+      expect(html).toContain("'MAP-E-BULK-OFFLINE'");
+      expect(html).toContain("'MAP-E-BULK-EMPTY'");
+      expect(html).toContain("'MAP-E-DOC-POINT'");
+      expect(html).toContain("'MAP-E-BULK-SELECT'");
+      expect(html).toContain("'MAP-E-RATES-OFFLINE'");
+      expect(html).toContain("'MAP-E-RATES-NO-ADDRESS'");
+      expect(html).toContain("'MAP-E-BULK-RATES-FORM'");
+      expect(html).toContain("'MAP-E-BOLECIN'");
+    });
+
     it('test_showAwizacjaNotice_when_awizacja_saved_should_hide_success_notice', () => {
-      const { api, notice, text, close, timers, classes } = loadAwizacjaNotice();
+      const { api, notice, text, close, timers, classes, cards } = loadAwizacjaNotice();
       api.showAwizacjaNotice_('Wygenerowano 1 protokołów.', '', { add: true });
+      expect(cards).toHaveLength(0);
       expect(notice.hidden).toBe(false);
       expect(classes.has('is-persist')).toBe(false);
       expect(classes.has('is-ok')).toBe(true);
@@ -1488,7 +1527,8 @@ __api = {
       expect(html).toContain("bulkField.addEventListener('input', validateBulkRatesFields)");
       expect(html).toContain('payload.nazwaTrasy');
       expect(html).toContain('payload.kwotaTrasy');
-      expect(html).toContain('if (!validateBulkRatesFields()) return');
+      expect(html).toContain('if (!validateBulkRatesFields()) {');
+      expect(html).toContain("'MAP-E-BULK-RATES-FORM'");
       expect(html).toContain('id="bulk-rates-dni"');
       expect(html).toContain('id="bulk-rates-dni-toggle"');
       expect(html).toContain('data-day-multi="bulk-rates-dni"');

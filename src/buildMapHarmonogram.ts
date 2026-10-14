@@ -240,12 +240,14 @@ export function harmonogramPanelBrowserScript(): string {
       var raw = code == null ? '' : String(code);
       var summary = harmonogramErrorText(raw);
       harmonogramSetStatus(summary, 'error');
+      if (typeof showMapErrorCard !== 'function') return;
       var validation = raw === 'zaznacz' || raw === 'rozne' || raw === 'brak_dni';
-      if (validation || typeof showMapErrorCard !== 'function') return;
       showMapErrorCard({
-        code: 'MAP-E-HARMONOGRAM',
+        code: validation ? 'MAP-E-HARM-FORM' : 'MAP-E-HARMONOGRAM',
         summary: summary,
-        effect: 'Lista albo zapis mogą być nieaktualne. Sprawdź arkusz, zanim powtórzysz.',
+        effect: validation
+          ? 'Grupowanie nie ruszyło. Zaznacz sklepy z jednego zestawu dni i podwykonawcy.'
+          : 'Lista albo zapis mogą być nieaktualne. Sprawdź arkusz, zanim powtórzysz.',
         place: place || 'buildMapHarmonogram.ts harmonogramErrorText',
         technical: raw || 'brak szczegółu'
       });

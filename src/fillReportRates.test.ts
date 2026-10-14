@@ -189,6 +189,41 @@ describe('parseReportRateRows', () => {
   });
 });
 
+describe('parseReportRateRows live headers', () => {
+  it('test_parseReportRateRows_when_cena_headers_should_read_address_and_bag', () => {
+    const rows = parseReportRateRows(
+      ['Adres sklepu', 'Podwykonawca', 'Cena za podjazd', 'Cena za worek', 'Od kiedy obowiązuje cena'],
+      [['51-602 Wrocław Kochanowskiego 33', 'Interzero', '', '18,5', '']],
+    );
+    expect(rows).toEqual([
+      {
+        shop: '51-602 Wrocław Kochanowskiego 33',
+        contractor: 'Interzero',
+        pickup: '',
+        bag: '18,5',
+        validFrom: '',
+      },
+    ]);
+  });
+
+  it('test_planReportRateFills_when_cena_headers_should_fill_only_present_bag_rate', () => {
+    const rates = parseReportRateRows(
+      ['Adres sklepu', 'Podwykonawca', 'Cena za podjazd', 'Cena za worek', 'Od kiedy obowiązuje cena'],
+      [['51-602 Wrocław al. Kochanowskiego 33', 'Interzero', '', '18,5', '']],
+    );
+    const fills = planReportRateFills(rates, [
+      {
+        sheetName: 'Na zgłoszenie Październik 2026',
+        headers: REPORT_HEADERS,
+        rows: [reportRow()],
+      },
+    ]);
+    expect(fills).toEqual([
+      { sheetName: 'Na zgłoszenie Październik 2026', sheetRow: 2, columnIndex: 13, value: 18.5 },
+    ]);
+  });
+});
+
 describe('fillMissingReportRates', () => {
   it('test_fillMissingReportRates_when_rate_added_later_should_write_empty_cells', async () => {
     const month = 'Na zgłoszenie Październik 2026';

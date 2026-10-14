@@ -110,6 +110,11 @@ describe('buildMapManualAdmin', () => {
     const script = manualAdminBrowserScript();
     const saves = script.slice(script.indexOf('function reportManualAdminSave_('));
     expect(saves.split("code: 'MAP-E-ADMIN-SAVE'").length - 1).toBe(1);
+    expect(script).toContain("code: 'MAP-E-ADMIN-FORM'");
+    expect(script).toContain("reportManualAdminForm_('Podaj adres.')");
+    expect(script).toContain("reportManualAdminForm_('Podaj co najmniej nazwę lub dane podwykonawcy.')");
+    expect(script).toContain("reportManualAdminForm_('Wybierz sklep i podwykonawcę.')");
+    expect(script).toContain('reportManualAdminForm_(coords.error)');
     expect(saves).toContain('resp.error');
     expect(saves).toContain('Zapis poprawki nieudany.');
     expect(saves).toContain("place: 'buildMapManualAdmin.ts bindManualAdminUi'");
