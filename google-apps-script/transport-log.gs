@@ -736,8 +736,9 @@ function listOccupiedRouteNames_() {
 /**
  * Stawka z ostatniego nierozliczonego wiersza o tym tekście w kolumnie Trasa.
  * Skan legacy + miesięczne. Rozliczony `tak` pomija.
- * Szuka komórki nazwy, nie wczytuje całych kolumn. Pełny getValues na dużym
- * rejestrze Google zamyka Web App stroną HTML HTTP 500, zanim doGet zwróci JSON.
+ * Nie wczytuje całych kolumn ani nie szuka po całym arkuszu: na dużym rejestrze
+ * Google kończy wtedy Web App stroną HTML HTTP 500 (DEADLINE_EXCEEDED), zanim doGet
+ * zwróci JSON. TextFinder tylko w kolumnie Trasa, potem jeden odczyt wierszy trafień.
  */
 function routeRateByName_(name) {
   var wanted = String(name == null ? '' : name).trim();
@@ -745,15 +746,18 @@ function routeRateByName_(name) {
     return '';
   }
   var pattern = '^\\s*' + wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$';
+  var width = COL.rozliczony - COL.trasa + 1;
   var found = null;
   var sheets = listRegisterSheets_('report');
   var s;
   for (s = 0; s < sheets.length; s++) {
     var sheet = sheets[s].sheet;
-    if (sheet.getLastRow() < 2) {
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
       continue;
     }
     var hits = sheet
+      .getRange(2, COL.trasa, lastRow - 1, 1)
       .createTextFinder(pattern)
       .useRegularExpression(true)
       .matchCase(true)
@@ -762,27 +766,29 @@ function routeRateByName_(name) {
     if (!hits || !hits.length) {
       continue;
     }
-    hits.sort(function (a, b) {
-      return a.getRow() - b.getRow();
-    });
+    var rows = hits
+      .map(function (cell) {
+        return cell.getRow();
+      })
+      .sort(function (a, b) {
+        return a - b;
+      });
+    var first = rows[0];
+    var block = sheet.getRange(first, COL.trasa, rows[rows.length - 1] - first + 1, width).getValues();
     var i;
-    for (i = 0; i < hits.length; i++) {
-      var cell = hits[i];
-      if (cell.getColumn() !== COL.trasa || cell.getRow() < 2) {
-        continue;
-      }
-      var rowName = String(cell.getValue() == null ? '' : cell.getValue()).trim();
+    for (i = 0; i < rows.length; i++) {
+      var line = block[rows[i] - first];
+      var rowName = String(line[0] == null ? '' : line[0]).trim();
       if (rowName !== wanted) {
         continue;
       }
-      var row = cell.getRow();
-      var flag = String(sheet.getRange(row, COL.rozliczony).getValue() || '')
+      var flag = String(line[COL.rozliczony - COL.trasa] == null ? '' : line[COL.rozliczony - COL.trasa])
         .trim()
         .toLowerCase();
       if (flag === 'tak') {
         continue;
       }
-      var rate = sheet.getRange(row, COL.stawkaTrasy).getValue();
+      var rate = line[COL.stawkaTrasy - COL.trasa];
       found = rate == null || rate === '' ? '' : String(rate).trim();
     }
   }

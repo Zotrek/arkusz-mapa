@@ -72,9 +72,18 @@ export async function onRequest(context) {
 }
 
 function sanitizeNext(next) {
-  const raw = String(next || '/');
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/';
-  return raw.replace(/"/g, '');
+  const base = 'https://same-origin.invalid';
+  try {
+    const url = new URL(String(next || '/'), base);
+    if (url.origin !== base) return '/';
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return '/';
+  }
+}
+
+function scriptJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
 function postLoginHtml(next) {
@@ -90,7 +99,7 @@ function postLoginHtml(next) {
     sessionStorage.removeItem(key);
     localStorage.removeItem(key);
   } catch (e) {}
-  location.replace(${JSON.stringify(next)});
+  location.replace(${scriptJson(next)});
 })();
 </script>
 </body></html>`;

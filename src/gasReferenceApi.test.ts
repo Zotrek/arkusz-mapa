@@ -38,6 +38,20 @@ class FakeRange {
     return this.sheet.cell(this.row, this.col);
   }
 
+  createTextFinder(pattern: string) {
+    const finder = this.sheet.createTextFinder(pattern);
+    const findAll = finder.findAll;
+    finder.findAll = () =>
+      findAll().filter(
+        (hit) =>
+          hit.row >= this.row &&
+          hit.row < this.row + this.numRows &&
+          hit.col >= this.col &&
+          hit.col < this.col + this.numCols,
+      );
+    return finder;
+  }
+
   getRow(): number {
     return this.row;
   }

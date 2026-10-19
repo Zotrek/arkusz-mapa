@@ -2524,7 +2524,17 @@ __api = {
         routeRateBaseline: string;
         routeRateBaselineName: string;
       };
-      pendingFetches: Array<(resp: { ok?: boolean; stawka?: string }) => void>;
+      pendingFetches: Array<(resp: LookupResp) => void>;
+      errorCards: Array<{ code?: string }>;
+    };
+
+    type LookupResp = {
+      ok?: boolean;
+      stawka?: string;
+      notJson?: boolean;
+      status?: number;
+      technical?: string;
+      error?: string;
     };
 
     function sliceHtml(html: string, start: string, end: string): string {
@@ -2549,7 +2559,8 @@ __api = {
         'doc-inp-trasa': { value: 'GPW-23.09.26-01' },
         'doc-inp-stawka-trasy': { value: '' },
       };
-      const pendingFetches: Array<(resp: { ok?: boolean; stawka?: string }) => void> = [];
+      const pendingFetches: Array<(resp: LookupResp) => void> = [];
+      const errorCards: Array<{ code?: string }> = [];
 
       const sandbox: Record<string, unknown> = {
         Promise,
@@ -2559,9 +2570,15 @@ __api = {
           },
         },
         fetchTransportGet() {
-          return new Promise<{ ok?: boolean; stawka?: string }>((resolve) => {
+          return new Promise<LookupResp>((resolve) => {
             pendingFetches.push(resolve);
           });
+        },
+        mapApiErrorCard_(report: { code?: string }) {
+          errorCards.push(report);
+        },
+        delayMs() {
+          return Promise.resolve();
         },
         __api: null,
       };
@@ -2589,12 +2606,70 @@ __api = {
 };
 `;
       runInNewContext(script, sandbox);
-      const api = sandbox.__api as Omit<LookupApi, 'pendingFetches'> | null;
+      const api = sandbox.__api as Omit<LookupApi, 'pendingFetches' | 'errorCards'> | null;
       if (!api) {
         throw new Error('Harness nie wystawił API lookupRouteRateNow');
       }
-      return { api: { ...api, pendingFetches }, els };
+      return { api: { ...api, pendingFetches, errorCards }, els };
     }
+
+    const deadlineHtml: LookupResp = {
+      ok: false,
+      error: 'not_json',
+      notJson: true,
+      status: 500,
+      technical: 'HTTP 500: Błąd Kod błędu: DEADLINE_EXCEEDED.',
+    };
+
+    it('test_lookupRouteRateNow_when_server_html_500_then_ok_should_retry_once_and_fill_rate', async () => {
+      const { api, els } = loadLookupRouteRate();
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+
+      api.pendingFetches[0](deadlineHtml);
+      await flushMicrotasks();
+      expect(api.pendingFetches).toHaveLength(2);
+
+      api.pendingFetches[1]({ ok: true, stawka: '750' });
+      await flushMicrotasks();
+
+      expect(els['doc-inp-stawka-trasy'].value).toBe('750');
+      expect(api.errorCards).toHaveLength(0);
+    });
+
+    it('test_lookupRouteRateNow_when_server_html_500_twice_should_show_one_card', async () => {
+      const { api } = loadLookupRouteRate();
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+
+      api.pendingFetches[0](deadlineHtml);
+      await flushMicrotasks();
+      api.pendingFetches[1](deadlineHtml);
+      await flushMicrotasks();
+
+      expect(api.pendingFetches).toHaveLength(2);
+      expect(api.errorCards.map((card) => card.code)).toEqual(['MAP-E-ROUTE-RATE']);
+    });
+
+    it('test_lookupRouteRateNow_when_ok_false_json_should_not_retry', async () => {
+      const { api } = loadLookupRouteRate();
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+
+      api.pendingFetches[0]({ ok: false, error: 'unauthorized', status: 401 });
+      await flushMicrotasks();
+
+      expect(api.pendingFetches).toHaveLength(1);
+    });
+
+    it('test_lookupRouteRateNow_when_stale_before_retry_should_not_fetch_again', async () => {
+      const { api } = loadLookupRouteRate();
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+      api.bumpRequest();
+
+      api.pendingFetches[0](deadlineHtml);
+      await flushMicrotasks();
+
+      expect(api.pendingFetches).toHaveLength(1);
+      expect(api.errorCards).toHaveLength(0);
+    });
 
     async function flushMicrotasks(): Promise<void> {
       await new Promise<void>((resolve) => setImmediate(resolve));

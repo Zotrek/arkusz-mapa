@@ -52,6 +52,7 @@ class FakeRange {
   ) {}
 
   getValues(): Cell[][] {
+    this.sheet.readCalls += 1;
     const out: Cell[][] = [];
     for (let r = 0; r < this.numRows; r += 1) {
       const line: Cell[] = [];
@@ -64,7 +65,12 @@ class FakeRange {
   }
 
   getValue(): Cell {
+    this.sheet.readCalls += 1;
     return this.sheet.cell(this.row, this.col);
+  }
+
+  createTextFinder(pattern: string) {
+    return this.sheet.textFinderIn(pattern, this);
   }
 
   getRow(): number {
@@ -114,6 +120,8 @@ class FakeSheet {
   readonly validations: ValidationSpan[] = [];
   rules: StrikeRule[] = [];
   readonly maxRows = 100;
+  readonly finderScopes: Array<{ col: number; numCols: number } | 'sheet'> = [];
+  readCalls = 0;
   name = 'Arkusz1';
 
   getName(): string {
@@ -152,7 +160,18 @@ class FakeSheet {
   }
 
   createTextFinder(pattern: string) {
+    return this.textFinderIn(pattern, null);
+  }
+
+  textFinderIn(pattern: string, scope: FakeRange | null) {
     const sheet = this;
+    this.finderScopes.push(scope ? { col: scope.col, numCols: scope.numCols } : 'sheet');
+    const inScope = (row: number, col: number): boolean =>
+      !scope ||
+      (row >= scope.row &&
+        row < scope.row + scope.numRows &&
+        col >= scope.col &&
+        col < scope.col + scope.numCols);
     const state = { regex: false, caseSensitive: false };
     const api = {
       useRegularExpression(on: boolean) {
@@ -173,6 +192,7 @@ class FakeSheet {
         for (const [key, value] of sheet.cells) {
           if (value == null || value === '') continue;
           const [rowText, colText] = key.split(',');
+          if (!inScope(Number(rowText), Number(colText))) continue;
           const text = String(value);
           const ok = re
             ? re.test(text)
@@ -921,6 +941,26 @@ describe('routeRateByName_', () => {
     seedRouteRow(sheet, 3, 'GPW-23.09.26-01', '2', '');
 
     expect(loadGas(sheet).routeRateByName_('GPW-23.09.26-01')).toBe('2');
+  });
+
+  it('test_routeRateByName_when_searching_should_scan_only_trasa_column', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', '');
+
+    loadGas(sheet).routeRateByName_('trasa-a');
+
+    expect(sheet.finderScopes).toEqual([{ col: 11, numCols: 1 }]);
+  });
+
+  it('test_routeRateByName_when_many_hits_should_read_rows_in_one_call', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', '');
+    seedRouteRow(sheet, 3, 'trasa-a', '20', 'tak');
+    seedRouteRow(sheet, 5, 'trasa-a', '30', '');
+    sheet.readCalls = 0;
+
+    expect(loadGas(sheet).routeRateByName_('trasa-a')).toBe('30');
+    expect(sheet.readCalls).toBe(1);
   });
 });
 

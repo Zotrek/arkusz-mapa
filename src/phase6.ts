@@ -3430,7 +3430,16 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       routeRateRequest += 1;
       var ticket = routeRateRequest;
       setTransportDatesLoading(true, 'Pobieranie stawki trasy…');
-      fetchTransportGet({ action: 'routeRateByName', name: trimmed }).then(function (resp) {
+      // Strona HTML 5xx od Google (np. DEADLINE_EXCEEDED) bywa chwilowa. Odczyt, więc jedna powtórka.
+      function fetchRate() {
+        return fetchTransportGet({ action: 'routeRateByName', name: trimmed });
+      }
+      fetchRate().then(function (resp) {
+        if (!resp || !resp.notJson || !(resp.status >= 500) || ticket !== routeRateRequest) return resp;
+        return delayMs(1500).then(function () {
+          return ticket === routeRateRequest ? fetchRate() : resp;
+        });
+      }).then(function (resp) {
         if (ticket !== routeRateRequest) return;
         var current = document.getElementById('doc-inp-trasa');
         if (!current || String(current.value).trim() !== trimmed) return;
