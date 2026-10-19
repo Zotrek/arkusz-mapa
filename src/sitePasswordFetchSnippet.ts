@@ -97,11 +97,12 @@ export const SITE_PASSWORD_FETCH_SNIPPET = `(function () {
 
   function maybeMismatchAlert(res) {
     if (mismatchAlerted || res.status !== 503) return;
-    mismatchAlerted = true;
     res.clone().text().then(function (text) {
       var body = null;
       try { body = JSON.parse(text); } catch (e) { body = null; }
       if (!body || body.error !== 'proxy_auth_mismatch') return;
+      if (mismatchAlerted) return;
+      mismatchAlerted = true;
       var report = {
         code: 'MAP-E-AUTH-MISMATCH',
         summary: 'Hasło Pages i Worker się różnią.',

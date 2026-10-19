@@ -315,6 +315,11 @@ describe('wordMapSupport', () => {
     expect(formatRodzajZbiorkiForDoc('Ręczna / Maszyna')).toBe('ręczna i automatyczna');
   });
 
+  it('test_formatRodzajZbiorkiForDoc_when_reczna_without_polish_letter_should_return_reczna', () => {
+    expect(formatRodzajZbiorkiForDoc('Reczna')).toBe('ręczna');
+    expect(formatRodzajZbiorkiForDoc('Reczna / Maszyna')).toBe('ręczna i automatyczna');
+  });
+
   it('test_aggregateRodzajZbiorkiFromSealRows_when_empty_should_return_empty', () => {
     expect(aggregateRodzajZbiorkiFromSealRows([])).toBe('');
   });

@@ -8,15 +8,17 @@ import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { getOptionalWordMapAssetPaths, getTransportWebAppUrl } from './config.js';
 import { SITE_PASSWORD_FETCH_SNIPPET } from './sitePasswordFetchSnippet.js';
+import { jsonForScript } from './jsonForScript.js';
 import type { GeocodedAddress } from './phase5.js';
 import type { SheetRow } from './sheets.js';
 import { POLISH_VOIVODESHIPS } from './polishVoivodeships.js';
 import { polishAsciiLower } from './polishText.js';
 import { normalizeRateShopKey } from './saveRate.js';
 import {
-  buildMapPointDocPayload,
+  buildMiejsceZaladunkuText,
   formatRodzajZbiorkiForDoc,
   loadPodwykoOptionsFromSpreadsheet,
+  parseDataZamknieciaWorkaToSortMs,
   readWordTemplateAsBase64ForMap,
   type MapPointDocPayload,
   type PodwykoOption,
@@ -36,7 +38,7 @@ import {
   harmonogramPanelCss,
   harmonogramPanelHtml,
 } from './buildMapHarmonogram.js';
-import { routeNameBrowserScript } from './routeName.js';
+import { functionSourceForBrowser, routeNameBrowserScript } from './routeName.js';
 import { routeProtocolBrowserScript } from './routeProtocol.js';
 import {
   harmonogramDaysPickerBrowserScript,
@@ -47,6 +49,7 @@ import {
 import {
   classifyMapPointZbiorka,
   normalizeWgHarmonogramu,
+  parseZbiorkaFlags,
 } from './zbiorkaClassify.js';
 
 export type {
@@ -369,12 +372,13 @@ type MapPoint = {
   firmaTransportowa?: string;
   /** Agregat zbiórki całej pinezki (mapa). Protokół Word i rejestr transportu liczą rodzaj z `sealRows` po filtrze daty. */
   rodzaj_zbiorki: string;
-  doc: MapPointDocPayload;
+  /** Listę plomb przeglądarka buduje z `sealRows` po filtrze daty — tu tylko miejsce załadunku. */
+  doc: Pick<MapPointDocPayload, 'miejsce_zaladunku'>;
 };
 
 /**
  * Normalizacja tekstu do porównań w wyszukiwarce mapy (al./pl./Św., małe litery, polskie znaki → ASCII).
- * Wygenerowany skrypt HTML musi stosować tę samą logikę co `normalizeForAddressSearchMap` w szablonie.
+ * Wykonywana także w przeglądarce — patrz {@link mapSharedBrowserScript}.
  */
 export function normalizeForAddressSearch(text: string): string {
   let s = normalizeRateShopKey(text).normalize('NFD').replace(/\p{M}/gu, '');
@@ -606,6 +610,37 @@ export function formatWojewodztwoFilterSummary(selected: readonly string[]): str
   return list.length + ' wybrane';
 }
 
+/**
+ * Funkcje TS wstrzykiwane do skryptu mapy pod własnymi nazwami (razem z zależnościami).
+ * Przeglądarka wykonuje ten sam kod co testy — nie dopisywać ręcznych kopii w szablonie.
+ */
+export function mapSharedBrowserScript(): string {
+  const fns = [
+    normalizeRateShopKey,
+    polishAsciiLower,
+    normalizeForAddressSearch,
+    mapPointMatchesSearch,
+    buildTransportShopKey,
+    parseZbiorkaFlags,
+    classifyMapPointZbiorka,
+    normalizeWgHarmonogramu,
+    mapPointMatchesZbiorkaFilter,
+    mapPointMatchesWgHarmonogramuFilter,
+    displayWojewodztwoLabel,
+    normalizeWojewodztwoLabel,
+    mapPointMatchesWojewodztwoFilter,
+    formatWojewodztwoFilterSummary,
+    defaultDateZaladunkuYmd,
+    parseDataZamknieciaWorkaToSortMs,
+    formatRodzajZbiorkiForDoc,
+  ];
+  return (
+    `\nvar POLISH_VOIVODESHIPS = ${jsonForScript([...POLISH_VOIVODESHIPS])};\n` +
+    fns.map((fn) => functionSourceForBrowser(fn)).join('\n') +
+    '\n'
+  );
+}
+
 /** Unikalne wartości kolumny A z wierszy punktu (deduplikacja po {@link normalizeForAddressSearch}). */
 export function uniquePodmiotyHandloweFromRows(rows: SheetRow[]): string[] {
   const seen = new Set<string>();
@@ -684,7 +719,7 @@ function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confidence']): 
     dniHarmonogramu: item.dniHarmonogramu,
     firmaTransportowa: item.firmaTransportowa,
     rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
-    doc: buildMapPointDocPayload(item.rows),
+    doc: { miejsce_zaladunku: buildMiejsceZaladunkuText(item.rows) },
   };
 }
 
@@ -1223,16 +1258,16 @@ ${
     : ''
 }${wordModal}${bulkRatesModal}${referenceAdminEnabled ? manualAdminHtml() : ''}${referenceAdminEnabled ? harmonogramPanelHtml() : ''}  <script>
 ${SITE_PASSWORD_FETCH_SNIPPET}
-    const adresy = ${JSON.stringify(points)};
-    const hasCountLegend = ${JSON.stringify(hasAnyPoints)};
-    const showZbiorkaFilter = ${JSON.stringify(showZbiorkaFilter)};
-    const showHarmonogramFilter = ${JSON.stringify(showHarmonogramFilter)};
-    const showWojewodztwoFilter = ${JSON.stringify(showWojewodztwoFilter)};
-    const wordDocEnabled = ${JSON.stringify(wordEnabled)};
-    const transportApiEnabled = ${JSON.stringify(transportApiEnabled)};
-    const TRANSPORT_WEBAPP_URL = ${JSON.stringify(transportWebAppUrl)};
-    const PODWYKOLISTA = ${JSON.stringify(wordEmbed?.podwykoOptions ?? [])};
-    const WORD_TEMPLATE_B64 = ${JSON.stringify(wordEmbed?.templateBase64 ?? '')};
+    const adresy = ${jsonForScript(points)};
+    const hasCountLegend = ${jsonForScript(hasAnyPoints)};
+    const showZbiorkaFilter = ${jsonForScript(showZbiorkaFilter)};
+    const showHarmonogramFilter = ${jsonForScript(showHarmonogramFilter)};
+    const showWojewodztwoFilter = ${jsonForScript(showWojewodztwoFilter)};
+    const wordDocEnabled = ${jsonForScript(wordEnabled)};
+    const transportApiEnabled = ${jsonForScript(transportApiEnabled)};
+    const TRANSPORT_WEBAPP_URL = ${jsonForScript(transportWebAppUrl)};
+    const PODWYKOLISTA = ${jsonForScript(wordEmbed?.podwykoOptions ?? [])};
+    const WORD_TEMPLATE_B64 = ${jsonForScript(wordEmbed?.templateBase64 ?? '')};
 ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrowserScript() : ''}${(wordEnabled || referenceAdminEnabled) ? harmonogramDaysPickerBrowserScript() : ''}${wordEnabled ? "    var lastRouteName = '';\n    var lastRouteRate = '';\n    var routeNameMode = 'continue';\n    var routeRateBaseline = '';\n    var routeRateBaselineName = '';\n    var routeNameTouched = false;\n    var routeRateTouched = false;\n    var routeRateRequest = 0;\n    var routeRateTimer = 0;\n    var routeNameProposeTicket = 0;\n" : ''}
 
     const map = L.map('map', { zoomControl: false }).setView([52.1, 19.4], 6);
@@ -1241,7 +1276,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
-    var colorBulkSelected = ${JSON.stringify(COLOR_BULK_SELECTED)};
+    var colorBulkSelected = ${jsonForScript(COLOR_BULK_SELECTED)};
     function pinIcon(kolor, highlight) {
       var shadow = highlight
         ? '0 0 0 3px #ea3aed, 0 1px 4px rgba(0,0,0,0.45)'
@@ -1287,48 +1322,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         console.error(err);
       }
     }
+${mapSharedBrowserScript()}
     function normalizeForAddressSearchMap(text) {
-      var s = String(text == null ? '' : text).trim().replace(/\\s+/g, ' ');
-      if (s) {
-        s = s.replace(/(^|[\\s,])(ul\\.?|ulica|al\\.?|aleja|alei|pl\\.?|plac)\\s+/gi, '$1');
-        s = s.replace(/(^|[\\s,])(gen|ks|kard|sw|św)\\.(?=[\\p{L}])/giu, function (_m, lead, abbr) {
-          var lower = String(abbr).toLowerCase();
-          if (lower.indexOf('gen') === 0) return lead + 'Generała ';
-          if (lower.indexOf('ks') === 0) return lead + 'Księdza ';
-          if (lower.indexOf('kard') === 0) return lead + 'Kardynała ';
-          return lead + 'Świętego ';
-        });
-        s = s.replace(/(^|[\\s,])gen\\.\\s*/gi, '$1Generała ');
-        s = s.replace(/(^|[\\s,])ks\\.\\s*/gi, '$1Księdza ');
-        s = s.replace(/(^|[\\s,])kard\\.\\s*/gi, '$1Kardynała ');
-        s = s.replace(/(^|[\\s,])sw\\.\\s*/gi, '$1Świętego ');
-        s = s.replace(/(^|[\\s,])św\\.\\s*/gi, '$1Świętego ');
-        s = s.toLocaleLowerCase('pl').replace(/\\s+/g, ' ').trim();
-      }
-      s = s.normalize('NFD').replace(/\\p{M}/gu, '');
-      s = s
-        .replace(/ł/g, 'l')
-        .replace(/Ł/g, 'l')
-        .replace(/ą/g, 'a')
-        .replace(/Ą/g, 'a')
-        .replace(/ć/g, 'c')
-        .replace(/Ć/g, 'c')
-        .replace(/ę/g, 'e')
-        .replace(/Ę/g, 'e')
-        .replace(/ń/g, 'n')
-        .replace(/Ń/g, 'n')
-        .replace(/ó/g, 'o')
-        .replace(/Ó/g, 'o')
-        .replace(/ś/g, 's')
-        .replace(/Ś/g, 's')
-        .replace(/ź/g, 'z')
-        .replace(/Ź/g, 'z')
-        .replace(/ż/g, 'z')
-        .replace(/Ż/g, 'z');
-      return s
-        .toLowerCase()
-        .replace(/\\s+/g, ' ')
-        .trim();
+      return normalizeForAddressSearch(text);
     }
     var LOCALITY_SECOND_WORD = {
       gora: 1, sol: 1, targ: 1, dunajec: 1, gdanski: 1, podlaski: 1, podlaska: 1,
@@ -1380,86 +1376,27 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       return insertCommaHeuristicMap(addr);
     }
     function mapPointMatchesSearchMap(p, query) {
-      var q = normalizeForAddressSearchMap(query);
-      if (!q) return true;
-      if (normalizeForAddressSearchMap(p.adres).indexOf(q) !== -1) return true;
-      var labels = p.searchLabels || [];
-      for (var i = 0; i < labels.length; i++) {
-        if (normalizeForAddressSearchMap(String(labels[i])).indexOf(q) !== -1) return true;
-      }
-      return false;
-    }
-    function parseZbiorkaFlagsMap(zbiorka) {
-      var raw = String(zbiorka || '').trim();
-      if (!raw) return { hasReczna: false, hasMaszyna: false };
-      var lower = raw.toLowerCase();
-      var segments = lower.split('/').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
-      var toScan = segments.length > 0 ? segments : [lower];
-      var hasReczna = false, hasMaszyna = false;
-      for (var i = 0; i < toScan.length; i++) {
-        var seg = toScan[i];
-        if (seg.indexOf('ręcz') !== -1 || seg === 'r') hasReczna = true;
-        else if (seg.indexOf('maszyn') !== -1 || seg === 'm' || seg.indexOf('automat') !== -1) hasMaszyna = true;
-      }
-      return { hasReczna: hasReczna, hasMaszyna: hasMaszyna };
-    }
-    function classifyMapPointZbiorkaMap(zbiorka) {
-      var f = parseZbiorkaFlagsMap(zbiorka);
-      if (f.hasReczna && f.hasMaszyna) return 'obie';
-      if (f.hasReczna) return 'reczna';
-      if (f.hasMaszyna) return 'maszyna';
-      return 'unknown';
+      return mapPointMatchesSearch(p.adres, (p.searchLabels || []).map(String), query);
     }
     function mapPointMatchesZbiorkaFilterMap(zbiorka, mode) {
-      if (mode === 'wszystkie') return true;
-      return classifyMapPointZbiorkaMap(zbiorka) === mode;
+      return mapPointMatchesZbiorkaFilter(zbiorka == null ? '' : String(zbiorka), mode);
     }
     function getZbiorkaFilterMode() {
       var el = document.querySelector('input[name="map-zbiorka-filter"]:checked');
       return el ? String(el.value) : 'wszystkie';
     }
     function normalizeWgHarmonogramuMap(raw) {
-      var s = String(raw || '').trim().toLowerCase();
-      if (s === 'tak') return 'tak';
-      if (s === 'nie') return 'nie';
-      return '';
+      return normalizeWgHarmonogramu(raw);
     }
     function mapPointMatchesWgHarmonogramuFilterMap(wgHarmonogramu, mode) {
-      if (mode === 'wszystkie') return true;
-      return normalizeWgHarmonogramuMap(wgHarmonogramu) === mode;
+      return mapPointMatchesWgHarmonogramuFilter(wgHarmonogramu, mode);
     }
     function getWgHarmonogramuFilterMode() {
       var el = document.querySelector('input[name="map-harmonogram-filter"]:checked');
       return el ? String(el.value) : 'wszystkie';
     }
-    function normalizeWojewodztwoLabelMap(raw) {
-      var t = String(raw || '').trim();
-      if (!t) return 'Nieznane';
-      var lower = t.toLowerCase();
-      if (lower === 'do uzupełnienia' || lower === 'do uzupelnienia') return 'Nieznane';
-      function asciiKey(s) {
-        return String(s || '').toLowerCase().normalize('NFD').replace(/\\p{M}/gu, '').replace(/ł/g, 'l');
-      }
-      var key = asciiKey(t);
-      var official = ${JSON.stringify([...POLISH_VOIVODESHIPS])};
-      for (var i = 0; i < official.length; i++) {
-        if (asciiKey(official[i]) === key) {
-          var o = String(official[i]).toLowerCase();
-          return o.charAt(0).toUpperCase() + o.slice(1);
-        }
-      }
-      return lower.charAt(0).toUpperCase() + lower.slice(1);
-    }
     function mapPointMatchesWojewodztwoFilterMap(woj, selected) {
-      var list = Array.isArray(selected) ? selected : [selected];
-      var selectedList = [];
-      for (var i = 0; i < list.length; i++) {
-        var mode = String(list[i] || '').trim();
-        if (mode && mode !== 'wszystkie') selectedList.push(normalizeWojewodztwoLabelMap(mode));
-      }
-      if (selectedList.length === 0) return true;
-      var label = normalizeWojewodztwoLabelMap(woj);
-      return selectedList.indexOf(label) !== -1;
+      return mapPointMatchesWojewodztwoFilter(woj, selected);
     }
     function getWojewodztwoFilterSelection() {
       var boxes = document.querySelectorAll('input[name="map-wojewodztwo-filter"]:checked');
@@ -1470,14 +1407,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       return out;
     }
     function formatWojewodztwoFilterSummaryMap(selected) {
-      var list = [];
-      for (var i = 0; i < selected.length; i++) {
-        var mode = String(selected[i] || '').trim();
-        if (mode && mode !== 'wszystkie') list.push(mode);
-      }
-      if (list.length === 0) return 'Wszystkie';
-      if (list.length === 1) return list[0];
-      return list.length + ' wybrane';
+      return formatWojewodztwoFilterSummary(selected);
     }
     function updateWojewodztwoFilterSummary() {
       var labelEl = document.getElementById('map-wojewodztwo-summary');
@@ -1515,9 +1445,9 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       if (el) el.style.pointerEvents = clickable ? '' : 'none';
     }
 
-    var palettePin = ${JSON.stringify([...PALETTE_PIN])};
-    var color15Plus = ${JSON.stringify(COLOR_15_PLUS)};
-    var colorZeroBags = ${JSON.stringify(COLOR_ZERO_BAGS)};
+    var palettePin = ${jsonForScript([...PALETTE_PIN])};
+    var color15Plus = ${jsonForScript(COLOR_15_PLUS)};
+    var colorZeroBags = ${jsonForScript(COLOR_ZERO_BAGS)};
     function kolorPinezki(count) {
       if (count <= 0) return colorZeroBags;
       if (count >= 15) return color15Plus;
@@ -1526,7 +1456,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
 
     function buildTransportShopKeyMap(podmiot, adres) {
-      return normalizeForAddressSearchMap(podmiot) + '\\0' + normalizeForAddressSearchMap(adres);
+      return buildTransportShopKey(podmiot, adres);
     }
     function getPointTransportLastInfo(p) {
       var byKey = window.__transportDateByKey;
@@ -1608,12 +1538,20 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       }
       var main = '<div class="popup-count">Worki do odebrania: <strong>' + c.filtered + '</strong></div>';
       var transportDate = c.cutoffYmd
-        ? '<div class="popup-count-detail">Ostatni transport: ' + formatYmdToDisplay(c.cutoffYmd) + '</div>'
+        ? '<div class="popup-count-detail">Ostatni transport: ' + escapeHtmlMap(formatYmdToDisplay(c.cutoffYmd)) + '</div>'
         : '';
       var transportKto = c.ktoOdbiera
-        ? '<div class="popup-count-detail">Ostatni odbiór: ' + c.ktoOdbiera + '</div>'
+        ? '<div class="popup-count-detail">Ostatni odbiór: ' + escapeHtmlMap(c.ktoOdbiera) + '</div>'
         : '';
       return main + transportDate + transportKto + '<div class="popup-count-detail">Wszystkie worki: ' + c.total + '</div>';
+    }
+    function escapeHtmlMap(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
     function buildPopupContent(p, pointIdx) {
       var confidenceLabel =
@@ -1625,17 +1563,17 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
               ? '<div class="popup-confidence">Bez kodu w wyniku</div>'
               : '';
       var zbiorkaLine = p.zbiorka
-        ? '<div class="popup-zbiorka">Zbiórka: ' + p.zbiorka + '</div>'
+        ? '<div class="popup-zbiorka">Zbiórka: ' + escapeHtmlMap(p.zbiorka) + '</div>'
         : '';
       var harmNorm = normalizeWgHarmonogramuMap(p.wgHarmonogramu);
       var harmLabel = harmNorm === 'tak' ? 'tak' : (harmNorm === 'nie' ? 'nie' : 'brak wartości');
       if (harmNorm === 'tak' && p.firmaTransportowa) {
-        harmLabel = 'tak - ' + p.firmaTransportowa;
+        harmLabel = 'tak - ' + escapeHtmlMap(p.firmaTransportowa);
       }
       var harmLine = '<div class="popup-harmonogram">Harmonogram: ' + harmLabel + '</div>';
       var podmiotLine =
         p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
-          ? '<div class="popup-podmiot">Podmiot handlowy: ' + p.podmiotyHandlowe.join(', ') + '</div>'
+          ? '<div class="popup-podmiot">Podmiot handlowy: ' + escapeHtmlMap(p.podmiotyHandlowe.join(', ')) + '</div>'
           : '';
       var bulkSelected = isBulkPointSelected(pointIdx);
       var genDocBtn = wordDocEnabled
@@ -1650,12 +1588,12 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       var poprawBtn = (typeof TRANSPORT_WEBAPP_URL !== 'undefined' && TRANSPORT_WEBAPP_URL)
         ? '<button type="button" class="map-popraw-adres-btn btn-popraw-adres" data-point-idx="' + pointIdx + '">Popraw adres</button>'
         : '';
-      return '<div class="popup-address">' + addressWithCommaAfterLocalityMap(p.adres, p.miasto) + '</div>' +
+      return '<div class="popup-address">' + escapeHtmlMap(addressWithCommaAfterLocalityMap(p.adres, p.miasto)) + '</div>' +
         (podmiotLine || '') +
         buildPopupCountHtml(p) +
         (zbiorkaLine || '') +
         (harmLine || '') +
-        '<div class="popup-woj">' + p.woj + '</div>' +
+        '<div class="popup-woj">' + escapeHtmlMap(p.woj) + '</div>' +
         confidenceLabel +
         bulkSelect +
         poprawBtn +
@@ -2040,6 +1978,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     }
     function mapApiErrorCard_(report, resp, err) {
       if ((resp && resp.status === 401) || (err && err.status === 401)) return;
+      if (resp && resp.error === 'proxy_auth_mismatch') return;
       var notJson = !!((resp && resp.notJson) || (err && err.notJson));
       var technical = report && report.technical;
       if (notJson) {
@@ -2177,42 +2116,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       try { localStorage.setItem(storageKey, label); } catch (e) {}
     }
     function parseSealClosureDateMs(raw) {
-      var s = String(raw || '').trim();
-      if (!s) return Number.NEGATIVE_INFINITY;
-      var iso = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:\\b|T)/);
-      if (iso) {
-        var month = parseInt(iso[2], 10);
-        var day = parseInt(iso[3], 10);
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          return Date.UTC(parseInt(iso[1], 10), month - 1, day);
-        }
-      }
-      var dmy = s.match(/^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4})\\b/);
-      if (dmy) {
-        var day2 = parseInt(dmy[1], 10);
-        var month2 = parseInt(dmy[2], 10);
-        var y = parseInt(dmy[3], 10);
-        if (y < 100) y = y >= 70 ? 1900 + y : 2000 + y;
-        if (month2 >= 1 && month2 <= 12 && day2 >= 1 && day2 <= 31) {
-          return Date.UTC(y, month2 - 1, day2);
-        }
-      }
-      if (/^\\d{5,6}$/.test(s)) {
-        var serial = parseInt(s, 10);
-        if (serial >= 20000 && serial <= 80000) {
-          var ms = (serial - 25569) * 86400000;
-          var d = new Date(ms);
-          if (!isNaN(d.getTime())) {
-            return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-          }
-        }
-      }
-      var parsed = Date.parse(s);
-      if (!isNaN(parsed)) {
-        var d2 = new Date(parsed);
-        return Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
-      }
-      return Number.NEGATIVE_INFINITY;
+      return parseDataZamknieciaWorkaToSortMs(raw == null ? '' : String(raw));
     }
     function filterSealRowsByMinDate(sealRows, minDateMs) {
       if (minDateMs == null || !isFinite(minDateMs)) {
@@ -2238,21 +2142,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       return '';
     }
     function formatRodzajZbiorkiSeal(zbiorka) {
-      var raw = String(zbiorka || '').trim();
-      if (!raw) return '';
-      var lower = raw.toLowerCase();
-      var segments = lower.split('/').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
-      var toScan = segments.length > 0 ? segments : [lower];
-      var hasReczna = false, hasMaszyna = false;
-      for (var i = 0; i < toScan.length; i++) {
-        var seg = toScan[i];
-        if (seg.indexOf('ręcz') !== -1 || seg.indexOf('recz') !== -1 || seg === 'r') hasReczna = true;
-        else if (seg.indexOf('maszyn') !== -1 || seg === 'm' || seg.indexOf('automat') !== -1) hasMaszyna = true;
-      }
-      if (hasReczna && hasMaszyna) return 'ręczna i automatyczna';
-      if (hasReczna) return 'ręczna';
-      if (hasMaszyna) return 'automatyczna';
-      return '';
+      return formatRodzajZbiorkiForDoc(zbiorka == null ? '' : String(zbiorka));
     }
     function aggregateRodzajZbiorkiFromSealRows(sealRows) {
       var hasReczna = false, hasMaszyna = false;
@@ -2757,27 +2647,6 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
       docComboboxInited = true;
       setupDocCombobox('doc-sel-przewoznik', 'doc-val-przewoznik', 'doc-sel-przewoznik-list', DOC_LS_PRZEWOZNIK);
       setupDocCombobox('doc-sel-miejsce', 'doc-val-miejsce', 'doc-sel-miejsce-list', DOC_LS_MIEJSCE);
-    }
-    function defaultDateZaladunkuYmd() {
-      var d = new Date();
-      var dow = d.getDay();
-      var hour = d.getHours();
-      if (dow === 6) {
-        d.setDate(d.getDate() + 2);
-      } else if (dow === 0) {
-        d.setDate(d.getDate() + 1);
-      } else if (dow === 5) {
-        if (hour >= 4) {
-          d.setDate(d.getDate() + 3);
-        }
-      } else {
-        var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;
-        d.setDate(d.getDate() + dayOffset);
-      }
-      var y = d.getFullYear();
-      var mo = String(d.getMonth() + 1).padStart(2, '0');
-      var day = String(d.getDate()).padStart(2, '0');
-      return y + '-' + mo + '-' + day;
     }
     function openDocModal(pointIdx) {
       if (!wordDocEnabled) return;
@@ -4495,7 +4364,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
     if (typeof setTransportDatesLoading === 'function') {
       setTransportDatesLoading(true, 'Ładowanie granic województw…');
     }
-    fetch(${JSON.stringify(geoJsonUrl)})
+    fetch(${jsonForScript(geoJsonUrl)})
       .then(function(res) { return res.json(); })
       .then(function(geojson) {
         L.geoJSON(geojson, {
@@ -4623,7 +4492,7 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         '</button>' +
         '<div id="map-wojewodztwo-menu" class="map-wojewodztwo-menu" role="listbox" aria-multiselectable="true" aria-label="Wybierz województwa">' +
         '<button type="button" id="map-wojewodztwo-clear" class="map-wojewodztwo-clear">Wyczyść filtr</button>' +
-        ${JSON.stringify(wojewodztwaOptions)}.map(function(w) {
+        ${jsonForScript(wojewodztwaOptions)}.map(function(w) {
           var esc = String(w).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
           var label = String(w).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           return '<label><input type="checkbox" name="map-wojewodztwo-filter" value="' + esc + '" /> ' + label + '</label>';
@@ -4853,14 +4722,14 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         if (matched.length === 0) return;
         if (matched.length === 1) {
           var one = matched[0].p;
-          map.setView([one.markerLat, one.markerLng], ${JSON.stringify(MAP_SEARCH_SINGLE_MATCH_ZOOM)}, { animate: true });
+          map.setView([one.markerLat, one.markerLng], ${jsonForScript(MAP_SEARCH_SINGLE_MATCH_ZOOM)}, { animate: true });
           return;
         }
         var pointBounds = L.latLngBounds(matched.map(function(e) { return [e.p.markerLat, e.p.markerLng]; }));
         if (pointBounds.isValid()) {
           map.fitBounds(pointBounds, {
-            padding: ${JSON.stringify(MAP_SEARCH_FIT_PADDING)},
-            maxZoom: ${JSON.stringify(MAP_SEARCH_MULTI_MATCH_MAX_ZOOM)},
+            padding: ${jsonForScript(MAP_SEARCH_FIT_PADDING)},
+            maxZoom: ${jsonForScript(MAP_SEARCH_MULTI_MATCH_MAX_ZOOM)},
             animate: true
           });
         }
@@ -4927,7 +4796,7 @@ ${
     ? `    var generatedAt = L.control({ position: 'bottomright' });
     generatedAt.onAdd = function() {
       var div = L.DomUtil.create('div', 'map-generated-at');
-      div.textContent = ${JSON.stringify(`Wygenerowano: ${generatedAtLabel}`)};
+      div.textContent = ${jsonForScript(`Wygenerowano: ${generatedAtLabel}`)};
       return div;
     };
     generatedAt.addTo(map);

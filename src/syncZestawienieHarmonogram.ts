@@ -263,12 +263,25 @@ export function datesMatchingWeekdays(
   return out;
 }
 
+/** Dni wstecz, które okno zawsze obejmuje — także przez granicę miesiąca. */
+export const SYNC_WINDOW_LOOKBACK_DAYS = 7;
+
+/**
+ * Od wcześniejszej z dat: 1. dzień bieżącego miesiąca albo dziś − {@link SYNC_WINDOW_LOOKBACK_DAYS}.
+ * Odbiór z ostatniego dnia miesiąca jest gotowy dopiero 1. dnia następnego, więc samo
+ * „od 1. dnia miesiąca” nigdy by go nie dopisało.
+ */
 export function defaultSyncWindow(now = new Date()): { dataOd: string; dataDo: string } {
   const y = now.getFullYear();
   const m = now.getMonth() + 1;
   const d = now.getDate();
+  const back = new Date(y, m - 1, d - SYNC_WINDOW_LOOKBACK_DAYS);
+  const dataOd =
+    d > SYNC_WINDOW_LOOKBACK_DAYS
+      ? formatDdMmYyyy(y, m, 1)
+      : formatDdMmYyyy(back.getFullYear(), back.getMonth() + 1, back.getDate());
   return {
-    dataOd: formatDdMmYyyy(y, m, 1),
+    dataOd,
     dataDo: formatDdMmYyyy(y, m, d),
   };
 }
@@ -963,11 +976,7 @@ export async function syncZestawienieHarmonogram(
         const ix = headerIndex(headers, field.name);
         if (ix < 0) continue;
         const val = field.value(item.row);
-        if (
-          (field.name === 'Nazwa punktu / nazwa skrócona' ||
-            field.name === 'Nazwa kontrahenta / podmiot handlowy') &&
-          !val
-        ) {
+        if (val === '') {
           continue;
         }
         data.push({

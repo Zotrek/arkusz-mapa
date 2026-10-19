@@ -22,6 +22,11 @@ describe('parseZbiorkaFlags', () => {
     expect(parseZbiorkaFlags('automat')).toEqual({ hasReczna: false, hasMaszyna: true });
     expect(parseZbiorkaFlags('Ręczna / Automat')).toEqual({ hasReczna: true, hasMaszyna: true });
   });
+
+  it('test_parseZbiorkaFlags_when_reczna_without_polish_letter_should_set_reczna', () => {
+    expect(parseZbiorkaFlags('Reczna')).toEqual({ hasReczna: true, hasMaszyna: false });
+    expect(parseZbiorkaFlags('Reczna / Maszyna')).toEqual({ hasReczna: true, hasMaszyna: true });
+  });
 });
 
 describe('classifyMapPointZbiorka via flags', () => {

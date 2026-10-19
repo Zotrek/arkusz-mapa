@@ -63,7 +63,9 @@ if (dataKeys.length === 0 && actionKeys.length === 0) {
 
 fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
 const payload = { version: 2, entries: mergedEntries };
-fs.writeFileSync(CACHE_FILE, JSON.stringify(payload, null, 2));
+const tmpFile = `${CACHE_FILE}.${process.pid}.tmp`;
+fs.writeFileSync(tmpFile, JSON.stringify(payload, null, 2));
+fs.renameSync(tmpFile, CACHE_FILE);
 
 try {
   fs.copyFileSync(DATA_OVERRIDES_FILE, CACHE_OVERRIDES_FILE);

@@ -289,7 +289,72 @@ describe('defaultSyncWindow', () => {
       dataDo: '28.09.2026',
     });
   });
+
+  it('test_defaultSyncWindow_first_of_month_reaches_back_a_week', () => {
+    expect(defaultSyncWindow(new Date(2026, 9, 1))).toEqual({
+      dataOd: '24.09.2026',
+      dataDo: '01.10.2026',
+    });
+  });
+
+  it('test_defaultSyncWindow_last_day_of_previous_month_is_ready_on_first', () => {
+    const window = defaultSyncWindow(new Date(2026, 9, 1));
+    const rows = buildScheduleSyncExpected(
+      window.dataOd,
+      window.dataDo,
+      [...BAZA_CEN_HEADERS],
+      [],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '30.09.2026' })],
+    );
+    expect(rows.map((r) => r.pickupDate)).toEqual(['30.09.2026']);
+  });
 });
+
+function fakeSheetsApi(sheets: Map<string, string[][]>) {
+  return {
+    spreadsheets: {
+      get: vi.fn(async () => ({
+        data: {
+          sheets: [...sheets.keys()].map((title, i) => ({
+            properties: { title, sheetId: i + 1, gridProperties: { rowCount: 1000 } },
+          })),
+        },
+      })),
+      batchUpdate: vi.fn(async (args: {
+        requestBody: { requests: Array<{ addSheet?: { properties: { title: string } } }> };
+      }) => {
+        for (const req of args.requestBody.requests) {
+          if (req.addSheet?.properties.title) {
+            sheets.set(req.addSheet.properties.title, []);
+          }
+        }
+      }),
+      values: {
+        get: vi.fn(async (args: { range: string }) => {
+          const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
+          return { data: { values: title ? sheets.get(title) : [] } };
+        }),
+        update: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
+          const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
+          const month = scheduleMonthSheetName('15.09.2026');
+          sheets.set(title ?? month, args.requestBody.values);
+        }),
+        append: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
+          const title =
+            [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`)) ??
+            scheduleMonthSheetName('15.09.2026');
+          const current = sheets.get(title) ?? [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]];
+          sheets.set(title, [...current, ...args.requestBody.values]);
+        }),
+        batchUpdate: vi.fn(async (_args: {
+          requestBody: { data: Array<{ range: string; values: unknown[][] }> };
+        }) => ({})),
+        clear: vi.fn(),
+      },
+    },
+  };
+}
 
 describe('syncZestawienieHarmonogram', () => {
   it('test_syncZestawienieHarmonogram_creates_sheet_and_appends_without_clear', async () => {
@@ -299,47 +364,7 @@ describe('syncZestawienieHarmonogram', () => {
       [...BAZA_CEN_HEADERS],
       ['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt'],
     ]);
-
-    const api = {
-      spreadsheets: {
-        get: vi.fn(async () => ({
-          data: {
-            sheets: [...sheets.keys()].map((title, i) => ({
-              properties: { title, sheetId: i + 1, gridProperties: { rowCount: 1000 } },
-            })),
-          },
-        })),
-        batchUpdate: vi.fn(async (args: {
-          requestBody: { requests: Array<{ addSheet?: { properties: { title: string } } }> };
-        }) => {
-          for (const req of args.requestBody.requests) {
-            if (req.addSheet?.properties.title) {
-              sheets.set(req.addSheet.properties.title, []);
-            }
-          }
-        }),
-        values: {
-          get: vi.fn(async (args: { range: string }) => {
-            const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
-            return { data: { values: title ? sheets.get(title) : [] } };
-          }),
-          update: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
-            const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
-            const month = scheduleMonthSheetName('15.09.2026');
-            sheets.set(title ?? month, args.requestBody.values);
-          }),
-          append: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
-            const title =
-              [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`)) ??
-              scheduleMonthSheetName('15.09.2026');
-            const current = sheets.get(title) ?? [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]];
-            sheets.set(title, [...current, ...args.requestBody.values]);
-          }),
-          batchUpdate: vi.fn(async () => ({})),
-          clear: vi.fn(),
-        },
-      },
-    };
+    const api = fakeSheetsApi(sheets);
 
     const result = await syncZestawienieHarmonogram(api, {
       spreadsheetId: 'ewid-id',
@@ -358,5 +383,45 @@ describe('syncZestawienieHarmonogram', () => {
       JSON.stringify(c[0]).includes('setDataValidation'),
     );
     expect(validationCalls.length).toBeGreaterThan(0);
+  });
+
+  it('test_syncZestawienieHarmonogram_missing_rate_in_baza_keeps_manual_rates', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const existing = ZESTAWIENIE_HARMONOGRAM_HEADERS.map((h) => {
+      const byHeader: Record<string, string> = {
+        'Adres odbioru': '31-342 Kraków Radzikowskiego 138',
+        'Data odbioru': '15.09.2026',
+        'Kto odbiera': 'THOR',
+        'Ilość worków': '1',
+        Trasa: 'THOR 1',
+        'Stawka za trasę': '300',
+        'Stawka za podjazd': '50',
+        'Stawka za worek': '10',
+      };
+      return byHeader[h] ?? '';
+    });
+    const sheets = new Map<string, string[][]>();
+    sheets.set('odebrane z harmonogramu', [ODEBRANE_HEADERS, odebraneRow(), odebraneRow({ 'Numer plomby': 'P2' })]);
+    sheets.set('Baza cen harmonogram', [
+      [...BAZA_CEN_HEADERS],
+      ['31-342 Kraków Radzikowskiego 138', 'THOR', '', '', '', '', '', 'wt'],
+    ]);
+    sheets.set(monthSheet, [[...ZESTAWIENIE_HARMONOGRAM_HEADERS], existing]);
+    const api = fakeSheetsApi(sheets);
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '15.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    expect(result.updatedCount).toBe(1);
+    const written = api.spreadsheets.values.batchUpdate.mock.calls.flatMap((c) => c[0].requestBody.data);
+    const writtenColumns = written.map((d) => /!([A-Z]+)\d+$/.exec(d.range)?.[1]);
+    const col = (name: string) => String.fromCharCode(65 + ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf(name as never));
+    expect(writtenColumns).toContain(col('Ilość worków'));
+    for (const name of ['Trasa', 'Stawka za trasę', 'Stawka za podjazd', 'Stawka za worek']) {
+      expect(writtenColumns).not.toContain(col(name));
+    }
   });
 });

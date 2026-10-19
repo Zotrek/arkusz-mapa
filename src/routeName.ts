@@ -180,9 +180,13 @@ export function stripEsbuildKeepNames(source: string): string {
   }
 }
 
-/** Źródło funkcji do HTML — bez wrapperów keepNames z tsx/esbuild. */
+/**
+ * Źródło funkcji do HTML — bez wrapperów keepNames z tsx/esbuild.
+ * Vitest przepisuje odwołania do importów na `__vite_ssr_import_N__.nazwa`; w przeglądarce
+ * importowana funkcja jest wstrzyknięta pod własną nazwą.
+ */
 export function functionSourceForBrowser(fn: (...args: never[]) => unknown): string {
-  return stripEsbuildKeepNames(Function.prototype.toString.call(fn));
+  return stripEsbuildKeepNames(Function.prototype.toString.call(fn)).replace(/__vite_ssr_import_\d+__\./g, '');
 }
 
 /** Ten sam kod co funkcje nazwy, wstrzykiwany do HTML. Nie duplikować reguł obok. */

@@ -3,8 +3,9 @@
  * Wpis w cache (dowolny status) ma pierwszeństwo — bez ponownego geokodowania.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { writeFileAtomic } from './atomicWrite.js';
 import {
   DEFAULT_PHASE5_CACHE_PATH,
   DEFAULT_PHASE5_ACTIONS_CACHE_PATH,
@@ -358,7 +359,7 @@ function aggregateZbiorka(rows: SheetRow[]): string | undefined {
   for (const row of rows) {
     const v = (row.zbiorka ?? '').trim().toLowerCase();
     if (v) {
-      if (v.includes('ręcz') || v === 'r') values.add('Ręczna');
+      if (v.includes('ręcz') || v.includes('recz') || v === 'r') values.add('Ręczna');
       else if (v.includes('maszyn') || v === 'm') values.add('Maszyna');
       else values.add(v.charAt(0).toUpperCase() + v.slice(1));
     }
@@ -1163,9 +1164,15 @@ type CachePayload = {
 async function loadCache(
   cacheFilePath: string,
   readFileFn: (path: string, encoding: BufferEncoding) => Promise<string>,
+  logger?: ExecutePhase5Options['logger'],
 ): Promise<Record<string, CacheEntry>> {
+  let raw: string;
   try {
-    const raw = await readFileFn(cacheFilePath, 'utf-8');
+    raw = await readFileFn(cacheFilePath, 'utf-8');
+  } catch {
+    return {};
+  }
+  try {
     const parsed = JSON.parse(raw) as Partial<CachePayload>;
     if (parsed.version !== 2 || !parsed.entries || typeof parsed.entries !== 'object') {
       return {};
@@ -1177,7 +1184,13 @@ async function loadCache(
     }
     const migrated = migrateCacheEntries(result).entries;
     return purgeLegacyAbbreviationCacheKeys(migrated).entries;
-  } catch {
+  } catch (err) {
+    logger?.warn?.(
+      'Phase 5: cache %s is not valid JSON (%d bytes) — ignored: %s',
+      cacheFilePath,
+      raw.length,
+      err instanceof Error ? err.message : String(err),
+    );
     return {};
   }
 }
@@ -1331,11 +1344,7 @@ export async function executePhase5(
   const logger = options.logger;
   const readFileFn =
     options.readFileFn ?? (async (path: string, encoding: BufferEncoding) => readFile(path, encoding));
-  const writeFileFn =
-    options.writeFileFn ??
-    (async (path: string, content: string, encoding: BufferEncoding) => {
-      await writeFile(path, content, encoding);
-    });
+  const writeFileFn = options.writeFileFn ?? writeFileAtomic;
   const mkdirFn = options.mkdirFn ?? mkdir;
 
   const geocoded: GeocodedAddress[] = [];
@@ -1361,11 +1370,11 @@ export async function executePhase5(
 
   if (options.cacheFilePath) {
     const dataCachePath = options.dataCacheFilePath ?? DEFAULT_PHASE5_CACHE_PATH;
-    dataCacheEntries = await loadCache(dataCachePath, readFileFn);
-    Object.assign(cacheEntries, await loadCache(options.cacheFilePath, readFileFn));
+    dataCacheEntries = await loadCache(dataCachePath, readFileFn, logger);
+    Object.assign(cacheEntries, await loadCache(options.cacheFilePath, readFileFn, logger));
     const actionsCachePath = options.actionsCacheFilePath ?? DEFAULT_PHASE5_ACTIONS_CACHE_PATH;
     if (actionsCachePath !== dataCachePath) {
-      const actionsMerged = await loadCache(actionsCachePath, readFileFn);
+      const actionsMerged = await loadCache(actionsCachePath, readFileFn, logger);
       actionsOnlyEntries = buildActionsOnlyCacheEntries(actionsMerged, dataCacheEntries);
     } else if (options.cacheFilePath !== dataCachePath) {
       actionsOnlyEntries = buildActionsOnlyCacheEntries(cacheEntries, dataCacheEntries);

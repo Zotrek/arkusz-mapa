@@ -536,6 +536,31 @@ describe('phase5', () => {
       expect(sleepFn).toHaveBeenCalledTimes(1);
     });
 
+    it('test_executePhase5_when_zbiorka_is_reczna_without_polish_letter_should_aggregate_as_reczna', async () => {
+      const row1 = makeRow({ sourceRowIndex: 2, numerPlomby: '111', zbiorka: 'Reczna' });
+      const row2 = makeRow({ sourceRowIndex: 3, numerPlomby: '222', zbiorka: 'Ręczna' });
+      const grouped = asGrouped([row1, row2]);
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            lat: '52.206',
+            lon: '17.489',
+            address: { state: 'Wielkopolskie', postcode: '62-320', city: 'Miłosław', road: 'os. Władysława Łokietka', house_number: '18' },
+          },
+        ],
+      });
+
+      const result = await executePhase5(grouped, {
+        fetchFn,
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        userAgent: 'arkusz-mapa-test',
+        rateLimitMs: 1,
+      });
+
+      expect(result.geocoded[0].zbiorka).toBe('Ręczna');
+    });
+
     it('test_executePhase5_when_same_address_has_different_shops_should_keep_separate_counts_but_same_geocoded_address', async () => {
       const row1 = makeRow({ sourceRowIndex: 2, numerPlomby: '111', sklep: 'Sklep 1' });
       const row2 = makeRow({ sourceRowIndex: 3, numerPlomby: '222', sklep: 'Sklep 2' });
@@ -1762,6 +1787,29 @@ describe('phase5', () => {
         entries: Record<string, { wojewodztwo?: string }>;
       };
       expect(saved.entries[row.address]?.wojewodztwo).toBe('Pomorskie');
+    });
+
+    it('test_executePhase5_truncated_cache_file_logs_warning', async () => {
+      const warn = vi.fn();
+      await executePhase5(new Map(), {
+        fetchFn: vi.fn(),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        cacheFilePath: '/tmp/phase5-cache-test.json',
+        dataCacheFilePath: '/tmp/phase5-cache-test.json',
+        actionsCacheFilePath: '/tmp/phase5-cache-test.json',
+        readFileFn: vi.fn().mockResolvedValue('{"version":2,"entries":{"62-320 Mił'),
+        writeFileFn: vi.fn().mockResolvedValue(undefined),
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
+        wojewodztwaGeoJsonFeatures: [],
+        logger: { warn },
+      });
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('not valid JSON'),
+        '/tmp/phase5-cache-test.json',
+        expect.any(Number),
+        expect.any(String),
+      );
     });
 
     it('test_executePhase5_when_voivodeship_geojson_fails_should_log_build_error_and_keep_unknown', async () => {

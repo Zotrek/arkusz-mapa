@@ -42,12 +42,17 @@ import {
   buildCloseGeocodedAddressPairs,
   buildTransportShopKey,
   resolveTransportCutoffMsForPoint,
+  mapSharedBrowserScript,
   MAP_MARKER_CLUSTER_MAX_M,
   MAP_SEARCH_SINGLE_MATCH_ZOOM,
   MAP_SEARCH_FIT_PADDING,
 } from './phase6';
-import { filterSealRowsByMinClosureDate } from './wordMapSupport';
-import { routeNameBrowserScript } from './routeName';
+import {
+  filterSealRowsByMinClosureDate,
+  formatRodzajZbiorkiForDoc,
+  parseDataZamknieciaWorkaToSortMs,
+} from './wordMapSupport';
+import { functionSourceForBrowser, routeNameBrowserScript } from './routeName';
 import { routeProtocolBrowserScript } from './routeProtocol';
 
 function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
@@ -407,7 +412,7 @@ describe('phase6', () => {
       );
       expect(html).toContain('firmaTransportowa');
       expect(html).toContain("harmNorm === 'tak' && p.firmaTransportowa");
-      expect(html).toContain("'tak - ' + p.firmaTransportowa");
+      expect(html).toContain("'tak - ' + escapeHtmlMap(p.firmaTransportowa)");
       expect(html).toContain('Janex Transport');
     });
 
@@ -891,7 +896,7 @@ describe('phase6', () => {
       expect(html).not.toContain('rodzajZbiorki: p.rodzaj_zbiorki');
       expect(html).toContain('doc-filter-info');
       expect(html).toContain('transportApiEnabled');
-      expect(html).toContain('var dayOffset = hour >= 0 && hour < 4 ? 0 : 1;');
+      expect(html).toContain(functionSourceForBrowser(defaultDateZaladunkuYmd));
     });
 
     it('test_buildMapHtml_when_word_embed_given_should_inject_proposeRouteName', () => {
@@ -1323,6 +1328,136 @@ showMapErrorCard({
       expect(html).toContain("data-status-source");
       expect(html).toContain("code: 'MAP-E-AUTH-MISMATCH'");
       expect(html).not.toContain('hasło Pages i Worker się różnią. Skontaktuj się z administratorem.');
+    });
+
+    it('test_mapApiErrorCard_when_proxy_auth_mismatch_should_not_show_second_card', () => {
+      const html = protocolHtml();
+      const chooser = html.slice(html.indexOf('function mapApiErrorCard_('), html.indexOf('var mapNoticeHideTimer'));
+      const shown: unknown[] = [];
+      const card = runInNewContext(`${chooser}\nmapApiErrorCard_;`, {
+        showMapErrorCard: (r: unknown) => shown.push(r),
+      }) as (report: object, resp: object | null, err: object | null) => void;
+
+      card({ code: 'MAP-E-TRANSPORT-DATES' }, { ok: false, error: 'proxy_auth_mismatch' }, null);
+      card({ code: 'MAP-E-TRANSPORT-DATES' }, { ok: false, error: 'boom' }, null);
+
+      expect(shown).toHaveLength(1);
+    });
+
+    it('test_buildMapHtml_point_doc_should_embed_only_miejsce_zaladunku', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain('"doc":{"miejsce_zaladunku":');
+      expect(html).not.toContain('"lista_plomb_xml"');
+      expect(html).not.toContain('"lista_plomb"');
+      expect(html).not.toContain('"plomby"');
+    });
+
+    it('test_buildMapHtml_should_inject_mapSharedBrowserScript', () => {
+      expect(protocolHtml()).toContain(mapSharedBrowserScript());
+    });
+
+    it.each([
+      'normalizeRateShopKey',
+      'polishAsciiLower',
+      'normalizeForAddressSearch',
+      'mapPointMatchesSearch',
+      'buildTransportShopKey',
+      'parseZbiorkaFlags',
+      'classifyMapPointZbiorka',
+      'normalizeWgHarmonogramu',
+      'mapPointMatchesZbiorkaFilter',
+      'mapPointMatchesWgHarmonogramuFilter',
+      'normalizeWojewodztwoLabel',
+      'mapPointMatchesWojewodztwoFilter',
+      'formatWojewodztwoFilterSummary',
+      'defaultDateZaladunkuYmd',
+      'parseDataZamknieciaWorkaToSortMs',
+      'formatRodzajZbiorkiForDoc',
+    ])('test_buildMapHtml_shared_function_%s_declared_once', (name) => {
+      const declarations = protocolHtml().split(`function ${name}(`).length - 1;
+      expect(declarations).toBe(1);
+    });
+
+    describe('mapSharedBrowserScript VM', () => {
+    function loadShared(): Record<string, (...args: unknown[]) => unknown> {
+      const sandbox: Record<string, unknown> = {};
+      runInNewContext(
+        `${mapSharedBrowserScript()}
+__api = {
+  normalizeForAddressSearch: normalizeForAddressSearch,
+  mapPointMatchesSearch: mapPointMatchesSearch,
+  buildTransportShopKey: buildTransportShopKey,
+  classifyMapPointZbiorka: classifyMapPointZbiorka,
+  mapPointMatchesZbiorkaFilter: mapPointMatchesZbiorkaFilter,
+  mapPointMatchesWgHarmonogramuFilter: mapPointMatchesWgHarmonogramuFilter,
+  normalizeWojewodztwoLabel: normalizeWojewodztwoLabel,
+  mapPointMatchesWojewodztwoFilter: mapPointMatchesWojewodztwoFilter,
+  formatWojewodztwoFilterSummary: formatWojewodztwoFilterSummary,
+  defaultDateZaladunkuYmd: defaultDateZaladunkuYmd,
+  parseDataZamknieciaWorkaToSortMs: parseDataZamknieciaWorkaToSortMs,
+  formatRodzajZbiorkiForDoc: formatRodzajZbiorkiForDoc
+};`,
+        sandbox,
+      );
+      return sandbox.__api as Record<string, (...args: unknown[]) => unknown>;
+    }
+
+    it('test_mapSharedBrowserScript_classifyMapPointZbiorka_when_reczna_without_polish_letter_should_return_reczna', () => {
+      const api = loadShared();
+      expect(api.classifyMapPointZbiorka('Reczna')).toBe('reczna');
+      expect(api.classifyMapPointZbiorka('Reczna / Maszyna')).toBe('obie');
+    });
+
+    it('test_mapSharedBrowserScript_normalizeForAddressSearch_should_match_ts', () => {
+      const input = 'ul. Św.Jana  5, ŁÓDŹ al. gen. Andersa';
+      expect(loadShared().normalizeForAddressSearch(input)).toBe(normalizeForAddressSearch(input));
+    });
+
+    it('test_mapSharedBrowserScript_mapPointMatchesSearch_when_label_matches_should_return_true', () => {
+      expect(loadShared().mapPointMatchesSearch('Leśna 1', ['Żabka Polska'], 'zabka')).toBe(true);
+    });
+
+    it('test_mapSharedBrowserScript_buildTransportShopKey_should_match_ts', () => {
+      expect(loadShared().buildTransportShopKey('Żabka', 'ul. Leśna 1')).toBe(
+        buildTransportShopKey('Żabka', 'ul. Leśna 1'),
+      );
+    });
+
+    it('test_mapSharedBrowserScript_filters_should_match_ts', () => {
+      const api = loadShared();
+      expect(api.mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'obie')).toBe(
+        mapPointMatchesZbiorkaFilter('Ręczna / Maszyna', 'obie'),
+      );
+      expect(api.mapPointMatchesWgHarmonogramuFilter(' TAK ', 'tak')).toBe(true);
+      expect(api.mapPointMatchesWojewodztwoFilter('swietokrzyskie', ['Świętokrzyskie'])).toBe(true);
+    });
+
+    it('test_mapSharedBrowserScript_normalizeWojewodztwoLabel_should_match_ts', () => {
+      const api = loadShared();
+      for (const raw of ['swietokrzyskie', 'KUJAWSKO-POMORSKIE', '', 'do uzupełnienia', 'Inne']) {
+        expect(api.normalizeWojewodztwoLabel(raw)).toBe(normalizeWojewodztwoLabel(raw));
+      }
+    });
+
+    it('test_mapSharedBrowserScript_formatWojewodztwoFilterSummary_should_match_ts', () => {
+      const selected = ['Mazowieckie', 'Śląskie'];
+      expect(loadShared().formatWojewodztwoFilterSummary(selected)).toBe(formatWojewodztwoFilterSummary(selected));
+    });
+
+    it('test_mapSharedBrowserScript_defaultDateZaladunkuYmd_friday_afternoon_should_return_monday', () => {
+      expect(loadShared().defaultDateZaladunkuYmd(new Date(2026, 5, 5, 10, 0, 0))).toBe('2026-06-08');
+    });
+
+    it('test_mapSharedBrowserScript_parseDataZamknieciaWorkaToSortMs_two_digit_year_should_match_ts', () => {
+      expect(loadShared().parseDataZamknieciaWorkaToSortMs('13.08.26')).toBe(
+        parseDataZamknieciaWorkaToSortMs('13.08.26'),
+      );
+    });
+
+    it('test_mapSharedBrowserScript_formatRodzajZbiorkiForDoc_recz_should_return_reczna', () => {
+      expect(loadShared().formatRodzajZbiorkiForDoc('Recz')).toBe(formatRodzajZbiorkiForDoc('Recz'));
+      expect(loadShared().formatRodzajZbiorkiForDoc('Recz')).toBe('ręczna');
+    });
     });
 
     it('test_prewarm_and_voivodeship_when_they_fail_should_show_dismissible_error_card', () => {
@@ -2193,7 +2328,8 @@ __api = {
       const script = `
 ${html.slice(podwykoStart, podwykoEnd)}
 ${routeNameBrowserScript()}
-${sliceHtml(html, 'function normalizeForAddressSearchMap(', 'function foldLocalityMap(')}
+${mapSharedBrowserScript()}
+${sliceHtml(html, 'function normalizeForAddressSearchMap(', 'var LOCALITY_SECOND_WORD')}
 ${sliceHtml(html, 'function podwykoOptionMatchesQuery(', 'var docComboboxInited = false;')}
 ${sliceHtml(html, 'function findPodwykoIdxByLabel(', 'function selectDocComboboxOption(')}
 ${sliceHtml(html, 'function contractorShortNameForRoute(', 'function pickupDateForRoute(')}
@@ -2787,6 +2923,62 @@ __api = {
       expect(result.htmlContent.indexOf('generatedAt.addTo(map)')).toBeLessThan(
         result.htmlContent.indexOf('legend.addTo(map)'),
       );
+    });
+  });
+
+  describe('security', () => {
+    const PAYLOAD = '</script><img src=x onerror=alert(1)>';
+
+    function geocodedWithAddress(address: string): GeocodedAddress[] {
+      return [{ ...sampleGeocoded()[0], address }];
+    }
+
+    it('test_buildMapHtml_closing_script_in_address_does_not_add_script_blocks', () => {
+      const countScripts = (html: string) => (html.match(/<\/script>/gi) ?? []).length;
+      const safe = buildMapHtml(geocodedWithAddress('62-320 Miłosław Leśna 1'), [], 'https://example.com/woj.json');
+      const evil = buildMapHtml(geocodedWithAddress(PAYLOAD), [], 'https://example.com/woj.json');
+      expect(countScripts(evil)).toBe(countScripts(safe));
+      expect(evil).not.toContain(PAYLOAD);
+    });
+
+    it('test_buildPopupContent_data_from_sheet_is_html_escaped', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      const start = html.indexOf('function buildPopupCountHtml(');
+      const end = html.indexOf('window.__bulkSelectedPointIdxs = window');
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const sandbox: { window: Record<string, unknown>; __api: unknown } = {
+        window: { __transportDatesLoaded: true },
+        __api: null,
+      };
+      runInNewContext(
+        `var transportApiEnabled = true;
+var wordDocEnabled = false;
+var TRANSPORT_WEBAPP_URL = '';
+function getPointSealCounts() { return { total: 1, filtered: 1, cutoffYmd: '', ktoOdbiera: ${JSON.stringify(PAYLOAD)} }; }
+function formatYmdToDisplay(v) { return v; }
+function normalizeWgHarmonogramuMap() { return 'tak'; }
+function isBulkPointSelected() { return false; }
+function addressWithCommaAfterLocalityMap(a) { return a; }
+${html.slice(start, end)}
+__api = buildPopupContent;`,
+        sandbox,
+      );
+      const buildPopupContent = sandbox.__api as (p: Record<string, unknown>, idx: number) => string;
+      const popup = buildPopupContent(
+        {
+          adres: PAYLOAD,
+          miasto: '',
+          zbiorka: PAYLOAD,
+          firmaTransportowa: PAYLOAD,
+          podmiotyHandlowe: [PAYLOAD],
+          woj: PAYLOAD,
+        },
+        0,
+      );
+      expect(popup).not.toContain('<img');
+      expect(popup).not.toContain('</script>');
+      expect(popup).toContain('&lt;img src=x onerror=alert(1)&gt;');
     });
   });
 });

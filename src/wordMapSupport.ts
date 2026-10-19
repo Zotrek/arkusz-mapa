@@ -285,7 +285,7 @@ export function formatRodzajZbiorkiForDoc(zbiorka: string | undefined): string {
   let hasReczna = false;
   let hasMaszyna = false;
   for (const seg of toScan) {
-    if (seg.includes('ręcz') || seg === 'r') {
+    if (seg.includes('ręcz') || seg.includes('recz') || seg === 'r') {
       hasReczna = true;
     } else if (seg.includes('maszyn') || seg === 'm' || seg.includes('automat')) {
       hasMaszyna = true;
