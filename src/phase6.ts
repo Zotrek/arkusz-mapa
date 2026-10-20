@@ -16,7 +16,6 @@ import { polishAsciiLower } from './polishText.js';
 import { normalizeRateShopKey } from './saveRate.js';
 import {
   buildMiejsceZaladunkuText,
-  formatRodzajZbiorkiForDoc,
   loadPodwykoOptionsFromSpreadsheet,
   parseDataZamknieciaWorkaToSortMs,
   readWordTemplateAsBase64ForMap,
@@ -47,9 +46,12 @@ import {
   shouldCopyToOdebraneZHarmonogramu,
 } from './harmonogramDays.js';
 import {
+  aggregateRodzajZbiorkiFromSealRows,
   classifyMapPointZbiorka,
+  formatRodzajZbiorkiForDoc,
   normalizeWgHarmonogramu,
   parseZbiorkaFlags,
+  rodzajZbiorkiLabel,
 } from './zbiorkaClassify.js';
 
 export type {
@@ -635,7 +637,9 @@ export function mapSharedBrowserScript(): string {
     formatWojewodztwoFilterSummary,
     defaultDateZaladunkuYmd,
     parseDataZamknieciaWorkaToSortMs,
+    rodzajZbiorkiLabel,
     formatRodzajZbiorkiForDoc,
+    aggregateRodzajZbiorkiFromSealRows,
   ];
   return (
     `\nvar POLISH_VOIVODESHIPS = ${jsonForScript([...POLISH_VOIVODESHIPS])};\n` +
@@ -2151,20 +2155,6 @@ ${mapSharedBrowserScript()}
     }
     function formatRodzajZbiorkiSeal(zbiorka) {
       return formatRodzajZbiorkiForDoc(zbiorka == null ? '' : String(zbiorka));
-    }
-    function aggregateRodzajZbiorkiFromSealRows(sealRows) {
-      var hasReczna = false, hasMaszyna = false;
-      (sealRows || []).forEach(function (r) {
-        var n = String(r.numerPlomby || '').trim();
-        if (!n) return;
-        var rodzaj = formatRodzajZbiorkiSeal(r.zbiorka);
-        if (rodzaj === 'ręczna' || rodzaj === 'ręczna i automatyczna') hasReczna = true;
-        if (rodzaj === 'automatyczna' || rodzaj === 'ręczna i automatyczna') hasMaszyna = true;
-      });
-      if (hasReczna && hasMaszyna) return 'ręczna i automatyczna';
-      if (hasReczna) return 'ręczna';
-      if (hasMaszyna) return 'automatyczna';
-      return '';
     }
     function sortSealRowsForDoc(sealRows) {
       return (sealRows || []).slice().sort(function (a, b) {

@@ -1,6 +1,7 @@
 /**
  * Faza 5: geokodowanie przez Nominatim + wyznaczanie błędnych adresów.
- * Wpis w cache (dowolny status) ma pierwszeństwo — bez ponownego geokodowania.
+ * Wpis w cache (dowolny status) ma pierwszeństwo — bez ponownego geokodowania;
+ * wyjątek: `bad` starszy niż {@link PHASE5_BAD_CACHE_TTL_DAYS} dni.
  */
 
 import { mkdir, readFile } from 'node:fs/promises';
@@ -44,6 +45,7 @@ import {
   loadWojewodztwaGeoJsonFeatures,
   type WojewodztwoGeoJsonFeature,
 } from './wojewodztwoFromLatLng.js';
+import { aggregateZbiorkaColumn, normalizeWgHarmonogramu } from './zbiorkaClassify.js';
 
 export { stripStreetPrefix } from './streetNormalize.js';
 export {
@@ -353,33 +355,6 @@ function normalizeGmina(gmina: string): string {
   return normalize(gmina).split('(')[0]?.trim() ?? '';
 }
 
-/** Z wierszy zbiera wartości z kolumny L (zbiórka), zwraca "Ręczna" / "Maszyna" / "Ręczna / Maszyna" lub undefined. */
-function aggregateZbiorka(rows: SheetRow[]): string | undefined {
-  const values = new Set<string>();
-  for (const row of rows) {
-    const v = (row.zbiorka ?? '').trim().toLowerCase();
-    if (v) {
-      if (v.includes('ręcz') || v.includes('recz') || v === 'r') values.add('Ręczna');
-      else if (v.includes('maszyn') || v === 'm') values.add('Maszyna');
-      else values.add(v.charAt(0).toUpperCase() + v.slice(1));
-    }
-  }
-  if (values.size === 0) return undefined;
-  return [...values].sort().join(' / ');
-}
-
-/** Normalizuje komórkę „Wg harmonogramu” do tak / nie / ''. */
-export function normalizeWgHarmonogramuCell(raw: string | undefined): 'tak' | 'nie' | '' {
-  const s = (raw ?? '').trim().toLowerCase();
-  if (s === 'tak') {
-    return 'tak';
-  }
-  if (s === 'nie') {
-    return 'nie';
-  }
-  return '';
-}
-
 /**
  * Agregat „Wg harmonogramu” na pinezkę: jeden wspólny tak/nie → ta wartość;
  * mieszane lub puste → undefined.
@@ -387,7 +362,7 @@ export function normalizeWgHarmonogramuCell(raw: string | undefined): 'tak' | 'n
 export function aggregateWgHarmonogramu(rows: SheetRow[]): string | undefined {
   const values = new Set<'tak' | 'nie'>();
   for (const row of rows) {
-    const v = normalizeWgHarmonogramuCell(row.wgHarmonogramu);
+    const v = normalizeWgHarmonogramu(row.wgHarmonogramu);
     if (v) {
       values.add(v);
     }
@@ -1016,6 +991,14 @@ function formatDurationMs(ms: number): string {
   ).padStart(2, '0')}`;
 }
 
+/** „1×120, 2×30” — rosnąco po numerze wariantu. */
+export function formatLadderVariantStats(winsByVariant: ReadonlyMap<number, number>): string {
+  return [...winsByVariant.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([variant, count]) => `${variant}×${count}`)
+    .join(', ');
+}
+
 type CacheEntry = {
   status: 'ok' | 'ok_no_postcode' | 'uncertain' | 'city_only' | 'bad';
   lat?: number;
@@ -1186,6 +1169,28 @@ type CachePayload = {
   entries: Record<string, CacheEntry>;
 };
 
+/** Po tylu dniach wpis `bad` przestaje obowiązywać i adres jest geokodowany ponownie. */
+export const PHASE5_BAD_CACHE_TTL_DAYS = 14;
+
+/** Usuwa wpisy `bad` starsze niż {@link PHASE5_BAD_CACHE_TTL_DAYS} (także z nieczytelnym `updatedAt`). */
+export function dropExpiredBadCacheEntries(
+  entries: Record<string, CacheEntry>,
+  nowMs: number,
+): { entries: Record<string, CacheEntry>; dropped: number } {
+  const maxAgeMs = PHASE5_BAD_CACHE_TTL_DAYS * 24 * 60 * 60 * 1000;
+  const kept: Record<string, CacheEntry> = {};
+  let dropped = 0;
+  for (const [address, entry] of Object.entries(entries)) {
+    const updatedMs = Date.parse(entry.updatedAt);
+    if (entry.status === 'bad' && !(nowMs - updatedMs < maxAgeMs)) {
+      dropped += 1;
+      continue;
+    }
+    kept[address] = entry;
+  }
+  return { entries: kept, dropped };
+}
+
 async function loadCache(
   cacheFilePath: string,
   readFileFn: (path: string, encoding: BufferEncoding) => Promise<string>,
@@ -1208,7 +1213,17 @@ async function loadCache(
       if (sanitized) result[address] = sanitized;
     }
     const migrated = migrateCacheEntries(result).entries;
-    return purgeLegacyAbbreviationCacheKeys(migrated).entries;
+    const purged = purgeLegacyAbbreviationCacheKeys(migrated).entries;
+    const { entries, dropped } = dropExpiredBadCacheEntries(purged, Date.now());
+    if (dropped > 0) {
+      logger?.info?.(
+        'Phase 5: cache %s — %d wpisów bad starszych niż %d dni, adresy zostaną geokodowane ponownie',
+        cacheFilePath,
+        dropped,
+        PHASE5_BAD_CACHE_TTL_DAYS,
+      );
+    }
+    return entries;
   } catch (err) {
     logger?.warn?.(
       'Phase 5: cache %s is not valid JSON (%d bytes) — ignored: %s',
@@ -1296,7 +1311,7 @@ function applyGeocodingFromCache(
   const base = {
     address,
     count: group.count,
-    zbiorka: aggregateZbiorka(group.rows),
+    zbiorka: aggregateZbiorkaColumn(group.rows),
     wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
     dniHarmonogramu: aggregateDniHarmonogramu(group.rows),
     firmaTransportowa: aggregateFirmaTransportowa(group.rows),
@@ -1476,6 +1491,9 @@ export async function executePhase5(
   let lastThrottleStatus = 0;
   let nominatimBlocked = false;
   let nominatimBlockedReported = false;
+  /** Pomiar drabinki zapytań: numer wariantu (od 1), który dał wynik → liczba adresów. */
+  const ladderWinsByVariant = new Map<number, number>();
+  let ladderMisses = 0;
   logger?.info?.(
     'Phase 5: start geocoding %d unique addresses in %d batches (batchSize=%d)',
     total,
@@ -1553,12 +1571,14 @@ export async function executePhase5(
         const sampleRow = group.rows[0];
         const queries = buildGeocodingQueries(sampleRow);
         let bestPick: CandidatePickResult | undefined;
+        let bestPickVariant = 0;
         let sawHttpOk = false;
         let sawTransientFailure = false;
         let httpStatus = 0;
         let netMessage = '';
 
-        for (const query of queries) {
+        for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
+          const query = queries[queryIndex];
           const url = buildNominatimUrl(query);
           let payload = nominatimPayloads.get(url);
           if (!payload) {
@@ -1646,6 +1666,7 @@ export async function executePhase5(
           }
           if (isBetterPick(picked, bestPick)) {
             bestPick = picked;
+            bestPickVariant = queryIndex + 1;
           }
           if (picked.status === 'ok') {
             break;
@@ -1657,6 +1678,15 @@ export async function executePhase5(
           const lat = Number(best.lat);
           const lng = Number(best.lon);
           if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+            ladderWinsByVariant.set(bestPickVariant, (ladderWinsByVariant.get(bestPickVariant) ?? 0) + 1);
+            logger?.info?.(
+              'Phase 5: drabinka — %s z wariantu %d/%d („%s”) dla adresu: %s',
+              bestPick.status,
+              bestPickVariant,
+              queries.length,
+              queries[bestPickVariant - 1],
+              address,
+            );
             const wojewodztwo = extractVoivodeship(best);
             const geocodedItem: GeocodedAddress = {
               address,
@@ -1664,7 +1694,7 @@ export async function executePhase5(
               lat,
               lng,
               wojewodztwo,
-              zbiorka: aggregateZbiorka(group.rows),
+              zbiorka: aggregateZbiorkaColumn(group.rows),
               wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
               dniHarmonogramu: aggregateDniHarmonogramu(group.rows),
               firmaTransportowa: aggregateFirmaTransportowa(group.rows),
@@ -1720,6 +1750,7 @@ export async function executePhase5(
             technical,
           });
         } else {
+          ladderMisses += 1;
           rowsBledneAdresy.push(...group.rows);
           groupedBledneAdresy.push({
             address,
@@ -1826,6 +1857,13 @@ export async function executePhase5(
     networkSkippedAddresses,
     badAddressRows,
   );
+  if (ladderWinsByVariant.size > 0 || ladderMisses > 0) {
+    logger?.info?.(
+      'Phase 5: drabinka — wynik z wariantu (nr×adresy): %s; bez dopasowania po wszystkich wariantach: %d',
+      formatLadderVariantStats(ladderWinsByVariant) || 'brak',
+      ladderMisses,
+    );
+  }
   return {
     geocoded,
     geocodedNoPostcode,

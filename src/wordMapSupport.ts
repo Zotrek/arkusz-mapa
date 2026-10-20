@@ -8,6 +8,9 @@ import PizZip from 'pizzip';
 import * as XLSX from 'xlsx';
 import { logArkuszMapaError } from './mapErrorReport.js';
 import type { SheetRow } from './sheets.js';
+import { aggregateRodzajZbiorkiFromSealRows, formatRodzajZbiorkiForDoc } from './zbiorkaClassify.js';
+
+export { aggregateRodzajZbiorkiFromSealRows, formatRodzajZbiorkiForDoc };
 
 const HEADER_HINT = /^(przew|miejsce|nazwa|podwykon|lista|lp\.?|nr\.?|#)/iu;
 
@@ -266,44 +269,6 @@ export function buildDocListaPlombFields(
   };
 }
 
-/**
- * Mapuje komórkę/agregat kolumny zbiórki na etykietę dokumentu:
- * Ręczna → „ręczna”, Maszyna → „automatyczna”, obie → „ręczna i automatyczna”.
- */
-export function formatRodzajZbiorkiForDoc(zbiorka: string | undefined): string {
-  const raw = (zbiorka ?? '').trim();
-  if (raw.length === 0) {
-    return '';
-  }
-  const lower = raw.toLowerCase();
-  const segments = lower
-    .split('/')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  const toScan = segments.length > 0 ? segments : [lower];
-
-  let hasReczna = false;
-  let hasMaszyna = false;
-  for (const seg of toScan) {
-    if (seg.includes('ręcz') || seg.includes('recz') || seg === 'r') {
-      hasReczna = true;
-    } else if (seg.includes('maszyn') || seg === 'm' || seg.includes('automat')) {
-      hasMaszyna = true;
-    }
-  }
-
-  if (hasReczna && hasMaszyna) {
-    return 'ręczna i automatyczna';
-  }
-  if (hasReczna) {
-    return 'ręczna';
-  }
-  if (hasMaszyna) {
-    return 'automatyczna';
-  }
-  return '';
-}
-
 export interface MapPointDocPayload {
   miejsce_zaladunku: string;
   lista_plomb: string;
@@ -416,37 +381,6 @@ export function filterSealRowsByMinClosureDate(
     }
     return ms >= minDateMs;
   });
-}
-
-/**
- * {{rodzaj_zbiorki}} / rejestr transportu: tylko z plomb, które realnie wchodzą na protokół
- * (po filtrze daty, z numerem plomby — te same wiersze co lista w Wordzie).
- */
-export function aggregateRodzajZbiorkiFromSealRows(rows: SealRowLite[]): string {
-  let hasReczna = false;
-  let hasMaszyna = false;
-  for (const r of rows) {
-    if (r.numerPlomby.trim().length === 0) {
-      continue;
-    }
-    const rodzaj = formatRodzajZbiorkiForDoc(r.zbiorka);
-    if (rodzaj === 'ręczna' || rodzaj === 'ręczna i automatyczna') {
-      hasReczna = true;
-    }
-    if (rodzaj === 'automatyczna' || rodzaj === 'ręczna i automatyczna') {
-      hasMaszyna = true;
-    }
-  }
-  if (hasReczna && hasMaszyna) {
-    return 'ręczna i automatyczna';
-  }
-  if (hasReczna) {
-    return 'ręczna';
-  }
-  if (hasMaszyna) {
-    return 'automatyczna';
-  }
-  return '';
 }
 
 /** Buduje payload Word z lekkich wierszy plomb (po filtrze w przeglądarce). */

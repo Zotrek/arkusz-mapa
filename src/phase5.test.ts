@@ -26,11 +26,14 @@ import {
   aggregateWgHarmonogramu,
   aggregateFirmaTransportowa,
   aggregateDniHarmonogramu,
-  normalizeWgHarmonogramuCell,
   parseRetryAfterMs,
   nominatimBackoffMs,
   NOMINATIM_MAX_CONSECUTIVE_THROTTLED,
+  dropExpiredBadCacheEntries,
+  formatLadderVariantStats,
+  PHASE5_BAD_CACHE_TTL_DAYS,
 } from './phase5';
+import { normalizeWgHarmonogramu } from './zbiorkaClassify';
 
 function makeRow(params: Partial<SheetRow> = {}): SheetRow {
   return {
@@ -74,7 +77,7 @@ describe('phase5', () => {
   describe('aggregateWgHarmonogramu', () => {
     it('test_aggregateWgHarmonogramu_when_single_tak_should_return_tak', () => {
       expect(aggregateWgHarmonogramu([makeRow({ wgHarmonogramu: 'tak' })])).toBe('tak');
-      expect(normalizeWgHarmonogramuCell(' NIE ')).toBe('nie');
+      expect(normalizeWgHarmonogramu(' NIE ')).toBe('nie');
     });
 
     it('test_aggregateWgHarmonogramu_when_mixed_or_empty_should_return_undefined', () => {
@@ -562,6 +565,29 @@ describe('phase5', () => {
       });
 
       expect(result.geocoded[0].zbiorka).toBe('Ręczna');
+    });
+
+    it('test_executePhase5_when_second_variant_matches_should_log_ladder_variant_stats', async () => {
+      const match = {
+        lat: '52.206',
+        lon: '17.489',
+        address: { state: 'Wielkopolskie', postcode: '62-320', city: 'Miłosław', road: 'os. Władysława Łokietka', house_number: '18' },
+      };
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => [] })
+        .mockResolvedValue({ ok: true, json: async () => [match] });
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+      await executePhase5(asGrouped([makeRow()]), {
+        fetchFn,
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        rateLimitMs: 1,
+        logger,
+      });
+
+      const summary = logger.info.mock.calls.find((call) => String(call[0]).includes('wynik z wariantu (nr×adresy)'));
+      expect(summary?.slice(1)).toEqual(['2×1', 0]);
     });
 
     it('test_executePhase5_when_same_address_has_different_shops_should_keep_separate_counts_but_same_geocoded_address', async () => {
@@ -2152,6 +2178,63 @@ describe('phase5', () => {
 
       expect(result.geocoded).toHaveLength(1);
       expect(writeFileFn).not.toHaveBeenCalled();
+    });
+
+    it('test_executePhase5_when_bad_cache_entry_expired_should_geocode_again', async () => {
+      const row = makeRow();
+      const cachePayload = JSON.stringify({
+        version: 2,
+        entries: { [row.address]: { status: 'bad', updatedAt: '2020-01-01T00:00:00.000Z' } },
+      });
+      const fetchFn = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+
+      await executePhase5(asGrouped([row]), {
+        fetchFn,
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        requestRetries: 0,
+        cacheFilePath: '/tmp/phase5-bad-expired.json',
+        dataCacheFilePath: '/tmp/phase5-bad-expired-data.json',
+        actionsCacheFilePath: '/tmp/phase5-bad-expired-actions.json',
+        readFileFn: vi.fn().mockResolvedValue(cachePayload),
+        writeFileFn: vi.fn().mockResolvedValue(undefined),
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
+      });
+
+      expect(fetchFn).toHaveBeenCalled();
+    });
+  });
+
+  describe('formatLadderVariantStats', () => {
+    it('test_formatLadderVariantStats_should_sort_by_variant_number', () => {
+      expect(formatLadderVariantStats(new Map([[3, 1], [1, 120], [2, 30]]))).toBe('1×120, 2×30, 3×1');
+    });
+  });
+
+  describe('dropExpiredBadCacheEntries', () => {
+    const now = Date.parse('2026-10-20T08:00:00Z');
+    const daysAgo = (days: number) => new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+
+    it('test_dropExpiredBadCacheEntries_when_bad_older_than_ttl_should_drop', () => {
+      const result = dropExpiredBadCacheEntries(
+        { a: { status: 'bad', updatedAt: daysAgo(PHASE5_BAD_CACHE_TTL_DAYS + 1) } },
+        now,
+      );
+      expect(result).toEqual({ entries: {}, dropped: 1 });
+    });
+
+    it('test_dropExpiredBadCacheEntries_when_bad_fresh_should_keep', () => {
+      const entries = { a: { status: 'bad' as const, updatedAt: daysAgo(1) } };
+      expect(dropExpiredBadCacheEntries(entries, now)).toEqual({ entries, dropped: 0 });
+    });
+
+    it('test_dropExpiredBadCacheEntries_when_old_ok_should_keep', () => {
+      const entries = { a: { status: 'ok' as const, lat: 52, lng: 17, updatedAt: daysAgo(400) } };
+      expect(dropExpiredBadCacheEntries(entries, now)).toEqual({ entries, dropped: 0 });
+    });
+
+    it('test_dropExpiredBadCacheEntries_when_bad_date_unreadable_should_drop', () => {
+      const result = dropExpiredBadCacheEntries({ a: { status: 'bad', updatedAt: 'wczoraj' } }, now);
+      expect(result.dropped).toBe(1);
     });
   });
 

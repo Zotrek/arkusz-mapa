@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aggregateZbiorkaColumn,
   classifyMapPointZbiorka,
   normalizeWgHarmonogramu,
   parseZbiorkaFlags,
@@ -39,5 +40,23 @@ describe('normalizeWgHarmonogramu', () => {
   it('test_normalizeWgHarmonogramu_when_garbage_should_return_empty', () => {
     expect(normalizeWgHarmonogramu('może')).toBe('');
     expect(normalizeWgHarmonogramu(undefined)).toBe('');
+  });
+});
+
+describe('aggregateZbiorkaColumn', () => {
+  it('test_aggregateZbiorkaColumn_when_no_values_should_return_undefined', () => {
+    expect(aggregateZbiorkaColumn([{ zbiorka: '' }, {}])).toBeUndefined();
+  });
+
+  it('test_aggregateZbiorkaColumn_when_recz_and_automat_should_return_both', () => {
+    expect(aggregateZbiorkaColumn([{ zbiorka: 'Reczna' }, { zbiorka: 'automat' }])).toBe('Maszyna / Ręczna');
+  });
+
+  it('test_aggregateZbiorkaColumn_when_cell_has_both_should_return_both', () => {
+    expect(aggregateZbiorkaColumn([{ zbiorka: 'Ręczna / Maszyna' }])).toBe('Maszyna / Ręczna');
+  });
+
+  it('test_aggregateZbiorkaColumn_when_unknown_text_should_keep_capitalized', () => {
+    expect(aggregateZbiorkaColumn([{ zbiorka: 'worek' }])).toBe('Worek');
   });
 });

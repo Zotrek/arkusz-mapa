@@ -49,6 +49,7 @@ import {
   MAP_SEARCH_FIT_PADDING,
 } from './phase6';
 import {
+  aggregateRodzajZbiorkiFromSealRows,
   filterSealRowsByMinClosureDate,
   formatRodzajZbiorkiForDoc,
   parseDataZamknieciaWorkaToSortMs,
@@ -1567,7 +1568,9 @@ showMapErrorCard({
       'formatWojewodztwoFilterSummary',
       'defaultDateZaladunkuYmd',
       'parseDataZamknieciaWorkaToSortMs',
+      'rodzajZbiorkiLabel',
       'formatRodzajZbiorkiForDoc',
+      'aggregateRodzajZbiorkiFromSealRows',
     ])('test_buildMapHtml_shared_function_%s_declared_once', (name) => {
       const declarations = protocolHtml().split(`function ${name}(`).length - 1;
       expect(declarations).toBe(1);
@@ -1590,7 +1593,8 @@ __api = {
   formatWojewodztwoFilterSummary: formatWojewodztwoFilterSummary,
   defaultDateZaladunkuYmd: defaultDateZaladunkuYmd,
   parseDataZamknieciaWorkaToSortMs: parseDataZamknieciaWorkaToSortMs,
-  formatRodzajZbiorkiForDoc: formatRodzajZbiorkiForDoc
+  formatRodzajZbiorkiForDoc: formatRodzajZbiorkiForDoc,
+  aggregateRodzajZbiorkiFromSealRows: aggregateRodzajZbiorkiFromSealRows
 };`,
         sandbox,
       );
@@ -1652,6 +1656,16 @@ __api = {
     it('test_mapSharedBrowserScript_formatRodzajZbiorkiForDoc_recz_should_return_reczna', () => {
       expect(loadShared().formatRodzajZbiorkiForDoc('Recz')).toBe(formatRodzajZbiorkiForDoc('Recz'));
       expect(loadShared().formatRodzajZbiorkiForDoc('Recz')).toBe('ręczna');
+    });
+
+    it('test_mapSharedBrowserScript_aggregateRodzajZbiorkiFromSealRows_should_match_ts', () => {
+      const rows = [
+        { numerPlomby: '1', zbiorka: 'Recz' },
+        { numerPlomby: '2', zbiorka: 'Maszyna' },
+        { numerPlomby: '', zbiorka: 'Ręczna' },
+      ];
+      expect(loadShared().aggregateRodzajZbiorkiFromSealRows(rows)).toBe(aggregateRodzajZbiorkiFromSealRows(rows));
+      expect(loadShared().aggregateRodzajZbiorkiFromSealRows(rows)).toBe('ręczna i automatyczna');
     });
     });
 
