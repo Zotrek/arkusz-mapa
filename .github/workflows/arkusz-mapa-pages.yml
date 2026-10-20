@@ -60,7 +60,8 @@ jobs:
           restore-keys: |
             phase5-geocode-v2-
 
-      # Repo data/ nadpisuje ten sam klucz adresu co Actions; wpisy tylko z Actions zostają.
+      # Repo data/ nadpisuje ten sam klucz adresu co Actions; wpisy tylko z Actions zostają,
+      # a wpis usunięty z data/ znika też z Actions.
       - name: Scal cache (data/ + Actions)
         run: node scripts/merge-phase5-cache.mjs
 

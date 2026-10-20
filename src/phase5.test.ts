@@ -536,7 +536,7 @@ describe('phase5', () => {
       expect(result.groupedNiepewneAdresy).toEqual([]);
       expect(result.groupedBledneAdresy).toEqual([]);
       expect(fetchFn).toHaveBeenCalledTimes(1);
-      expect(sleepFn).toHaveBeenCalledTimes(1);
+      expect(sleepFn).not.toHaveBeenCalled();
     });
 
     it('test_executePhase5_when_zbiorka_is_reczna_without_polish_letter_should_aggregate_as_reczna', async () => {
@@ -2095,6 +2095,63 @@ describe('phase5', () => {
       expect(result.badUniqueAddresses).toBe(0);
       const reports = logger.error.mock.calls.map((call) => String(call[0]));
       expect(reports.filter((r) => r.includes('kod: MAP-E-GEOCODE-BLOCKED'))).toHaveLength(1);
+    });
+
+    it('test_executePhase5_when_two_addresses_share_query_should_fetch_it_once', async () => {
+      const first = makeRow({ ulica: 'Polna', ulicaRaw: 'Polna', address: '62-320 Miłosław Polna 1', numerBudynku: '1' });
+      const second = makeRow({ ulica: 'Leśna', ulicaRaw: 'Leśna', address: '62-320 Miłosław Leśna 2', numerBudynku: '2' });
+      const fetchFn = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+
+      await executePhase5(asGrouped([first, second]), {
+        fetchFn,
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        rateLimitMs: 1,
+        requestRetries: 0,
+      });
+
+      const urls = fetchFn.mock.calls.map((call) => String(call[0]));
+      expect(urls).toContain(buildNominatimUrl('62-320 Miłosław, Polska'));
+      expect(new Set(urls).size).toBe(urls.length);
+    });
+
+    it('test_executePhase5_when_ladder_ends_without_match_should_pause_only_between_requests', async () => {
+      const fetchFn = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      await executePhase5(asGrouped([makeRow()]), {
+        fetchFn,
+        sleepFn,
+        rateLimitMs: 1,
+        requestRetries: 0,
+      });
+
+      expect(fetchFn.mock.calls.length).toBeGreaterThan(1);
+      expect(sleepFn).toHaveBeenCalledTimes(fetchFn.mock.calls.length - 1);
+    });
+
+    it('test_executePhase5_when_cache_unchanged_should_not_write_cache_file', async () => {
+      const row = makeRow();
+      const cachePayload = JSON.stringify({
+        version: 2,
+        entries: {
+          [row.address]: { status: 'ok', lat: 52.2, lng: 17.4, wojewodztwo: 'Wielkopolskie', updatedAt: '2026-10-01T00:00:00.000Z' },
+        },
+      });
+      const writeFileFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(asGrouped([row]), {
+        fetchFn: vi.fn(),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        cacheFilePath: '/tmp/phase5-unchanged.json',
+        dataCacheFilePath: '/tmp/phase5-unchanged-data.json',
+        actionsCacheFilePath: '/tmp/phase5-unchanged-actions.json',
+        readFileFn: vi.fn().mockResolvedValue(cachePayload),
+        writeFileFn,
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
+      });
+
+      expect(result.geocoded).toHaveLength(1);
+      expect(writeFileFn).not.toHaveBeenCalled();
     });
   });
 

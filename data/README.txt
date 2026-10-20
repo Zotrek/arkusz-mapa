@@ -8,7 +8,8 @@ Domyślnie `npm run generate` czyta i zapisuje TEN plik:
 Po aktualizacji geokodów: zacommituj i wypchnij.
 
 Workflow „arkusz-mapa — Pages”: scala Actions cache + ten plik (data/ wygrywa
-przy tym samym adresie). Zob. scripts/merge-phase5-cache.mjs.
+przy tym samym adresie). Usunięcie wpisu z tego pliku usuwa go też z Actions
+cache (następne generowanie geokoduje adres od nowa). Zob. scripts/merge-phase5-cache.mjs.
 
 Format pliku: { "version": 2, "entries": { "<adres>": { ... } } } — ten sam co zapisuje skrypt.
 

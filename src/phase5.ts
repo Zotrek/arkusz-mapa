@@ -959,13 +959,7 @@ function pickBestCandidate(payload: NominatimResult[], row: SheetRow): Candidate
       status = 'ok';
     }
   } else if (bestScore === 4) {
-    if (isVillagePlaceAddress(row)) {
-      status = 'ok';
-    } else if (isHamletPlaceAddress(row)) {
-      status = 'city_only';
-    } else {
-      status = 'city_only';
-    }
+    status = isVillagePlaceAddress(row) ? 'ok' : 'city_only';
   } else {
     status = 'uncertain';
   }
@@ -1420,6 +1414,10 @@ export async function executePhase5(
   }
 
   const writeCacheEnabled = Boolean(options.cacheFilePath);
+  let cacheDirty = false;
+  /** Odpowiedzi 200 z bieżącego przebiegu — wspólne zapytania (np. „kod miasto”) idą do sieci raz. */
+  const nominatimPayloads = new Map<string, NominatimResult[]>();
+  let pauseBeforeRequest = false;
 
   /** undefined = jeszcze nie ładowano; null = brak / błąd; array = gotowe. */
   let wojFeatures: WojewodztwoGeoJsonFeature[] | null | undefined =
@@ -1446,7 +1444,7 @@ export async function executePhase5(
       return entry;
     }
     const features = await resolveWojFeatures();
-    return applyWojewodztwoEnrichment(
+    const enriched = applyWojewodztwoEnrichment(
       address,
       entry,
       features,
@@ -1455,6 +1453,15 @@ export async function executePhase5(
       writeCacheEnabled,
       logger,
     );
+    if (enriched !== entry) {
+      cacheDirty = true;
+    }
+    return enriched;
+  }
+
+  function storeCacheEntry(address: string, entry: CacheEntry): void {
+    setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, entry);
+    cacheDirty = true;
   }
 
   const groupedEntries = Array.from(groupedByAddress.entries());
@@ -1553,81 +1560,88 @@ export async function executePhase5(
 
         for (const query of queries) {
           const url = buildNominatimUrl(query);
-          let response: Response | null = null;
-          let payload: unknown;
-          let lastError: unknown;
-          for (let attempt = 0; attempt <= requestRetries; attempt++) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
-            try {
-              const fetched = await fetchFn(url, {
-                headers: {
-                  'User-Agent': userAgent,
-                  'Accept-Language': 'pl',
-                },
-                signal: controller.signal,
-              });
-              if (fetched.ok) {
-                payload = await fetched.json();
-                if (!Array.isArray(payload)) {
-                  throw new Error('odpowiedź Nominatim nie jest listą wyników');
-                }
-              }
-              response = fetched;
-              break;
-            } catch (err) {
-              lastError = err;
-              if (attempt < requestRetries) {
-                logger?.warn?.(
-                  'Phase 5: request failed for address %s (attempt %d/%d), retrying in %d ms',
-                  address,
-                  attempt + 1,
-                  requestRetries + 1,
-                  rateLimitMs,
-                );
-                await sleepFn(rateLimitMs);
-              }
-            } finally {
-              clearTimeout(timeoutId);
-            }
-          }
-
-          if (!response) {
-            sawTransientFailure = true;
-            netMessage = lastError instanceof Error ? lastError.message : String(lastError ?? 'brak odpowiedzi');
-            await sleepFn(rateLimitMs);
-            continue;
-          }
-
-          if (!response.ok) {
-            sawTransientFailure = true;
-            httpStatus = response.status;
-            if (!isNominatimThrottleStatus(response.status)) {
+          let payload = nominatimPayloads.get(url);
+          if (!payload) {
+            if (pauseBeforeRequest) {
               await sleepFn(rateLimitMs);
+            }
+            pauseBeforeRequest = true;
+            let response: Response | null = null;
+            let fetchedPayload: unknown;
+            let lastError: unknown;
+            for (let attempt = 0; attempt <= requestRetries; attempt++) {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
+              try {
+                const fetched = await fetchFn(url, {
+                  headers: {
+                    'User-Agent': userAgent,
+                    'Accept-Language': 'pl',
+                  },
+                  signal: controller.signal,
+                });
+                if (fetched.ok) {
+                  fetchedPayload = await fetched.json();
+                  if (!Array.isArray(fetchedPayload)) {
+                    throw new Error('odpowiedź Nominatim nie jest listą wyników');
+                  }
+                }
+                response = fetched;
+                break;
+              } catch (err) {
+                lastError = err;
+                if (attempt < requestRetries) {
+                  logger?.warn?.(
+                    'Phase 5: request failed for address %s (attempt %d/%d), retrying in %d ms',
+                    address,
+                    attempt + 1,
+                    requestRetries + 1,
+                    rateLimitMs,
+                  );
+                  await sleepFn(rateLimitMs);
+                }
+              } finally {
+                clearTimeout(timeoutId);
+              }
+            }
+
+            if (!response) {
+              sawTransientFailure = true;
+              netMessage = lastError instanceof Error ? lastError.message : String(lastError ?? 'brak odpowiedzi');
               continue;
             }
-            consecutiveThrottled += 1;
-            lastThrottleStatus = response.status;
-            if (consecutiveThrottled >= NOMINATIM_MAX_CONSECUTIVE_THROTTLED) {
-              nominatimBlocked = true;
-              break;
+
+            if (!response.ok) {
+              sawTransientFailure = true;
+              httpStatus = response.status;
+              if (!isNominatimThrottleStatus(response.status)) {
+                continue;
+              }
+              consecutiveThrottled += 1;
+              lastThrottleStatus = response.status;
+              if (consecutiveThrottled >= NOMINATIM_MAX_CONSECUTIVE_THROTTLED) {
+                nominatimBlocked = true;
+                break;
+              }
+              await sleepFn(
+                nominatimBackoffMs(
+                  rateLimitMs,
+                  consecutiveThrottled,
+                  parseRetryAfterMs(response.headers?.get('retry-after') ?? null, Date.now()),
+                ),
+              );
+              pauseBeforeRequest = false;
+              continue;
             }
-            await sleepFn(
-              nominatimBackoffMs(
-                rateLimitMs,
-                consecutiveThrottled,
-                parseRetryAfterMs(response.headers?.get('retry-after') ?? null, Date.now()),
-              ),
-            );
-            continue;
+
+            consecutiveThrottled = 0;
+            payload = fetchedPayload as NominatimResult[];
+            nominatimPayloads.set(url, payload);
           }
 
           sawHttpOk = true;
-          consecutiveThrottled = 0;
-
-          const picked = pickBestCandidate(payload as NominatimResult[], sampleRow);
+          const picked = pickBestCandidate(payload, sampleRow);
           if (picked.status === 'bad') {
-            await sleepFn(rateLimitMs);
             continue;
           }
           if (isBetterPick(picked, bestPick)) {
@@ -1636,7 +1650,6 @@ export async function executePhase5(
           if (picked.status === 'ok') {
             break;
           }
-          await sleepFn(rateLimitMs);
         }
 
         if (bestPick && bestPick.bestCandidate && bestPick.status !== 'bad') {
@@ -1674,7 +1687,7 @@ export async function executePhase5(
                 wojewodztwo,
               });
             }
-            setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
+            storeCacheEntry(address, {
               status: bestPick.status,
               lat,
               lng,
@@ -1687,7 +1700,7 @@ export async function executePhase5(
               address,
               liczbaWystapien: group.count,
             });
-            setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
+            storeCacheEntry(address, {
               status: 'bad',
               updatedAt: new Date().toISOString(),
             });
@@ -1712,7 +1725,7 @@ export async function executePhase5(
             address,
             liczbaWystapien: group.count,
           });
-          setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
+          storeCacheEntry(address, {
             status: 'bad',
             updatedAt: new Date().toISOString(),
           });
@@ -1750,12 +1763,13 @@ export async function executePhase5(
         );
         lastEtaLogMs = nowMs;
       }
-
-      await sleepFn(rateLimitMs);
     }
 
     if (options.cacheFilePath) {
-      await saveCache(options.cacheFilePath, cacheEntries, writeFileFn, mkdirFn, readFileFn);
+      if (cacheDirty) {
+        await saveCache(options.cacheFilePath, cacheEntries, writeFileFn, mkdirFn, readFileFn);
+        cacheDirty = false;
+      }
       const geocodedUniqueAddresses = geocoded.length;
       const geocodedNoPostcodeUniqueAddresses = geocodedNoPostcode.length;
       const uncertainUniqueAddresses = uncertainGeocoded.length;
@@ -1770,7 +1784,7 @@ export async function executePhase5(
           networkSkippedAddresses,
       );
       logger?.info?.(
-        'Phase 5: cache saved after batch (%d entries). Progress: ok=%d, ok_no_postcode=%d, uncertain=%d, city_only=%d unique, processed=%d/%d',
+        'Phase 5: batch done (cache %d entries). Progress: ok=%d, ok_no_postcode=%d, uncertain=%d, city_only=%d unique, processed=%d/%d',
         Object.keys(cacheEntries).length,
         geocodedUniqueAddresses,
         geocodedNoPostcodeUniqueAddresses,

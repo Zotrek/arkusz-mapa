@@ -1,17 +1,36 @@
-#!/usr/bin/env node
 /**
  * CI: scala cache geokodowania przed `npm run generate`.
  * - Baza z Actions (.cache/ po restore)
  * - Wpisy z repo (data/phase5-cache.json) nadpisują ten sam klucz adresu (lokalne poprawki wygrywają)
  * - Wpisy tylko z Actions zostają (geokody z poprzednich runów CI, których nie ma w commicie)
+ * - Wpis usunięty z data/ znika też z Actions (lista kluczy z data/ z poprzedniego biegu w .cache/)
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DATA_FILE = 'data/phase5-cache.json';
-const DATA_OVERRIDES_FILE = 'data/phase5-address-overrides.json';
 const CACHE_FILE = '.cache/phase5-cache.json';
-const CACHE_OVERRIDES_FILE = '.cache/phase5-address-overrides.json';
+const DATA_KEYS_FILE = '.cache/phase5-data-keys.json';
+
+/**
+ * @param {Record<string, unknown>} dataEntries
+ * @param {Record<string, unknown>} actionsEntries
+ * @param {string[] | null} previousDataKeys klucze z data/ przy poprzednim scaleniu; null = brak listy
+ */
+export function mergePhase5CacheEntries(dataEntries, actionsEntries, previousDataKeys) {
+  const previous = new Set(previousDataKeys ?? []);
+  const keptActions = {};
+  const removed = [];
+  for (const [key, entry] of Object.entries(actionsEntries)) {
+    if (!(key in dataEntries) && previous.has(key)) {
+      removed.push(key);
+      continue;
+    }
+    keptActions[key] = entry;
+  }
+  return { entries: { ...keptActions, ...dataEntries }, removed };
+}
 
 function loadEntries(filePath) {
   try {
@@ -26,12 +45,19 @@ function loadEntries(filePath) {
   }
 }
 
-function fileSize(path) {
+function loadDataKeys(filePath) {
   try {
-    return fs.statSync(path).size;
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return Array.isArray(parsed) ? parsed.filter((k) => typeof k === 'string') : null;
   } catch {
-    return 0;
+    return null;
   }
+}
+
+function writeJsonAtomic(filePath, value) {
+  const tmpFile = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpFile, JSON.stringify(value, null, 2));
+  fs.renameSync(tmpFile, filePath);
 }
 
 function countByStatus(entries) {
@@ -44,49 +70,55 @@ function countByStatus(entries) {
   return counts;
 }
 
-const dataSize = fileSize(DATA_FILE);
-const actionsSize = fileSize(CACHE_FILE);
-const data = dataSize > 0 ? loadEntries(DATA_FILE) : { entries: {}, bytes: 0 };
-const actions = actionsSize > 0 ? loadEntries(CACHE_FILE) : { entries: {}, bytes: 0 };
+function main() {
+  const data = loadEntries(DATA_FILE);
+  const actions = loadEntries(CACHE_FILE);
+  const dataKeys = Object.keys(data.entries);
+  const actionKeys = Object.keys(actions.entries);
 
-const dataKeys = Object.keys(data.entries);
-const actionKeys = Object.keys(actions.entries);
-const mergedEntries = { ...actions.entries, ...data.entries };
-const overlap = dataKeys.filter((k) => k in actions.entries).length;
-const onlyActions = actionKeys.filter((k) => !(k in data.entries)).length;
-const onlyData = dataKeys.filter((k) => !(k in actions.entries)).length;
+  if (dataKeys.length === 0 && actionKeys.length === 0) {
+    console.log('::warning::Brak cache: ani data/phase5-cache.json, ani Actions — faza 5 zacznie od zera.');
+    return;
+  }
 
-if (dataKeys.length === 0 && actionKeys.length === 0) {
-  console.log('::warning::Brak cache: ani data/phase5-cache.json, ani Actions — faza 5 zacznie od zera.');
-  process.exit(0);
+  const { entries: mergedEntries, removed } = mergePhase5CacheEntries(
+    data.entries,
+    actions.entries,
+    loadDataKeys(DATA_KEYS_FILE),
+  );
+  const overlap = dataKeys.filter((k) => k in actions.entries).length;
+  const onlyActions = actionKeys.filter((k) => !(k in data.entries)).length - removed.length;
+  const onlyData = dataKeys.filter((k) => !(k in actions.entries)).length;
+
+  fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
+  writeJsonAtomic(CACHE_FILE, { version: 2, entries: mergedEntries });
+  writeJsonAtomic(DATA_KEYS_FILE, dataKeys);
+
+  const mergedBytes = fs.statSync(CACHE_FILE).size;
+  const dataStats = countByStatus(data.entries);
+  const actionsStats = countByStatus(actions.entries);
+  const mergedStats = countByStatus(mergedEntries);
+
+  console.log('Phase 5 cache merge (repo data/ ma pierwszeństwo przy tym samym adresie):');
+  console.log(
+    `  data/    entries=${dataKeys.length} bytes=${data.bytes} bad=${dataStats.bad} ok=${dataStats.ok}`,
+  );
+  console.log(
+    `  actions  entries=${actionKeys.length} bytes=${actions.bytes} bad=${actionsStats.bad} ok=${actionsStats.ok} cache-hit context`,
+  );
+  console.log(
+    `  merged   entries=${Object.keys(mergedEntries).length} bytes=${mergedBytes} bad=${mergedStats.bad} ok=${mergedStats.ok}`,
+  );
+  console.log(`  overlap=${overlap} onlyActions=${onlyActions} onlyData=${onlyData} (repo nadpisało ${overlap} wspólnych kluczy)`);
+  if (removed.length > 0) {
+    console.log(`  usunięte z data/ → usunięte z Actions: ${removed.length} (${removed.slice(0, 5).join('; ')})`);
+  }
 }
 
-fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-const payload = { version: 2, entries: mergedEntries };
-const tmpFile = `${CACHE_FILE}.${process.pid}.tmp`;
-fs.writeFileSync(tmpFile, JSON.stringify(payload, null, 2));
-fs.renameSync(tmpFile, CACHE_FILE);
+const isDirectRun =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
-try {
-  fs.copyFileSync(DATA_OVERRIDES_FILE, CACHE_OVERRIDES_FILE);
-  console.log(`  overrides copied: ${DATA_OVERRIDES_FILE} → ${CACHE_OVERRIDES_FILE}`);
-} catch {
-  console.log(`  overrides: brak ${DATA_OVERRIDES_FILE} (opcjonalnie)`);
+if (isDirectRun) {
+  main();
 }
-
-const mergedBytes = fs.statSync(CACHE_FILE).size;
-const dataStats = countByStatus(data.entries);
-const actionsStats = countByStatus(actions.entries);
-const mergedStats = countByStatus(mergedEntries);
-
-console.log('Phase 5 cache merge (repo data/ ma pierwszeństwo przy tym samym adresie):');
-console.log(
-  `  data/    entries=${dataKeys.length} bytes=${data.bytes} bad=${dataStats.bad} ok=${dataStats.ok}`,
-);
-console.log(
-  `  actions  entries=${actionKeys.length} bytes=${actions.bytes} bad=${actionsStats.bad} ok=${actionsStats.ok} cache-hit context`,
-);
-console.log(
-  `  merged   entries=${Object.keys(mergedEntries).length} bytes=${mergedBytes} bad=${mergedStats.bad} ok=${mergedStats.ok}`,
-);
-console.log(`  overlap=${overlap} onlyActions=${onlyActions} onlyData=${onlyData} (repo nadpisało ${overlap} wspólnych kluczy)`);
