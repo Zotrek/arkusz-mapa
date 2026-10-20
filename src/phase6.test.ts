@@ -23,6 +23,7 @@ import {
   defaultDateZaladunkuYmd,
   buildMapHtml,
   executePhase6,
+  MAP_SEARCH_INPUT_DEBOUNCE_MS,
   normalizeForAddressSearch,
   podwykoOptionMatchesSearch,
   addressMatchesSearch,
@@ -851,7 +852,7 @@ describe('phase6', () => {
       expect(html).toContain('sumBulkBagsToCollect');
       expect(html).toContain('Worki do odebrania: 0');
       expect(html).toContain('colorBulkSelected');
-      expect(html).toContain('markerDisplayIcon');
+      expect(html).toContain('applyMarkerDisplayIcon');
       expect(html).toContain('Zaznaczenie zbiorcze');
       expect(html).toContain('Zaznacz do zbiorczego protokołu');
       expect(html).toContain('map-auto-bulk-toggle');
@@ -1364,6 +1365,97 @@ showMapErrorCard({
       expect(shown).toEqual([
         expect.objectContaining({ code: 'MAP-E-DOC-GENERATE', place: 'phase6.ts runDocGenerate', technical: 'boom' }),
       ]);
+    });
+
+    function loadSetMarkerVisible(clustered: boolean) {
+      const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
+      const src = html.slice(html.indexOf('function setMarkerVisible('), html.indexOf('function applyClusteringMode('));
+      const inCluster = new Set<object>();
+      const onMap = new Set<object>();
+      const fn = runInNewContext(`${src}\nsetMarkerVisible;`, {
+        isClusteringEnabled: () => clustered,
+        markersCluster: {
+          hasLayer: (m: object) => inCluster.has(m),
+          removeLayer: (m: object) => inCluster.delete(m),
+        },
+        map: {
+          hasLayer: (m: object) => onMap.has(m),
+          removeLayer: (m: object) => onMap.delete(m),
+        },
+      }) as (marker: object, on: boolean, adds: object[], removals: object[]) => void;
+      const marker = (): { addTo: () => void } => {
+        const m = { addTo: () => onMap.add(m) };
+        return m;
+      };
+      return { fn, inCluster, onMap, marker };
+    }
+
+    it('test_setMarkerVisible_when_clustered_should_batch_adds_for_new_markers', () => {
+      const { fn, marker } = loadSetMarkerVisible(true);
+      const adds: object[] = [];
+      const removals: object[] = [];
+      const a = marker();
+      const b = marker();
+      fn(a, true, adds, removals);
+      fn(b, true, adds, removals);
+      expect(adds).toEqual([a, b]);
+      expect(removals).toEqual([]);
+    });
+
+    it('test_setMarkerVisible_when_already_in_cluster_should_do_nothing', () => {
+      const { fn, inCluster, marker } = loadSetMarkerVisible(true);
+      const a = marker();
+      inCluster.add(a);
+      const adds: object[] = [];
+      const removals: object[] = [];
+      fn(a, true, adds, removals);
+      expect(adds).toEqual([]);
+      expect(removals).toEqual([]);
+      expect(inCluster.has(a)).toBe(true);
+    });
+
+    it('test_setMarkerVisible_when_hidden_from_cluster_should_batch_removal', () => {
+      const { fn, inCluster, marker } = loadSetMarkerVisible(true);
+      const a = marker();
+      inCluster.add(a);
+      const adds: object[] = [];
+      const removals: object[] = [];
+      fn(a, false, adds, removals);
+      expect(removals).toEqual([a]);
+      expect(adds).toEqual([]);
+    });
+
+    it('test_setMarkerVisible_when_clustering_turned_off_should_move_marker_to_map', () => {
+      const { fn, inCluster, onMap, marker } = loadSetMarkerVisible(false);
+      const a = marker();
+      inCluster.add(a);
+      fn(a, true, [], []);
+      expect(inCluster.has(a)).toBe(false);
+      expect(onMap.has(a)).toBe(true);
+    });
+
+    it('test_applyMarkerDisplayIcon_when_look_unchanged_should_skip_setIcon', () => {
+      const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
+      const src = html.slice(html.indexOf('function applyMarkerDisplayIcon('), html.indexOf('function clusterLabelColor('));
+      const apply = runInNewContext(`${src}\napplyMarkerDisplayIcon;`, {
+        isBulkPointSelected: () => false,
+        colorBulkSelected: '#000',
+        pinIcon: (fill: string, highlighted: boolean) => ({ fill, highlighted }),
+      }) as (entry: object, highlight: boolean) => void;
+      const setIcon = vi.fn();
+      const entry = { pointIdx: 0, kolor: '#97F0C7', marker: { options: {}, setIcon } };
+      apply(entry, false);
+      apply(entry, false);
+      apply(entry, true);
+      expect(setIcon).toHaveBeenCalledTimes(2);
+      expect(setIcon).toHaveBeenLastCalledWith({ fill: '#97F0C7', highlighted: true });
+    });
+
+    it('test_buildMapHtml_should_cluster_by_default_and_debounce_search_input', () => {
+      const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
+      expect(html).toContain('id="map-cluster-toggle" checked');
+      expect(html).toContain(`searchInputTimer = setTimeout(applyAddressSearch, ${MAP_SEARCH_INPUT_DEBOUNCE_MS});`);
+      expect(html).not.toContain("addEventListener('input', applyAddressSearch)");
     });
 
     it('test_buildMapHtml_route_fields_then_should_be_caught_in_single_and_bulk_generate', () => {

@@ -12,7 +12,7 @@ import {
   SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU,
   SHEET_NAME_ZESTAWIENIE_HARMONOGRAM,
 } from './config.js';
-import { parseWeekdaysFromDniHarmonogramu } from './harmonogramDays.js';
+import { parseWeekdaysFromDniHarmonogramu, todayWarsawUtcMidnight } from './harmonogramDays.js';
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
 import { normalizeRateShopKey } from './saveRate.js';
@@ -55,29 +55,6 @@ export function isScheduleHeadersV2(headers: string[]): boolean {
   return h9 === 'Trasa' && h11 === 'Stawka za podjazd';
 }
 
-/** Przesuwa „transport się odbył” z kol. 17 → 9; trasa…koszt o +1. */
-export function migrateScheduleValuesV2toV3(values: string[][]): string[][] {
-  if (values.length === 0) {
-    return [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]];
-  }
-  const oldHeader = values[0] ?? [];
-  const newHeader = [
-    ...oldHeader.slice(0, 8).map((h) => String(h ?? '')),
-    ...ZESTAWIENIE_HARMONOGRAM_HEADERS.slice(8),
-  ];
-  const rows = values.slice(1).map((src) => {
-    const cell = (i: number) => (src.length > i && src[i] != null ? String(src[i]) : '');
-    return [
-      ...Array.from({ length: 8 }, (_, i) => cell(i)),
-      cell(16),
-      ...Array.from({ length: 8 }, (_, i) => cell(8 + i)),
-      cell(17),
-      cell(18),
-    ];
-  });
-  return [newHeader, ...rows];
-}
-
 export interface ScheduleSyncExpectedRow {
   key: string;
   address: string;
@@ -106,6 +83,8 @@ export interface ScheduleSyncPlan {
   create: ScheduleSyncExpectedRow[];
   update: Array<{ sheetName: string; sheetRow: number; row: ScheduleSyncExpectedRow }>;
   skippedSettled: number;
+  /** Wiersze z kluczem powtórzonym dalej w rejestrze — sync ich nie widzi. */
+  duplicates: ScheduleRegisterExistingRow[];
 }
 
 /** `Harmonogram Październik 2026` z daty dd.mm.yyyy. */
@@ -118,7 +97,8 @@ export function scheduleMonthSheetName(pickupDate: string, now = new Date()): st
       return `${SCHEDULE_MONTH_SHEET_PREFIX}${MONTH_NAMES_PL[month - 1]} ${year}`;
     }
   }
-  return `${SCHEDULE_MONTH_SHEET_PREFIX}${MONTH_NAMES_PL[now.getMonth()]} ${now.getFullYear()}`;
+  const today = new Date(todayWarsawUtcMidnight(now));
+  return `${SCHEDULE_MONTH_SHEET_PREFIX}${MONTH_NAMES_PL[today.getUTCMonth()]} ${today.getUTCFullYear()}`;
 }
 
 export function isScheduleMonthSheetName(name: string): boolean {
@@ -128,13 +108,13 @@ export function isScheduleMonthSheetName(name: string): boolean {
 
 type SheetsClient = {
   spreadsheets: {
-    get(args: any, ...rest: any[]): Promise<{ data: unknown }>;
-    batchUpdate(args: any, ...rest: any[]): Promise<unknown>;
+    get(args: unknown, ...rest: unknown[]): Promise<{ data: unknown }>;
+    batchUpdate(args: unknown, ...rest: unknown[]): Promise<unknown>;
     values: {
-      get(args: any, ...rest: any[]): Promise<{ data: unknown }>;
-      update(args: any, ...rest: any[]): Promise<unknown>;
-      append(args: any, ...rest: any[]): Promise<unknown>;
-      batchUpdate(args: any, ...rest: any[]): Promise<unknown>;
+      get(args: unknown, ...rest: unknown[]): Promise<{ data: unknown }>;
+      update(args: unknown, ...rest: unknown[]): Promise<unknown>;
+      append(args: unknown, ...rest: unknown[]): Promise<unknown>;
+      batchUpdate(args: unknown, ...rest: unknown[]): Promise<unknown>;
     };
   };
 };
@@ -269,17 +249,18 @@ export const SYNC_WINDOW_LOOKBACK_DAYS = 7;
 /**
  * Od wcześniejszej z dat: 1. dzień bieżącego miesiąca albo dziś − {@link SYNC_WINDOW_LOOKBACK_DAYS}.
  * Odbiór z ostatniego dnia miesiąca jest gotowy dopiero 1. dnia następnego, więc samo
- * „od 1. dnia miesiąca” nigdy by go nie dopisało.
+ * „od 1. dnia miesiąca” nigdy by go nie dopisało. „Dziś” w Europe/Warsaw (runner CI ma UTC).
  */
 export function defaultSyncWindow(now = new Date()): { dataOd: string; dataDo: string } {
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1;
-  const d = now.getDate();
-  const back = new Date(y, m - 1, d - SYNC_WINDOW_LOOKBACK_DAYS);
+  const today = new Date(todayWarsawUtcMidnight(now));
+  const y = today.getUTCFullYear();
+  const m = today.getUTCMonth() + 1;
+  const d = today.getUTCDate();
+  const back = new Date(Date.UTC(y, m - 1, d - SYNC_WINDOW_LOOKBACK_DAYS));
   const dataOd =
     d > SYNC_WINDOW_LOOKBACK_DAYS
       ? formatDdMmYyyy(y, m, 1)
-      : formatDdMmYyyy(back.getFullYear(), back.getMonth() + 1, back.getDate());
+      : formatDdMmYyyy(back.getUTCFullYear(), back.getUTCMonth() + 1, back.getUTCDate());
   return {
     dataOd,
     dataDo: formatDdMmYyyy(y, m, d),
@@ -622,32 +603,48 @@ export function sheetRateWriteValue(raw: string | number | null | undefined): st
   return Number.isFinite(n) ? n : String(raw).trim();
 }
 
+/** Wiersz 1 zawiera kolumny klucza (adres, data, kto) — da się czytać i dopisywać. */
+export function isScheduleHeaderRow(headers: string[]): boolean {
+  return (
+    headerIndex(headers, 'Adres odbioru') >= 0 &&
+    headerIndex(headers, 'Data odbioru') >= 0 &&
+    headerIndex(headers, 'Kto odbiera') >= 0
+  );
+}
+
+function readRegisterRow(
+  headers: string[],
+  row: string[] | undefined,
+): { key: string; settled: boolean; bagCount: number } | null {
+  const address = cell(row, headerIndex(headers, 'Adres odbioru'));
+  const pickupDate = parseToDdMmYyyy(cell(row, headerIndex(headers, 'Data odbioru')));
+  const contractor = cell(row, headerIndex(headers, 'Kto odbiera'));
+  if (!address || !pickupDate || !contractor) {
+    return null;
+  }
+  const ixRoz = headerIndex(headers, 'Rozliczony');
+  const ixBags = headerIndex(headers, 'Ilość worków');
+  return {
+    key: scheduleRowKey(address, pickupDate, contractor),
+    settled: ixRoz >= 0 && foldScheduleKeyPart(cell(row, ixRoz)) === 'tak',
+    bagCount: ixBags >= 0 ? parseBagCountCell(cell(row, ixBags)) : 0,
+  };
+}
+
 export function parseScheduleRegisterRows(
   headers: string[],
   rows: string[][],
   sheetName: string,
 ): ScheduleRegisterExistingRow[] {
-  const ixAdres = headerIndex(headers, 'Adres odbioru');
-  const ixData = headerIndex(headers, 'Data odbioru');
-  const ixKto = headerIndex(headers, 'Kto odbiera');
-  const ixRoz = headerIndex(headers, 'Rozliczony');
-  const ixBags = headerIndex(headers, 'Ilość worków');
   const existing: ScheduleRegisterExistingRow[] = [];
-  if (ixAdres < 0 || ixData < 0 || ixKto < 0) {
+  if (!isScheduleHeaderRow(headers)) {
     return existing;
   }
   rows.forEach((row, index) => {
-    const address = cell(row, ixAdres);
-    const pickupDate = parseToDdMmYyyy(cell(row, ixData));
-    const contractor = cell(row, ixKto);
-    if (!address || !pickupDate || !contractor) return;
-    existing.push({
-      sheetName,
-      sheetRow: index + 2,
-      key: scheduleRowKey(address, pickupDate, contractor),
-      settled: ixRoz >= 0 && foldScheduleKeyPart(cell(row, ixRoz)) === 'tak',
-      bagCount: ixBags >= 0 ? parseBagCountCell(cell(row, ixBags)) : 0,
-    });
+    const parsed = readRegisterRow(headers, row);
+    if (parsed) {
+      existing.push({ sheetName, sheetRow: index + 2, ...parsed });
+    }
   });
   return existing;
 }
@@ -660,7 +657,13 @@ export function planScheduleSync(
   expected: ScheduleSyncExpectedRow[],
   existing: ScheduleRegisterExistingRow[],
 ): ScheduleSyncPlan {
-  const byKey = new Map(existing.map((e) => [e.key, e]));
+  const byKey = new Map<string, ScheduleRegisterExistingRow>();
+  const duplicates: ScheduleRegisterExistingRow[] = [];
+  for (const e of existing) {
+    const shadowed = byKey.get(e.key);
+    if (shadowed) duplicates.push(shadowed);
+    byKey.set(e.key, e);
+  }
   const create: ScheduleSyncExpectedRow[] = [];
   const update: Array<{ sheetName: string; sheetRow: number; row: ScheduleSyncExpectedRow }> = [];
   let skippedSettled = 0;
@@ -681,7 +684,7 @@ export function planScheduleSync(
     }
     create.push(row);
   }
-  return { create, update, skippedSettled };
+  return { create, update, skippedSettled, duplicates };
 }
 
 async function listSpreadsheetSheetTitles(
@@ -758,21 +761,66 @@ function columnLetter(index: number): string {
   return letters;
 }
 
+type SheetProperties = {
+  sheetId?: number;
+  title?: string;
+  gridProperties?: { rowCount?: number };
+};
+
+async function sheetProperties(
+  api: SheetsClient,
+  spreadsheetId: string,
+  sheetName: string,
+): Promise<SheetProperties | undefined> {
+  const metaResponse = await api.spreadsheets.get({ spreadsheetId });
+  const sheets = (metaResponse.data as { sheets?: Array<{ properties?: SheetProperties }> }).sheets;
+  return (sheets ?? []).find((s) => s.properties?.title === sheetName)?.properties;
+}
+
+/**
+ * V2 → V3: „transport się odbył” z kol. 17 na 9 przez `moveDimension` — kolumny jadą razem
+ * z liczbami, datami, formatami i formułami (odczyt + zapis wartości zamieniłby je w tekst).
+ */
+async function migrateScheduleSheetV2toV3(
+  api: SheetsClient,
+  spreadsheetId: string,
+  sheetName: string,
+  v2Headers: string[],
+): Promise<void> {
+  const sheetId = (await sheetProperties(api, spreadsheetId, sheetName))?.sheetId;
+  if (sheetId == null) {
+    throw new Error(`Zestawienie: brak zakładki „${sheetName}” do migracji V2→V3`);
+  }
+  await api.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          moveDimension: {
+            source: { sheetId, dimension: 'COLUMNS', startIndex: 16, endIndex: 17 },
+            destinationIndex: SCHEDULE_COL_TRANSPORT_ODBYL - 1,
+          },
+        },
+      ],
+    },
+  });
+  await api.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${quoteSheet(sheetName)}!A1`,
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[...v2Headers.slice(0, 8), ...ZESTAWIENIE_HARMONOGRAM_HEADERS.slice(8)]],
+    },
+  });
+}
+
 async function ensureTransportOdbyłValidation(
   api: SheetsClient,
   spreadsheetId: string,
   sheetName: string,
   addStrikeRule: boolean,
 ): Promise<void> {
-  const metaResponse = await api.spreadsheets.get({ spreadsheetId });
-  const sheets = (
-    metaResponse.data as {
-      sheets?: Array<{
-        properties?: { sheetId?: number; title?: string; gridProperties?: { rowCount?: number } };
-      }>;
-    }
-  ).sheets;
-  const props = (sheets ?? []).find((s) => s.properties?.title === sheetName)?.properties;
+  const props = await sheetProperties(api, spreadsheetId, sheetName);
   const sheetId = props?.sheetId;
   if (sheetId == null) {
     return;
@@ -816,7 +864,7 @@ async function ensureTransportOdbyłValidation(
           booleanRule: {
             condition: {
               type: 'CUSTOM_FORMULA',
-              values: [{ userEnteredValue: '=$I2="nie"' }],
+              values: [{ userEnteredValue: `=$${columnLetter(col)}2="nie"` }],
             },
             format: { textFormat: { strikethrough: true } },
           },
@@ -836,9 +884,86 @@ export interface SyncZestawienieHarmonogramResult {
   createdCount: number;
   updatedCount: number;
   skippedSettled: number;
+  /** Wiersze przesunięte / rozliczone między odczytem a zapisem — bez update. */
+  skippedChanged: number;
   sheetCreated: boolean;
   dataOd: string;
   dataDo: string;
+}
+
+const UPDATE_FIELDS: Array<{
+  name: string;
+  value: (r: ScheduleSyncExpectedRow) => string | number;
+}> = [
+  { name: 'Ilość worków', value: (r) => r.bagCount },
+  { name: 'Rodzaj zbiórki', value: (r) => r.rodzajZbiorki },
+  { name: 'Trasa', value: (r) => r.routeName },
+  { name: 'Stawka za trasę', value: (r) => sheetRateWriteValue(r.routeRate) },
+  { name: 'Stawka za podjazd', value: (r) => sheetRateWriteValue(r.pickupRate) },
+  { name: 'Stawka za worek', value: (r) => sheetRateWriteValue(r.bagRate) },
+  { name: 'Nazwa punktu / nazwa skrócona', value: (r) => r.shopName },
+  { name: 'Nazwa kontrahenta / podmiot handlowy', value: (r) => r.podmiot },
+];
+
+/**
+ * Update po numerze wiersza z odczytu sprzed kilku sekund — tuż przed zapisem czyta zakładki
+ * jeszcze raz i pomija wiersze, pod którymi jest już inny klucz albo „Rozliczony = tak”
+ * (ręczne sortowanie/usunięcie, zatwierdzenie w rozliczeniach w międzyczasie).
+ */
+async function writeScheduleUpdates(
+  api: SheetsClient,
+  spreadsheetId: string,
+  updates: ScheduleSyncPlan['update'],
+  logger?: LoggerLike,
+): Promise<{ updated: number; skippedChanged: number }> {
+  const bySheet = new Map<string, ScheduleSyncPlan['update']>();
+  for (const item of updates) {
+    const list = bySheet.get(item.sheetName) ?? [];
+    list.push(item);
+    bySheet.set(item.sheetName, list);
+  }
+  const data: Array<{ range: string; values: Array<Array<string | number>> }> = [];
+  let updated = 0;
+  let skippedChanged = 0;
+  for (const [sheetName, items] of bySheet) {
+    const values = (await readValues(api, spreadsheetId, sheetName)).map((r) =>
+      r.map((c) => String(c ?? '')),
+    );
+    const headers = values[0] ?? [];
+    for (const item of items) {
+      const now = readRegisterRow(headers, values[item.sheetRow - 1]);
+      if (!now || now.key !== item.row.key || now.settled) {
+        skippedChanged += 1;
+        logger?.info(
+          'Zestawienie Harmonogram: pominięto %s!%d — wiersz zmienił się od odczytu',
+          sheetName,
+          item.sheetRow,
+        );
+        continue;
+      }
+      updated += 1;
+      for (const field of UPDATE_FIELDS) {
+        const ix = headerIndex(headers, field.name);
+        const val = field.value(item.row);
+        if (ix < 0 || val === '') continue;
+        data.push({
+          range: `${quoteSheet(sheetName)}!${columnLetter(ix)}${item.sheetRow}`,
+          values: [[val]],
+        });
+      }
+    }
+  }
+  if (data.length > 0) {
+    await api.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: { valueInputOption: 'RAW', data },
+    });
+  }
+  return { updated, skippedChanged };
+}
+
+function isBlankRow(row: string[]): boolean {
+  return row.every((c) => c.trim() === '');
 }
 
 /**
@@ -884,31 +1009,21 @@ export async function syncZestawienieHarmonogram(
   const titles = await listSpreadsheetSheetTitles(api, spreadsheetId);
   const registerNames = scheduleRegisterSheetNamesFromTitles(titles);
   const existing: ScheduleRegisterExistingRow[] = [];
-  const headersBySheet = new Map<string, string[]>();
+  const firstRowBySheet = new Map<string, string[]>();
 
   for (const sheetName of registerNames) {
     let currentValues = await readValues(api, spreadsheetId, sheetName);
     let currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
     if (isScheduleHeadersV2(currentHeaders)) {
-      currentValues = migrateScheduleValuesV2toV3(
-        currentValues.map((r) => r.map((c) => String(c ?? ''))),
-      );
+      await migrateScheduleSheetV2toV3(api, spreadsheetId, sheetName, currentHeaders);
+      logger?.info('zestawienie: migrated layout V2→V3 on %s', sheetName);
+      currentValues = await readValues(api, spreadsheetId, sheetName);
       currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
-      await api.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${quoteSheet(sheetName)}!A1`,
-        valueInputOption: 'RAW',
-        requestBody: { values: currentValues },
-      });
-      logger?.info?.('zestawienie: migrated layout V2→V3 on %s', sheetName);
     }
-    const headers = currentHeaders.some((h) => h.trim().length > 0)
-      ? currentHeaders
-      : [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
-    headersBySheet.set(sheetName, headers);
+    firstRowBySheet.set(sheetName, currentHeaders);
     existing.push(
       ...parseScheduleRegisterRows(
-        headers,
+        currentHeaders,
         currentValues.slice(1).map((r) => r.map((c) => String(c ?? ''))),
         sheetName,
       ),
@@ -916,7 +1031,13 @@ export async function syncZestawienieHarmonogram(
   }
 
   const plan = planScheduleSync(expected, existing);
-  let sheetCreated = false;
+  for (const dup of plan.duplicates) {
+    logger?.info(
+      'Zestawienie Harmonogram: UWAGA zdublowany klucz — %s!%d pominięty (ten sam adres, data i odbierający niżej w rejestrze)',
+      dup.sheetName,
+      dup.sheetRow,
+    );
+  }
 
   const createBySheet = new Map<string, ScheduleSyncExpectedRow[]>();
   for (const row of plan.create) {
@@ -926,24 +1047,32 @@ export async function syncZestawienieHarmonogram(
     createBySheet.set(sheetName, list);
   }
 
+  for (const sheetName of createBySheet.keys()) {
+    const firstRow = firstRowBySheet.get(sheetName) ?? [];
+    if (!isBlankRow(firstRow) && !isScheduleHeaderRow(firstRow)) {
+      throw new Error(
+        `Zestawienie: zakładka „${sheetName}” nie ma nagłówków w wierszu 1 — sync nie dopisuje wierszy (popraw zakładkę ręcznie)`,
+      );
+    }
+  }
+
+  let sheetCreated = false;
   for (const [sheetName, rows] of createBySheet) {
-    const exists = await sheetExists(api, spreadsheetId, sheetName);
-    if (!exists) {
+    if (!titles.includes(sheetName)) {
       await ensureSheetExists(api, spreadsheetId, sheetName);
       sheetCreated = true;
+    }
+    let headers = firstRowBySheet.get(sheetName) ?? [];
+    const headerWritten = isBlankRow(headers);
+    if (headerWritten) {
+      headers = [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
       await api.spreadsheets.values.update({
         spreadsheetId,
         range: `${quoteSheet(sheetName)}!A1`,
         valueInputOption: 'RAW',
-        requestBody: { values: [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]] },
+        requestBody: { values: [headers] },
       });
-      headersBySheet.set(sheetName, [...ZESTAWIENIE_HARMONOGRAM_HEADERS]);
     }
-    const headers = headersBySheet.get(sheetName) ?? [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
-    if (!headersBySheet.has(sheetName)) {
-      headersBySheet.set(sheetName, headers);
-    }
-    await ensureTransportOdbyłValidation(api, spreadsheetId, sheetName, !exists);
     await api.spreadsheets.values.append({
       spreadsheetId,
       range: `${quoteSheet(sheetName)}!A1`,
@@ -953,52 +1082,21 @@ export async function syncZestawienieHarmonogram(
         values: rows.map((row) => zestawienieRowValues(row, headers)),
       },
     });
+    await ensureTransportOdbyłValidation(api, spreadsheetId, sheetName, headerWritten);
   }
 
-  if (plan.update.length > 0) {
-    const fields: Array<{
-      name: string;
-      value: (r: ScheduleSyncExpectedRow) => string | number;
-    }> = [
-      { name: 'Ilość worków', value: (r) => r.bagCount },
-      { name: 'Rodzaj zbiórki', value: (r) => r.rodzajZbiorki },
-      { name: 'Trasa', value: (r) => r.routeName },
-      { name: 'Stawka za trasę', value: (r) => sheetRateWriteValue(r.routeRate) },
-      { name: 'Stawka za podjazd', value: (r) => sheetRateWriteValue(r.pickupRate) },
-      { name: 'Stawka za worek', value: (r) => sheetRateWriteValue(r.bagRate) },
-      { name: 'Nazwa punktu / nazwa skrócona', value: (r) => r.shopName },
-      { name: 'Nazwa kontrahenta / podmiot handlowy', value: (r) => r.podmiot },
-    ];
-    const data: Array<{ range: string; values: Array<Array<string | number>> }> = [];
-    for (const item of plan.update) {
-      const headers = headersBySheet.get(item.sheetName) ?? [...ZESTAWIENIE_HARMONOGRAM_HEADERS];
-      for (const field of fields) {
-        const ix = headerIndex(headers, field.name);
-        if (ix < 0) continue;
-        const val = field.value(item.row);
-        if (val === '') {
-          continue;
-        }
-        data.push({
-          range: `${quoteSheet(item.sheetName)}!${columnLetter(ix)}${item.sheetRow}`,
-          values: [[val]],
-        });
-      }
-    }
-    if (data.length > 0) {
-      await api.spreadsheets.values.batchUpdate({
-        spreadsheetId,
-        requestBody: { valueInputOption: 'RAW', data },
-      });
-    }
-  }
+  const { updated, skippedChanged } =
+    plan.update.length > 0
+      ? await writeScheduleUpdates(api, spreadsheetId, plan.update, logger)
+      : { updated: 0, skippedChanged: 0 };
 
   logger?.info(
-    'Zestawienie Harmonogram: oczekiwane %d, nowe %d, zaktualizowane %d, pominięte rozliczone %d, okno %s–%s, nowa zakładka=%s (bez clear)',
+    'Zestawienie Harmonogram: oczekiwane %d, nowe %d, zaktualizowane %d, pominięte rozliczone %d, pominięte zmienione %d, okno %s–%s, nowa zakładka=%s (bez clear)',
     expected.length,
     plan.create.length,
-    plan.update.length,
+    updated,
     plan.skippedSettled,
+    skippedChanged,
     dataOd,
     dataDo,
     sheetCreated,
@@ -1007,10 +1105,12 @@ export async function syncZestawienieHarmonogram(
   return {
     expectedCount: expected.length,
     createdCount: plan.create.length,
-    updatedCount: plan.update.length,
+    updatedCount: updated,
     skippedSettled: plan.skippedSettled,
+    skippedChanged,
     sheetCreated,
     dataOd,
     dataDo,
   };
 }
+

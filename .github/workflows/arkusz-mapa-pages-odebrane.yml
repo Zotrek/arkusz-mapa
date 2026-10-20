@@ -22,7 +22,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: pages
@@ -34,10 +33,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
+      # restore + osobny save z always() — jak w arkusz-mapa-pages.yml.
       - name: Przywróć cache adresów (faza 5)
         id: cache-phase5
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .cache
           key: phase5-geocode-v2-${{ github.run_id }}
@@ -72,6 +74,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Testy i typy
+        run: |
+          npm test
+          npx tsc --noEmit
+
       - name: Zapis klucza Service Account
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
@@ -80,6 +87,7 @@ jobs:
             echo "::error::Brak sekretu GOOGLE_SERVICE_ACCOUNT_JSON"
             exit 1
           fi
+          umask 077
           printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > .ci-credentials.json
 
       - name: Generuj mapę + kopiuj odebrane z harmonogramu
@@ -109,6 +117,17 @@ jobs:
             exit "$status"
           fi
 
+      - name: Usuń klucz Service Account
+        if: always()
+        run: rm -f .ci-credentials.json
+
+      - name: Zapisz cache adresów (faza 5)
+        if: always() && steps.generate.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: phase5-geocode-v2-${{ github.run_id }}
+
       - name: Strona indeksu i stały adres /map
         run: node scripts/build-pages-index.mjs
 
@@ -116,12 +135,12 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::error::Brak CLOUDFLARE_API_TOKEN lub CLOUDFLARE_ACCOUNT_ID"
             exit 1
           fi
-          PROJECT="${{ secrets.CLOUDFLARE_PAGES_PROJECT }}"
           if [ -z "$PROJECT" ]; then
             echo "::error::Brak CLOUDFLARE_PAGES_PROJECT"
             exit 1

@@ -7,12 +7,13 @@
 # Wymagane sekrety:
 #   GOOGLE_SHEETS_ID              — ID arkusza z URL Google Sheets
 #   GOOGLE_SERVICE_ACCOUNT_JSON   — cały plik JSON klucza Service Account
-#   TRANSPORT_WEBAPP_URL          — opcjonalnie; domyślnie /api/transport (same-origin Pages)
 #   CLOUDFLARE_API_TOKEN          — Pages Edit
 #   CLOUDFLARE_ACCOUNT_ID         — Account ID z dash CF
 #   CLOUDFLARE_PAGES_PROJECT      — nazwa projektu Pages (np. arkusz-mapa-xxxx)
 #   NOMINATIM_CONTACT_EMAIL       — e-mail kontaktowy w User-Agent Nominatim (polityka OSM); bez niego tylko ostrzeżenie
 #
+# Build wpisuje TRANSPORT_WEBAPP_URL=/api/transport (same-origin Pages) — bez sekretu.
+# Testy + tsc przed generate: czerwone = nic nie trafia do arkuszy ani na Pages.
 # Generate w GH Actions → wrangler pages deploy → *.pages.dev
 # Na CF Pages env: CFP_PASSWORD + GAS_PROXY_BASE=https://….workers.dev
 # W CF: wyłącz auto-build z Gita, żeby nie dublować.
@@ -34,7 +35,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: pages
@@ -46,11 +46,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # Cały katalog .cache/ — pojedynczy plik w path bywał niestabilny przy save/restore.
+      # restore + osobny save z always(): nowe geokody zostają także przy błędzie po generate.
       - name: Przywróć cache adresów (faza 5)
         id: cache-phase5
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .cache
           key: phase5-geocode-v2-${{ github.run_id }}
@@ -88,6 +91,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Testy i typy
+        run: |
+          npm test
+          npx tsc --noEmit
+
       - name: Zapis klucza Service Account
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
@@ -96,6 +104,7 @@ jobs:
             echo "::error::Brak sekretu GOOGLE_SERVICE_ACCOUNT_JSON"
             exit 1
           fi
+          umask 077
           printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > .ci-credentials.json
 
       - name: Generuj mapę (Google Sheets → HTML)
@@ -123,6 +132,17 @@ jobs:
             exit "$status"
           fi
 
+      - name: Usuń klucz Service Account
+        if: always()
+        run: rm -f .ci-credentials.json
+
+      - name: Zapisz cache adresów (faza 5)
+        if: always() && steps.generate.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: phase5-geocode-v2-${{ github.run_id }}
+
       - name: Strona indeksu i stały adres /map
         run: node scripts/build-pages-index.mjs
 
@@ -130,12 +150,12 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::error::Brak CLOUDFLARE_API_TOKEN lub CLOUDFLARE_ACCOUNT_ID"
             exit 1
           fi
-          PROJECT="${{ secrets.CLOUDFLARE_PAGES_PROJECT }}"
           if [ -z "$PROJECT" ]; then
             echo "::error::Brak CLOUDFLARE_PAGES_PROJECT"
             exit 1

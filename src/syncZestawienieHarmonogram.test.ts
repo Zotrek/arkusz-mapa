@@ -234,6 +234,15 @@ describe('planScheduleSync', () => {
     expect(plan.update).toHaveLength(1);
     expect(plan.update[0]!.row.bagCount).toBe(3);
   });
+
+  it('test_planScheduleSync_when_duplicate_keys_should_report_shadowed_rows', () => {
+    const existing = [
+      { sheetName: 'zestawienie z harmonogramu', sheetRow: 5, key: 'k', settled: false, bagCount: 1 },
+      { sheetName: 'Harmonogram Wrzesień 2026', sheetRow: 2, key: 'k', settled: false, bagCount: 1 },
+    ];
+    const plan = planScheduleSync([], existing);
+    expect(plan.duplicates).toEqual([existing[0]]);
+  });
 });
 
 describe('sheetRateWriteValue', () => {
@@ -297,6 +306,13 @@ describe('defaultSyncWindow', () => {
     });
   });
 
+  it('test_defaultSyncWindow_when_utc_evening_before_warsaw_midnight_should_use_warsaw_date', () => {
+    expect(defaultSyncWindow(new Date('2026-09-30T22:30:00Z'))).toEqual({
+      dataOd: '24.09.2026',
+      dataDo: '01.10.2026',
+    });
+  });
+
   it('test_defaultSyncWindow_last_day_of_previous_month_is_ready_on_first', () => {
     const window = defaultSyncWindow(new Date(2026, 9, 1));
     const rows = buildScheduleSyncExpected(
@@ -322,11 +338,34 @@ function fakeSheetsApi(sheets: Map<string, string[][]>) {
         },
       })),
       batchUpdate: vi.fn(async (args: {
-        requestBody: { requests: Array<{ addSheet?: { properties: { title: string } } }> };
+        requestBody: {
+          requests: Array<{
+            addSheet?: { properties: { title: string } };
+            moveDimension?: {
+              source: { sheetId: number; startIndex: number; endIndex: number };
+              destinationIndex: number;
+            };
+          }>;
+        };
       }) => {
         for (const req of args.requestBody.requests) {
           if (req.addSheet?.properties.title) {
             sheets.set(req.addSheet.properties.title, []);
+          }
+          const move = req.moveDimension;
+          if (move) {
+            const title = [...sheets.keys()][move.source.sheetId - 1]!;
+            const { startIndex, endIndex } = move.source;
+            sheets.set(
+              title,
+              sheets.get(title)!.map((row) => {
+                const r = [...row];
+                while (r.length < endIndex) r.push('');
+                const moved = r.splice(startIndex, endIndex - startIndex);
+                r.splice(move.destinationIndex, 0, ...moved);
+                return r;
+              }),
+            );
           }
         }
       }),
@@ -336,9 +375,13 @@ function fakeSheetsApi(sheets: Map<string, string[][]>) {
           return { data: { values: title ? sheets.get(title) : [] } };
         }),
         update: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
-          const title = [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`));
-          const month = scheduleMonthSheetName('15.09.2026');
-          sheets.set(title ?? month, args.requestBody.values);
+          const title =
+            [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`)) ??
+            scheduleMonthSheetName('15.09.2026');
+          const startRow = Number(/!A(\d+)$/.exec(args.range)?.[1] ?? '1');
+          const current = [...(sheets.get(title) ?? [])];
+          current.splice(startRow - 1, args.requestBody.values.length, ...args.requestBody.values);
+          sheets.set(title, current);
         }),
         append: vi.fn(async (args: { range: string; requestBody: { values: string[][] } }) => {
           const title =
@@ -424,4 +467,151 @@ describe('syncZestawienieHarmonogram', () => {
       expect(writtenColumns).not.toContain(col(name));
     }
   });
+
+  it('test_syncZestawienieHarmonogram_when_row_moved_before_write_should_skip_update', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const sheets = syncSourceSheets();
+    sheets.set(monthSheet, [[...ZESTAWIENIE_HARMONOGRAM_HEADERS], registerRow()]);
+    const api = fakeSheetsApi(sheets);
+    const originalGet = api.spreadsheets.values.get.getMockImplementation()!;
+    let monthReads = 0;
+    api.spreadsheets.values.get.mockImplementation(async (args: { range: string }) => {
+      if (args.range.startsWith(`'${monthSheet}'`) && ++monthReads === 2) {
+        sheets.set(monthSheet, [
+          [...ZESTAWIENIE_HARMONOGRAM_HEADERS],
+          registerRow({ 'Adres odbioru': '30-045 Kraków Królewska 52' }),
+          registerRow(),
+        ]);
+      }
+      return originalGet(args);
+    });
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '15.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    expect(result.updatedCount).toBe(0);
+    expect(result.skippedChanged).toBe(1);
+    expect(api.spreadsheets.values.batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it('test_syncZestawienieHarmonogram_when_row_settled_before_write_should_skip_update', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const sheets = syncSourceSheets();
+    sheets.set(monthSheet, [[...ZESTAWIENIE_HARMONOGRAM_HEADERS], registerRow()]);
+    const api = fakeSheetsApi(sheets);
+    const originalGet = api.spreadsheets.values.get.getMockImplementation()!;
+    let monthReads = 0;
+    api.spreadsheets.values.get.mockImplementation(async (args: { range: string }) => {
+      if (args.range.startsWith(`'${monthSheet}'`) && ++monthReads === 2) {
+        sheets.set(monthSheet, [[...ZESTAWIENIE_HARMONOGRAM_HEADERS], registerRow({ Rozliczony: 'tak' })]);
+      }
+      return originalGet(args);
+    });
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '15.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    expect(result.skippedChanged).toBe(1);
+    expect(api.spreadsheets.values.batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it('test_syncZestawienieHarmonogram_when_month_sheet_empty_should_write_header_before_append', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const sheets = syncSourceSheets();
+    sheets.set(monthSheet, []);
+    const api = fakeSheetsApi(sheets);
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '15.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    expect(result.createdCount).toBe(1);
+    const values = sheets.get(monthSheet)!;
+    expect(values[0]).toEqual([...ZESTAWIENIE_HARMONOGRAM_HEADERS]);
+    expect(values).toHaveLength(2);
+    expect(values[1]![0]).toBe('31-342 Kraków Radzikowskiego 138');
+  });
+
+  it('test_syncZestawienieHarmonogram_when_first_row_is_data_should_throw_without_writes', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const sheets = syncSourceSheets();
+    sheets.set(monthSheet, [registerRow({ 'Adres odbioru': '30-045 Kraków Królewska 52' })]);
+    const api = fakeSheetsApi(sheets);
+
+    await expect(
+      syncZestawienieHarmonogram(api, {
+        spreadsheetId: 'ewid-id',
+        dataOd: '15.09.2026',
+        dataDo: '16.09.2026',
+      }),
+    ).rejects.toThrow(/nagłówk/);
+    expect(api.spreadsheets.values.append).not.toHaveBeenCalled();
+    expect(api.spreadsheets.values.update).not.toHaveBeenCalled();
+  });
+
+  it('test_syncZestawienieHarmonogram_when_v2_layout_should_move_column_keeping_cell_values', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const v2Headers = [
+      ...ZESTAWIENIE_HARMONOGRAM_HEADERS.slice(0, 8),
+      ...ZESTAWIENIE_HARMONOGRAM_HEADERS.slice(9, 17),
+      'transport się odbył',
+      ...ZESTAWIENIE_HARMONOGRAM_HEADERS.slice(17),
+    ];
+    const v2Row: unknown[] = v2Headers.map(() => '');
+    v2Row[0] = '30-045 Kraków Królewska 52';
+    v2Row[3] = '10.09.2026';
+    v2Row[4] = 'THOR';
+    v2Row[7] = 3;
+    v2Row[10] = 175;
+    v2Row[16] = 'nie';
+    const sheets = syncSourceSheets();
+    sheets.set(monthSheet, [v2Headers, v2Row as string[]]);
+    const api = fakeSheetsApi(sheets);
+
+    await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '15.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    const moves = api.spreadsheets.batchUpdate.mock.calls.filter((c) =>
+      JSON.stringify(c[0]).includes('moveDimension'),
+    );
+    expect(moves).toHaveLength(1);
+    const values = sheets.get(monthSheet)!;
+    expect(values[0]!.slice(0, 19)).toEqual([...ZESTAWIENIE_HARMONOGRAM_HEADERS]);
+    const ix = (name: string) => ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf(name as never);
+    expect(values[1]![ix('transport się odbył')]).toBe('nie');
+    expect(values[1]![ix('Stawka za podjazd')]).toBe(175);
+    expect(values[1]![ix('Ilość worków')]).toBe(3);
+  });
 });
+
+function syncSourceSheets(): Map<string, string[][]> {
+  const sheets = new Map<string, string[][]>();
+  sheets.set('odebrane z harmonogramu', [ODEBRANE_HEADERS, odebraneRow()]);
+  sheets.set('Baza cen harmonogram', [
+    [...BAZA_CEN_HEADERS],
+    ['31-342 Kraków Radzikowskiego 138', 'THOR', 'T1', '50', '10', '100', '', 'wt'],
+  ]);
+  return sheets;
+}
+
+function registerRow(overrides: Record<string, string> = {}): string[] {
+  const byHeader: Record<string, string> = {
+    'Adres odbioru': '31-342 Kraków Radzikowskiego 138',
+    'Data odbioru': '15.09.2026',
+    'Kto odbiera': 'THOR',
+    'Ilość worków': '1',
+    ...overrides,
+  };
+  return ZESTAWIENIE_HARMONOGRAM_HEADERS.map((h) => byHeader[h] ?? '');
+}

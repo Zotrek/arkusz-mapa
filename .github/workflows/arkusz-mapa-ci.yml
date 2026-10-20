@@ -25,11 +25,21 @@ on:
       - 'vitest.config.ts'
       - '.github/workflows/arkusz-mapa-ci.yml'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # cache: npm — przywraca cache npm z GitHub (klucz m.in. z package-lock.json).
       # Przy tym samym locku to „stary” cache jest OK: npm ci i tak instaluje wersje z locka.

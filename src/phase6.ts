@@ -83,6 +83,9 @@ export const MAP_MARKER_SPREAD_RADIUS_M = 18;
 /** Zoom przy dokładnie jednym wyniku wyszukiwania (skala okolicy / ulic). */
 export const MAP_SEARCH_SINGLE_MATCH_ZOOM = 16;
 
+/** Opóźnienie filtrowania po wpisaniu znaku — każde przeliczenie dotyka wszystkich pinezek. */
+export const MAP_SEARCH_INPUT_DEBOUNCE_MS = 200;
+
 /** Górny limit zoomu przy wielu wynikach (fitBounds — nie „wchodzi” za głęboko). */
 export const MAP_SEARCH_MULTI_MATCH_MAX_ZOOM = 16;
 
@@ -1289,11 +1292,16 @@ ${wordEnabled ? routeNameBrowserScript() : ''}${wordEnabled ? routeProtocolBrows
         popupAnchor: [0, -12]
       });
     }
-    function markerDisplayIcon(entry, searchHighlight) {
+    /** setIcon odtwarza element DOM — przy 1440 pinezkach tylko gdy wygląd się zmienił. */
+    function applyMarkerDisplayIcon(entry, searchHighlight) {
       var selected = isBulkPointSelected(entry.pointIdx);
       var fill = selected ? colorBulkSelected : entry.kolor;
-      if (entry.marker) entry.marker.options.pinKolor = fill;
-      return pinIcon(fill, selected || searchHighlight);
+      var highlighted = selected || searchHighlight;
+      var iconKey = fill + '|' + (highlighted ? 1 : 0);
+      if (entry.iconKey === iconKey) return;
+      entry.iconKey = iconKey;
+      entry.marker.options.pinKolor = fill;
+      entry.marker.setIcon(pinIcon(fill, highlighted));
     }
     function clusterLabelColor(bg) {
       var light = { '#97f0c7': 1, '#cce5ff': 1, '#ffc107': 1 };
@@ -1717,7 +1725,7 @@ ${mapSharedBrowserScript()}
           var raw = inputEl ? inputEl.value : '';
           var hasSearchFilter = String(raw).trim().length > 0;
           var sMatch = !hasSearchFilter || mapPointMatchesSearchMap(entry.p, raw);
-          entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
+          applyMarkerDisplayIcon(entry, hasSearchFilter && sMatch);
         });
         refreshClusterIcons();
       }
@@ -1766,7 +1774,7 @@ ${mapSharedBrowserScript()}
       var displayCount = displayCountForPoint(p);
       var kolor = kolorPinezki(displayCount);
       entry.kolor = kolor;
-      entry.marker.setIcon(markerDisplayIcon(entry, false));
+      applyMarkerDisplayIcon(entry, false);
     }
     function applyMarkerTransportDisplay(entry) {
       applyMarkerTransportIcon(entry);
@@ -4431,15 +4439,21 @@ ${mapSharedBrowserScript()}
       var el = document.getElementById('map-cluster-toggle');
       return !!(el && el.checked);
     }
-    function setMarkerVisible(marker, on) {
-      if (markersCluster.hasLayer(marker)) markersCluster.removeLayer(marker);
-      if (map.hasLayer(marker)) map.removeLayer(marker);
-      if (!on) return;
-      if (isClusteringEnabled()) {
-        markersCluster.addLayer(marker);
-      } else {
-        marker.addTo(map);
+    /** Zmiany w grupie zbierane do jednego addLayers/removeLayers — pojedyncze addLayer przelicza klastry za każdym razem. */
+    function setMarkerVisible(marker, on, clusterAdds, clusterRemovals) {
+      var clustered = isClusteringEnabled();
+      var inCluster = markersCluster.hasLayer(marker);
+      if (on && clustered && inCluster) return;
+      if (on && !clustered && !inCluster && map.hasLayer(marker)) return;
+      if (inCluster) {
+        if (on) markersCluster.removeLayer(marker);
+        else clusterRemovals.push(marker);
+      } else if (map.hasLayer(marker)) {
+        map.removeLayer(marker);
       }
+      if (!on) return;
+      if (clustered) clusterAdds.push(marker);
+      else marker.addTo(map);
     }
     function applyClusteringMode() {
       if (isClusteringEnabled()) {
@@ -4460,7 +4474,6 @@ ${mapSharedBrowserScript()}
       marker.on('click', function () {
         handleMarkerPrimaryClick(marker, pointIdx);
       });
-      marker.addTo(map);
       markerEntries.push({ marker: marker, p: p, kolor: kolor, pointIdx: pointIdx });
       marker.on('popupopen', function() {
         marker.setPopupContent(buildPopupContent(p, pointIdx));
@@ -4514,7 +4527,7 @@ ${mapSharedBrowserScript()}
       : '';
     var clusterToggleHtml =
       '<div class="map-cluster-filter">' +
-      '<label for="map-cluster-toggle"><input type="checkbox" id="map-cluster-toggle" /> Grupuj nachodzące punkty</label>' +
+      '<label for="map-cluster-toggle"><input type="checkbox" id="map-cluster-toggle" checked /> Grupuj nachodzące punkty</label>' +
       '</div>';
     var bulkPanelHtml = wordDocEnabled
       ? '<div id="map-bulk-panel" class="map-bulk-panel" hidden>' +
@@ -4760,26 +4773,30 @@ ${mapSharedBrowserScript()}
       var wojMode = getWojewodztwoFilterSelection();
       var matchCount = 0;
       var filterCount = 0;
+      var clusterAdds = [];
+      var clusterRemovals = [];
       markerEntries.forEach(function(entry) {
         var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
         var hMatch = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(entry.p.wgHarmonogramu, harmMode);
         var wMatch = !showWojewodztwoFilter || mapPointMatchesWojewodztwoFilterMap(entry.p.woj, wojMode);
         if (!zMatch || !hMatch || !wMatch) {
-          setMarkerVisible(entry.marker, false);
+          setMarkerVisible(entry.marker, false, clusterAdds, clusterRemovals);
           entry.marker.setOpacity(1);
           entry.marker.setZIndexOffset(0);
           setMarkerClickable(entry.marker, false);
           return;
         }
         filterCount++;
-        setMarkerVisible(entry.marker, true);
+        setMarkerVisible(entry.marker, true, clusterAdds, clusterRemovals);
         var sMatch = mapPointMatchesSearchMap(entry.p, raw);
         if (hasSearchFilter && sMatch) matchCount++;
         setMarkerClickable(entry.marker, true);
         entry.marker.setOpacity(hasSearchFilter && !sMatch ? 0.7 : 1);
         entry.marker.setZIndexOffset(hasSearchFilter && sMatch ? 800 : 0);
-        entry.marker.setIcon(markerDisplayIcon(entry, hasSearchFilter && sMatch));
+        applyMarkerDisplayIcon(entry, hasSearchFilter && sMatch);
       });
+      if (clusterRemovals.length > 0) markersCluster.removeLayers(clusterRemovals);
+      if (clusterAdds.length > 0) markersCluster.addLayers(clusterAdds);
       refreshClusterIcons();
       if (countEl) {
         countEl.textContent = 'Widoczne: ' + filterCount + ' szt.';
@@ -4797,12 +4814,19 @@ ${mapSharedBrowserScript()}
       skipInitialSearchViewport = false;
     }
     var searchInputEl = document.getElementById('map-address-search');
+    var searchInputTimer = null;
     if (searchInputEl) {
-      searchInputEl.addEventListener('input', applyAddressSearch);
-      searchInputEl.addEventListener('search', applyAddressSearch);
+      searchInputEl.addEventListener('input', function() {
+        clearTimeout(searchInputTimer);
+        searchInputTimer = setTimeout(applyAddressSearch, ${jsonForScript(MAP_SEARCH_INPUT_DEBOUNCE_MS)});
+      });
+      searchInputEl.addEventListener('search', function() {
+        clearTimeout(searchInputTimer);
+        applyAddressSearch();
+      });
     }
 
-    applyAddressSearch();
+    applyClusteringMode();
 
 ${
   generatedAtLabel
