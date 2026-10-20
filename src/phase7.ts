@@ -23,11 +23,33 @@ interface LoggerLike {
   warn?: (message: string, ...args: unknown[]) => void;
 }
 
-/** Próby przy chwilowych błędach OAuth / sieci (typowe na GitHub Actions). */
+/** Próby przy chwilowych błędach OAuth / sieci (typowe na GitHub Actions) i 429/5xx Google API. */
 const GOOGLE_API_MAX_ATTEMPTS = 3;
 const GOOGLE_API_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
+/** Limit Sheets API liczony na minutę — krótsze odczekanie nic nie daje. */
+const GOOGLE_API_QUOTA_RETRY_DELAYS_MS = [30000, 60000] as const;
+const GOOGLE_API_QUOTA_JITTER_MS = 5000;
+const RETRYABLE_HTTP_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+export function googleApiHttpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+  const e = error as { status?: unknown; code?: unknown; response?: { status?: unknown } };
+  for (const value of [e.status, e.response?.status, e.code]) {
+    const status = typeof value === 'string' ? Number(value) : value;
+    if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status < 600) {
+      return status;
+    }
+  }
+  return undefined;
+}
 
 export function isRetryableGoogleApiError(error: unknown): boolean {
+  const status = googleApiHttpStatus(error);
+  if (status !== undefined && RETRYABLE_HTTP_STATUSES.has(status)) {
+    return true;
+  }
   const message = error instanceof Error ? error.message : String(error);
   return (
     /Premature close/i.test(message) ||
@@ -43,10 +65,19 @@ async function sleepMs(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function googleApiRetryDelayMs(error: unknown, attempt: number): number {
+  if (googleApiHttpStatus(error) === 429) {
+    const base = GOOGLE_API_QUOTA_RETRY_DELAYS_MS[attempt] ?? 60000;
+    return base + Math.floor(Math.random() * GOOGLE_API_QUOTA_JITTER_MS);
+  }
+  return GOOGLE_API_RETRY_DELAYS_MS[attempt] ?? 10000;
+}
+
 export async function withGoogleApiRetry<T>(
   label: string,
   fn: () => Promise<T>,
   logger: LoggerLike,
+  sleepFn: (ms: number) => Promise<void> = sleepMs,
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < GOOGLE_API_MAX_ATTEMPTS; attempt++) {
@@ -58,7 +89,7 @@ export async function withGoogleApiRetry<T>(
       if (!canRetry) {
         throw error;
       }
-      const delayMs = GOOGLE_API_RETRY_DELAYS_MS[attempt] ?? 10000;
+      const delayMs = googleApiRetryDelayMs(error, attempt);
       const log = logger.warn ?? logger.info;
       log(
         'Google API %s failed (attempt %d/%d): %s — retry in %d ms',
@@ -68,7 +99,7 @@ export async function withGoogleApiRetry<T>(
         error instanceof Error ? error.message : String(error),
         delayMs,
       );
-      await sleepMs(delayMs);
+      await sleepFn(delayMs);
     }
   }
   throw lastError;

@@ -23,6 +23,7 @@ import {
   fetchSourceSheetValues,
   loadSourceRows,
   googleAuthNoKeepAliveAgent,
+  createSheetsClient,
 } from './sheets';
 import {
   COL_KOD_POCZTOWY,
@@ -597,6 +598,13 @@ describe('sheets phase 2', () => {
       const agent = googleAuthNoKeepAliveAgent(new URL('https://oauth2.googleapis.com/token'));
       expect(agent).toBeDefined();
       expect((agent as https.Agent).keepAlive).toBe(false);
+    });
+  });
+
+  describe('createSheetsClient', () => {
+    it('test_createSheetsClient_should_set_request_timeout', () => {
+      const client = createSheetsClient('/nonexistent-key.json');
+      expect(client.context._options.timeout).toBe(30_000);
     });
   });
 });

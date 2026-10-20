@@ -4,7 +4,7 @@
  * Wymagania:
  *   REQ-5.1: zapytanie do Nominatim (q + format=json + limit=1 + countrycodes=pl)
  *   REQ-5.2: adresy bez ulicy (ulica pusta/brak) – query bez ulicy
- *   REQ-5.3: brak wyniku Nominatim -> adres trafia do "Błędne adresy"; awaria sieci albo HTTP bez treści -> MAP-E-GEOCODE-NET, bez kubełka błędnych
+ *   REQ-5.3: brak wyniku Nominatim (wszystkie warianty HTTP 200) -> adres trafia do "Błędne adresy"; awaria sieci, HTTP bez treści albo nie-JSON w którymkolwiek wariancie -> MAP-E-GEOCODE-NET, bez kubełka błędnych i bez wpisu w cache
  *   REQ-5.4: odczyt lat/lon i województwa
  */
 
@@ -27,6 +27,9 @@ import {
   aggregateFirmaTransportowa,
   aggregateDniHarmonogramu,
   normalizeWgHarmonogramuCell,
+  parseRetryAfterMs,
+  nominatimBackoffMs,
+  NOMINATIM_MAX_CONSECUTIVE_THROTTLED,
 } from './phase5';
 
 function makeRow(params: Partial<SheetRow> = {}): SheetRow {
@@ -1487,7 +1490,7 @@ describe('phase5', () => {
       expect(report).toContain(row.address);
     });
 
-    it('test_executePhase5_when_first_query_has_no_response_and_later_http_ok_empty_should_mark_bad', async () => {
+    it('test_executePhase5_when_first_query_has_no_response_and_later_http_ok_empty_should_skip_bad', async () => {
       const row = makeRow();
       const grouped = asGrouped([row]);
       const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -1508,14 +1511,11 @@ describe('phase5', () => {
         logger,
       });
 
-      expect(result.rowsBledneAdresy).toHaveLength(1);
-      expect(result.groupedBledneAdresy).toEqual([
-        {
-          address: row.address,
-          liczbaWystapien: 1,
-        },
-      ]);
-      expect(logger.error).not.toHaveBeenCalled();
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+      expect(result.groupedBledneAdresy).toEqual([]);
+      const report = String(logger.error.mock.calls[0]?.[0]);
+      expect(report).toContain('kod: MAP-E-GEOCODE-NET');
+      expect(report).toContain('część zapytań');
     });
 
     it('test_executePhase5_when_cache_has_suspicious_ok_should_use_cached_coordinates', async () => {
@@ -1949,6 +1949,180 @@ describe('phase5', () => {
       expect(result.geocoded).toHaveLength(1);
       expect(result.geocoded[0].lat).toBeCloseTo(54.685, 2);
       expect(result.geocoded[0].wojewodztwo).toBe('Pomorskie');
+    });
+
+    it('test_executePhase5_when_popraw_adres_enriched_with_cache_should_not_write_popraw_coords_to_cache', async () => {
+      const row = makeRow({
+        address: '84-100 Celbowo Celbowo 23',
+        miasto: 'Celbowo',
+        kodPocztowy: '84-100',
+        ulica: 'Celbowo',
+        numerBudynku: '23',
+      });
+      const pomorskiePoly = {
+        type: 'Feature' as const,
+        properties: { name: 'Pomorskie' },
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [
+            [
+              [18.0, 54.0],
+              [19.5, 54.0],
+              [19.5, 54.9],
+              [18.0, 54.9],
+              [18.0, 54.0],
+            ],
+          ],
+        },
+      };
+      const { buildPoprawAdresIndex } = await import('./poprawAdres');
+      const poprawAdresIndex = buildPoprawAdresIndex([
+        { podmiotHandlowy: '', sklep: '', adres: row.address, lat: 54.685163628735, lng: 18.368911291880643 },
+      ]);
+      const writeFileFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(asGrouped([row]), {
+        fetchFn: vi.fn(),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        poprawAdresIndex,
+        wojewodztwaGeoJsonFeatures: [pomorskiePoly],
+        cacheFilePath: '/tmp/phase5-popraw-woj.json',
+        dataCacheFilePath: '/tmp/phase5-popraw-woj-data.json',
+        actionsCacheFilePath: '/tmp/phase5-popraw-woj-actions.json',
+        readFileFn: vi.fn().mockRejectedValue(new Error('no file')),
+        writeFileFn,
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
+      });
+
+      expect(result.geocoded[0].wojewodztwo).toBe('Pomorskie');
+      const written = writeFileFn.mock.calls.map((call) => String(call[1])).join('\n');
+      expect(written).not.toContain(row.address);
+    });
+
+    it('test_executePhase5_when_200_body_is_not_json_should_skip_bad_and_not_cache', async () => {
+      const row = makeRow();
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const writeFileFn = vi.fn().mockResolvedValue(undefined);
+
+      const result = await executePhase5(asGrouped([row]), {
+        fetchFn: vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new SyntaxError('Unexpected token < in JSON');
+          },
+        }),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        rateLimitMs: 1,
+        requestRetries: 0,
+        logger,
+        cacheFilePath: '/tmp/phase5-notjson.json',
+        dataCacheFilePath: '/tmp/phase5-notjson-data.json',
+        actionsCacheFilePath: '/tmp/phase5-notjson-actions.json',
+        readFileFn: vi.fn().mockRejectedValue(new Error('missing')),
+        writeFileFn,
+        mkdirFn: vi.fn().mockResolvedValue(undefined),
+      });
+
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+      expect(result.badUniqueAddresses).toBe(0);
+      expect(String(logger.error.mock.calls[0]?.[0])).toContain('kod: MAP-E-GEOCODE-NET');
+      const written = writeFileFn.mock.calls.map((call) => String(call[1])).join('\n');
+      expect(written).not.toContain(row.address);
+    });
+
+    it('test_executePhase5_when_200_body_is_not_a_list_should_skip_bad', async () => {
+      const row = makeRow();
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+      const result = await executePhase5(asGrouped([row]), {
+        fetchFn: vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ error: 'busy' }) }),
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        rateLimitMs: 1,
+        requestRetries: 0,
+        logger,
+      });
+
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+      expect(String(logger.error.mock.calls[0]?.[0])).toContain('nie jest listą');
+    });
+
+    it('test_executePhase5_when_429_with_retry_after_should_sleep_retry_after', async () => {
+      const row = makeRow();
+      const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+      await executePhase5(asGrouped([row]), {
+        fetchFn: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 429,
+            headers: new Headers({ 'Retry-After': '20' }),
+            json: async () => [],
+          })
+          .mockResolvedValue({ ok: true, status: 200, json: async () => [] }),
+        sleepFn,
+        rateLimitMs: 1,
+        requestRetries: 0,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      });
+
+      expect(sleepFn).toHaveBeenCalledWith(20000);
+    });
+
+    it('test_executePhase5_when_nominatim_keeps_refusing_should_stop_geocoding_and_report_once', async () => {
+      const first = makeRow();
+      const second = makeRow({
+        kodPocztowy: '00-001',
+        miasto: 'Warszawa',
+        ulica: 'Marszałkowska',
+        numerBudynku: '1',
+        address: '00-001 Warszawa Marszałkowska 1',
+      });
+      const fetchFn = vi.fn().mockResolvedValue({ ok: false, status: 429, json: async () => [] });
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+      const result = await executePhase5(asGrouped([first, second]), {
+        fetchFn,
+        sleepFn: vi.fn().mockResolvedValue(undefined),
+        rateLimitMs: 1,
+        requestRetries: 0,
+        logger,
+      });
+
+      expect(fetchFn).toHaveBeenCalledTimes(NOMINATIM_MAX_CONSECUTIVE_THROTTLED);
+      expect(result.rowsBledneAdresy).toHaveLength(0);
+      expect(result.badUniqueAddresses).toBe(0);
+      const reports = logger.error.mock.calls.map((call) => String(call[0]));
+      expect(reports.filter((r) => r.includes('kod: MAP-E-GEOCODE-BLOCKED'))).toHaveLength(1);
+    });
+  });
+
+  describe('parseRetryAfterMs', () => {
+    it('test_parseRetryAfterMs_when_seconds_should_return_ms', () => {
+      expect(parseRetryAfterMs('30', 0)).toBe(30000);
+    });
+
+    it('test_parseRetryAfterMs_when_http_date_should_return_ms_until_date', () => {
+      const now = Date.parse('2026-10-20T08:00:00Z');
+      expect(parseRetryAfterMs('Tue, 20 Oct 2026 08:00:15 GMT', now)).toBe(15000);
+    });
+
+    it('test_parseRetryAfterMs_when_missing_or_garbage_should_return_undefined', () => {
+      expect(parseRetryAfterMs(null, 0)).toBeUndefined();
+      expect(parseRetryAfterMs('soon', 0)).toBeUndefined();
+    });
+  });
+
+  describe('nominatimBackoffMs', () => {
+    it('test_nominatimBackoffMs_should_grow_exponentially', () => {
+      expect(nominatimBackoffMs(1000, 1, undefined)).toBe(2000);
+      expect(nominatimBackoffMs(1000, 3, undefined)).toBe(8000);
+    });
+
+    it('test_nominatimBackoffMs_should_respect_retry_after_and_cap_at_60s', () => {
+      expect(nominatimBackoffMs(1000, 1, 20000)).toBe(20000);
+      expect(nominatimBackoffMs(1000, 1, 3_600_000)).toBe(60000);
     });
   });
 });

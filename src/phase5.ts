@@ -982,6 +982,36 @@ function defaultSleep(ms: number): Promise<void> {
   });
 }
 
+/** Po tylu odmowach z rzędu przestajemy pytać Nominatim w tym przebiegu (ryzyko bana IP). */
+export const NOMINATIM_MAX_CONSECUTIVE_THROTTLED = 5;
+const NOMINATIM_MAX_BACKOFF_MS = 60_000;
+
+function isNominatimThrottleStatus(status: number): boolean {
+  return status === 403 || status === 429 || status >= 500;
+}
+
+/** `Retry-After` w sekundach albo jako data HTTP; `undefined`, gdy brak lub nieczytelny. */
+export function parseRetryAfterMs(header: string | null, nowMs: number): number | undefined {
+  const value = header?.trim();
+  if (!value) {
+    return undefined;
+  }
+  if (/^\d+$/.test(value)) {
+    return Number(value) * 1000;
+  }
+  const dateMs = Date.parse(value);
+  return Number.isNaN(dateMs) ? undefined : Math.max(0, dateMs - nowMs);
+}
+
+export function nominatimBackoffMs(
+  rateLimitMs: number,
+  consecutiveThrottled: number,
+  retryAfterMs: number | undefined,
+): number {
+  const exponential = rateLimitMs * 2 ** consecutiveThrottled;
+  return Math.min(NOMINATIM_MAX_BACKOFF_MS, Math.max(retryAfterMs ?? 0, exponential));
+}
+
 function formatDurationMs(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -1070,6 +1100,7 @@ function applyWojewodztwoEnrichment(
   entry: CacheEntry,
   features: readonly WojewodztwoGeoJsonFeature[] | null,
   cacheEntries: Record<string, CacheEntry>,
+  protectedAddresses: Set<string>,
   writeCacheEnabled: boolean,
   logger?: ExecutePhase5Options['logger'],
 ): CacheEntry {
@@ -1086,11 +1117,11 @@ function applyWojewodztwoEnrichment(
   }
   if (writeCacheEnabled) {
     const prev = cacheEntries[address];
-    cacheEntries[address] = {
+    setCacheEntryUnlessProtected(cacheEntries, protectedAddresses, address, {
       ...(prev ?? enriched),
       ...enriched,
       updatedAt: enriched.updatedAt || prev?.updatedAt || new Date().toISOString(),
-    };
+    });
   }
   return enriched;
 }
@@ -1420,6 +1451,7 @@ export async function executePhase5(
       entry,
       features,
       cacheEntries,
+      protectedOverrideAddresses,
       writeCacheEnabled,
       logger,
     );
@@ -1433,6 +1465,10 @@ export async function executePhase5(
   let lastEtaLogMs = progressStartMs;
   let processedAddresses = 0;
   let networkSkippedAddresses = 0;
+  let consecutiveThrottled = 0;
+  let lastThrottleStatus = 0;
+  let nominatimBlocked = false;
+  let nominatimBlockedReported = false;
   logger?.info?.(
     'Phase 5: start geocoding %d unique addresses in %d batches (batchSize=%d)',
     total,
@@ -1500,33 +1536,46 @@ export async function executePhase5(
         continue;
       }
 
+      if (nominatimBlocked) {
+        networkSkippedAddresses += 1;
+        processedAddresses += 1;
+        continue;
+      }
+
       try {
         const sampleRow = group.rows[0];
         const queries = buildGeocodingQueries(sampleRow);
         let bestPick: CandidatePickResult | undefined;
         let sawHttpOk = false;
+        let sawTransientFailure = false;
         let httpStatus = 0;
         let netMessage = '';
 
         for (const query of queries) {
           const url = buildNominatimUrl(query);
           let response: Response | null = null;
+          let payload: unknown;
           let lastError: unknown;
           for (let attempt = 0; attempt <= requestRetries; attempt++) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
             try {
-              response = await fetchFn(url, {
+              const fetched = await fetchFn(url, {
                 headers: {
                   'User-Agent': userAgent,
                   'Accept-Language': 'pl',
                 },
                 signal: controller.signal,
               });
-              clearTimeout(timeoutId);
+              if (fetched.ok) {
+                payload = await fetched.json();
+                if (!Array.isArray(payload)) {
+                  throw new Error('odpowiedź Nominatim nie jest listą wyników');
+                }
+              }
+              response = fetched;
               break;
             } catch (err) {
-              clearTimeout(timeoutId);
               lastError = err;
               if (attempt < requestRetries) {
                 logger?.warn?.(
@@ -1538,25 +1587,45 @@ export async function executePhase5(
                 );
                 await sleepFn(rateLimitMs);
               }
+            } finally {
+              clearTimeout(timeoutId);
             }
           }
 
           if (!response) {
+            sawTransientFailure = true;
             netMessage = lastError instanceof Error ? lastError.message : String(lastError ?? 'brak odpowiedzi');
             await sleepFn(rateLimitMs);
             continue;
           }
 
           if (!response.ok) {
+            sawTransientFailure = true;
             httpStatus = response.status;
-            await sleepFn(rateLimitMs);
+            if (!isNominatimThrottleStatus(response.status)) {
+              await sleepFn(rateLimitMs);
+              continue;
+            }
+            consecutiveThrottled += 1;
+            lastThrottleStatus = response.status;
+            if (consecutiveThrottled >= NOMINATIM_MAX_CONSECUTIVE_THROTTLED) {
+              nominatimBlocked = true;
+              break;
+            }
+            await sleepFn(
+              nominatimBackoffMs(
+                rateLimitMs,
+                consecutiveThrottled,
+                parseRetryAfterMs(response.headers?.get('retry-after') ?? null, Date.now()),
+              ),
+            );
             continue;
           }
 
           sawHttpOk = true;
+          consecutiveThrottled = 0;
 
-          const payload = (await response.json()) as NominatimResult[];
-          const picked = pickBestCandidate(payload, sampleRow);
+          const picked = pickBestCandidate(payload as NominatimResult[], sampleRow);
           if (picked.status === 'bad') {
             await sleepFn(rateLimitMs);
             continue;
@@ -1623,14 +1692,16 @@ export async function executePhase5(
               updatedAt: new Date().toISOString(),
             });
           }
-        } else if (queries.length > 0 && !sawHttpOk) {
+        } else if (queries.length > 0 && sawTransientFailure) {
           networkSkippedAddresses += 1;
           const technical =
             [httpStatus ? `HTTP ${httpStatus}` : '', netMessage].filter(Boolean).join('; ') || 'brak odpowiedzi';
           logArkuszMapaError(logger, {
             code: 'MAP-E-GEOCODE-NET',
             place: 'phase5.ts executePhase5',
-            summary: `Nominatim nie odpowiedział dla adresu ${address}.`,
+            summary: sawHttpOk
+              ? `Nominatim nie odpowiedział na część zapytań dla adresu ${address}.`
+              : `Nominatim nie odpowiedział dla adresu ${address}.`,
             effect:
               'Adres nie trafia do błędnych. Pinezki nie ma na tej mapie. Następne generowanie spróbuje ponownie.',
             technical,
@@ -1647,16 +1718,20 @@ export async function executePhase5(
           });
         }
       } catch (error) {
-        rowsBledneAdresy.push(...group.rows);
-        groupedBledneAdresy.push({
-          address,
-          liczbaWystapien: group.count,
-        });
-        setCacheEntryUnlessProtected(cacheEntries, protectedOverrideAddresses, address, {
-          status: 'bad',
-          updatedAt: new Date().toISOString(),
-        });
+        networkSkippedAddresses += 1;
         logger?.warn?.('Phase 5: geocoding failed for address: %s (%s)', address, String(error));
+      }
+
+      if (nominatimBlocked && !nominatimBlockedReported) {
+        nominatimBlockedReported = true;
+        logArkuszMapaError(logger, {
+          code: 'MAP-E-GEOCODE-BLOCKED',
+          place: 'phase5.ts executePhase5',
+          summary: `Nominatim odrzucił ${NOMINATIM_MAX_CONSECUTIVE_THROTTLED} zapytań z rzędu (limit albo blokada).`,
+          effect:
+            'Geokodowanie przerwane do końca przebiegu. Adresy bez cache nie mają pinezki na tej mapie. Następne generowanie spróbuje ponownie.',
+          technical: `ostatnio HTTP ${lastThrottleStatus}`,
+        });
       }
 
       processedAddresses += 1;

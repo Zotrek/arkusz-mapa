@@ -1344,6 +1344,34 @@ showMapErrorCard({
       expect(shown).toHaveLength(1);
     });
 
+    it('test_docGenerateCrashed_when_called_should_unlock_button_and_show_card', () => {
+      const html = protocolHtml();
+      const src = html.slice(html.indexOf('function docGenerateCrashed_('), html.indexOf('function isBolecinMiejsce_('));
+      const okBtn = { disabled: true };
+      const loading: unknown[] = [];
+      const shown: Array<{ code: string; place: string; technical: string }> = [];
+      const crashed = runInNewContext(`${src}\ndocGenerateCrashed_;`, {
+        console: { error: () => undefined },
+        document: { getElementById: (id: string) => (id === 'doc-btn-ok' ? okBtn : null) },
+        setTransportDatesLoading: (...args: unknown[]) => loading.push(args),
+        showMapErrorCard: (r: { code: string; place: string; technical: string }) => shown.push(r),
+      }) as (err: Error, place: string) => void;
+
+      crashed(new Error('boom'), 'phase6.ts runDocGenerate');
+
+      expect(okBtn.disabled).toBe(false);
+      expect(loading).toEqual([[false]]);
+      expect(shown).toEqual([
+        expect.objectContaining({ code: 'MAP-E-DOC-GENERATE', place: 'phase6.ts runDocGenerate', technical: 'boom' }),
+      ]);
+    });
+
+    it('test_buildMapHtml_route_fields_then_should_be_caught_in_single_and_bulk_generate', () => {
+      const html = protocolHtml();
+      expect(html).toContain(".catch(function (err) { docGenerateCrashed_(err, 'phase6.ts runDocGenerate'); });");
+      expect(html).toContain(".catch(function (err) { docGenerateCrashed_(err, 'phase6.ts runBulkDocGenerate'); });");
+    });
+
     it('test_buildMapHtml_point_doc_should_embed_only_miejsce_zaladunku', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
       expect(html).toContain('"doc":{"miejsce_zaladunku":');

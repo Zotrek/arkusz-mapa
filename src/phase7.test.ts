@@ -9,7 +9,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { SheetRow } from './sheets';
 import type { Phase7Deps } from './phase7';
-import { runPhase7Pipeline, runPhase7Cli, isRetryableGoogleApiError } from './phase7';
+import { runPhase7Pipeline, runPhase7Cli, isRetryableGoogleApiError, withGoogleApiRetry } from './phase7';
 
 function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
   return {
@@ -486,6 +486,64 @@ describe('isRetryableGoogleApiError', () => {
     expect(isRetryableGoogleApiError(new Error('private_key and client_email are required.'))).toBe(
       false,
     );
+  });
+
+  it.each([429, 500, 502, 503, 504])(
+    'test_isRetryableGoogleApiError_when_api_error_code_%d_should_return_true',
+    (code) => {
+      expect(isRetryableGoogleApiError(Object.assign(new Error('Quota exceeded'), { code }))).toBe(true);
+    },
+  );
+
+  it('test_isRetryableGoogleApiError_when_response_status_503_should_return_true', () => {
+    expect(isRetryableGoogleApiError(Object.assign(new Error('x'), { response: { status: 503 } }))).toBe(true);
+  });
+
+  it('test_isRetryableGoogleApiError_when_code_403_should_return_false', () => {
+    expect(isRetryableGoogleApiError(Object.assign(new Error('The caller does not have permission'), { code: 403 }))).toBe(
+      false,
+    );
+  });
+});
+
+describe('withGoogleApiRetry', () => {
+  const quietLogger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
+
+  it('test_withGoogleApiRetry_when_quota_429_should_wait_at_least_30s_and_succeed', async () => {
+    const sleeps: number[] = [];
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('Quota exceeded'), { code: 429 }))
+      .mockResolvedValueOnce('ok');
+
+    const result = await withGoogleApiRetry('step', fn, quietLogger, async (ms) => {
+      sleeps.push(ms);
+    });
+
+    expect(result).toBe('ok');
+    expect(sleeps).toHaveLength(1);
+    expect(sleeps[0]).toBeGreaterThanOrEqual(30000);
+    expect(sleeps[0]).toBeLessThan(35000);
+  });
+
+  it('test_withGoogleApiRetry_when_network_error_should_use_short_delay', async () => {
+    const sleeps: number[] = [];
+    const fn = vi.fn().mockRejectedValueOnce(new Error('socket hang up')).mockResolvedValueOnce('ok');
+
+    await withGoogleApiRetry('step', fn, quietLogger, async (ms) => {
+      sleeps.push(ms);
+    });
+
+    expect(sleeps).toEqual([2000]);
+  });
+
+  it('test_withGoogleApiRetry_when_error_not_retryable_should_throw_without_sleep', async () => {
+    const sleepFn = vi.fn(async () => undefined);
+    const fn = vi.fn().mockRejectedValue(Object.assign(new Error('forbidden'), { code: 403 }));
+
+    await expect(withGoogleApiRetry('step', fn, quietLogger, sleepFn)).rejects.toThrow('forbidden');
+    expect(sleepFn).not.toHaveBeenCalled();
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 

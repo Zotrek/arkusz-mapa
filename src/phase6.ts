@@ -3751,6 +3751,19 @@ ${mapSharedBrowserScript()}
         return routeBodyFields(true, proposal, nextRate);
       });
     }
+    function docGenerateCrashed_(err, place) {
+      console.error(err);
+      var okBtn = document.getElementById('doc-btn-ok');
+      if (okBtn) okBtn.disabled = false;
+      setTransportDatesLoading(false);
+      showMapErrorCard({
+        code: 'MAP-E-DOC-GENERATE',
+        summary: 'Generowanie przerwał nieoczekiwany błąd.',
+        effect: 'Dokument mógł się nie pobrać, a wiersz rejestru mógł nie wejść. Sprawdź arkusz i spróbuj ponownie.',
+        place: place,
+        technical: String(err && err.message || err)
+      });
+    }
     function isBolecinMiejsce_(text) {
       var combined = String(text || '').toLowerCase()
         .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e')
@@ -4105,7 +4118,7 @@ ${mapSharedBrowserScript()}
         if (okBtn) okBtn.disabled = false;
         setTransportDatesLoading(false);
       });
-      });
+      }).catch(function (err) { docGenerateCrashed_(err, 'phase6.ts runBulkDocGenerate'); });
     }
     function runDocGenerate() {
       if (window.__docModalMode === 'bulk') {
@@ -4295,7 +4308,7 @@ ${mapSharedBrowserScript()}
       }
       var numerManual = numEl ? String(numEl.value).trim() : '';
       finishWithNumber(numerManual);
-      });
+      }).catch(function (err) { docGenerateCrashed_(err, 'phase6.ts runDocGenerate'); });
     }
 
     if (wordDocEnabled) {

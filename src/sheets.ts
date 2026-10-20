@@ -472,6 +472,9 @@ export function googleAuthNoKeepAliveAgent(parsedURL: URL): http.Agent | https.A
   return parsedURL.protocol === 'https:' ? httpsAgentNoKeepAlive : httpAgentNoKeepAlive;
 }
 
+/** gaxios domyślnie nie ma limitu czasu — zawieszone żądanie blokuje job do `timeout-minutes`. */
+const SHEETS_REQUEST_TIMEOUT_MS = 30_000;
+
 export function createSheetsClient(credentialsPath: string): sheets_v4.Sheets {
   const auth = new google.auth.GoogleAuth({
     keyFile: credentialsPath,
@@ -486,5 +489,6 @@ export function createSheetsClient(credentialsPath: string): sheets_v4.Sheets {
   return google.sheets({
     version: 'v4',
     auth,
+    timeout: SHEETS_REQUEST_TIMEOUT_MS,
   });
 }

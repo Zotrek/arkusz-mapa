@@ -61,7 +61,9 @@ Walidacja formularza zostaje na `alert`. Kody z listy są podpięte: na mapie ka
 | `MAP-E-HARM-RELOAD` | Po zapisie harmonogramu „Zapisano” chowa błąd odświeżenia |
 | `MAP-E-AUTH-MISMATCH` | Hasło Pages i Worker się różnią (503) |
 | `MAP-E-GEOCODE-NET` | Nominatim przy generowaniu wrzuca adres do błędnych |
+| `MAP-E-GEOCODE-BLOCKED` | Nominatim odrzucił kilka zapytań z rzędu (403/429/5xx) — geokodowanie przerwane do końca przebiegu |
 | `MAP-E-VOIVODESHIP-BUILD` | GeoJSON przy generowaniu: puste województwo z lat/lng |
+| `MAP-E-DOC-GENERATE` | Nieoczekiwany wyjątek po rozstrzygnięciu nazwy/stawki trasy (jeden i zbiorczy protokół) |
 
 ## Zaplanowane wcześniej
 
@@ -105,5 +107,5 @@ Komunikat jest, ale mały, poza ekranem albo znika, zanim da się go przeczytać
 - [x] **Pusty szablon Word** — `warnIfWordTemplateMissingPlaceholders` w `wordMapSupport.ts` (`MAP-E-WORD-TEMPLATE`). Przy `npm run generate` brak `{{ }}` w `word/document.xml` wypisuje blok `ARKUSZ-MAPA-ERROR` przez `console.error`. Protokół dalej się buduje, pola zostaną puste.
 - [x] **Popraw adres przy generowaniu mapy** — `runPhase7Pipeline` w `phase7.ts` (`MAP-E-REFERENCE-SKIP`). Błąd arkusza referencji zostawia blok w `logger.error`. Mapa powstaje bez poprawek adresów.
 - [x] **Składanie jednego Worda znika po 6 s** — `finishWithNumber` w `phase6.ts` (`MAP-E-DOC-RENDER`). Wyjątek z `renderDocxAndDownload` (zły tag, puste pole szablonu) zostaje na karcie do **Zamknij**. Surowy komunikat jest w polu `technicznie`.
-- [x] **Nominatim przy generowaniu myli sieć z błędnym adresem** — `executePhase5` w `phase5.ts` (`MAP-E-GEOCODE-NET`). Brak odpowiedzi albo `!response.ok` (w `technicznie` jest status) nie wrzuca adresu do błędnych i nie zapisuje `status: bad` w cache. Pusta odpowiedź HTTP zostaje błędnym adresem. W logu jest blok `ARKUSZ-MAPA-ERROR`.
+- [x] **Nominatim przy generowaniu myli sieć z błędnym adresem** — `executePhase5` w `phase5.ts` (`MAP-E-GEOCODE-NET`). Brak odpowiedzi, `!response.ok` (w `technicznie` jest status) albo treść inna niż lista JSON w którymkolwiek wariancie zapytania nie wrzuca adresu do błędnych i nie zapisuje `status: bad` w cache. Błędnym adresem zostaje tylko pusta odpowiedź, gdy wszystkie warianty dostały HTTP 200. Przy 403/429/5xx odstęp rośnie wykładniczo (z `Retry-After`, maks. 60 s); po 5 odmowach z rzędu `MAP-E-GEOCODE-BLOCKED` i koniec geokodowania w tym przebiegu. W logu jest blok `ARKUSZ-MAPA-ERROR`.
 - [x] **Województwo z GeoJSON przy generowaniu** — `loadWojewodztwaFeaturesForPhase5` w `phase5.ts` (`MAP-E-VOIVODESHIP-BUILD`). Pusty albo nieudany GeoJSON wypisuje blok `ARKUSZ-MAPA-ERROR`. Uzupełnianie z lat/lng odpada. Osobno od `MAP-E-VOIVODESHIP` (filtr na otwartej mapie, karta).
