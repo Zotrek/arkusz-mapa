@@ -63,6 +63,7 @@ Walidacja formularza zostaje na `alert`. Kody z listy są podpięte: na mapie ka
 | `MAP-E-GEOCODE-NET` | Nominatim przy generowaniu wrzuca adres do błędnych |
 | `MAP-E-GEOCODE-BLOCKED` | Nominatim odrzucił kilka zapytań z rzędu (403/429/5xx) — geokodowanie przerwane do końca przebiegu |
 | `MAP-E-VOIVODESHIP-BUILD` | GeoJSON przy generowaniu: puste województwo z lat/lng |
+| `MAP-E-SHEETS-WRITE` | Krok zapisu do arkuszy przy generowaniu (odebrane, Baza cen, zestawienie, stawki raportu, zakładki fazy 4) — mapa powstaje, CLI kończy kodem 2, workflow publikuje i na końcu oznacza job jako czerwony |
 | `MAP-E-DOC-GENERATE` | Nieoczekiwany wyjątek po rozstrzygnięciu nazwy/stawki trasy (jeden i zbiorczy protokół) |
 
 ## Zaplanowane wcześniej

@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { SheetRow } from './sheets';
-import type { Phase7Deps } from './phase7';
+import type { Phase7Deps, Phase7Result } from './phase7';
 import { runPhase7Pipeline, runPhase7Cli, isRetryableGoogleApiError, withGoogleApiRetry } from './phase7';
 
 function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
@@ -471,6 +471,100 @@ describe('phase7 pipeline', () => {
   });
 });
 
+describe('phase7 pipeline — kroki zapisu', () => {
+  function writeStepDeps(overrides: Record<string, unknown> = {}) {
+    const rows = [makeRow()];
+    const grouped = new Map<string, { address: string; count: number; rows: SheetRow[] }>();
+    grouped.set(rows[0].address, { address: rows[0].address, count: 1, rows });
+    return {
+      getConfig: vi.fn(() => ({ sheetsId: 'sheet-id', credentialsPath: '/tmp/sa.json', outputDir: '/tmp/out' })),
+      createSheetsClient: vi.fn(() => ({ client: true })),
+      loadSourceRows: vi.fn(async () => ({ sheetTitle: 'Arkusz1', headers: ['A'], rows })),
+      loadReferenceDataFromSheets: vi.fn(async () => ({ poprawAdres: [], poprawAdresIndex: new Map() })),
+      isCopyOdebraneZHarmonogramuEnabled: vi.fn(() => true),
+      getEwidencjaOdbiorowSheetsId: vi.fn(() => 'ewidencja-sheet-id'),
+      getNominatimUserAgent: vi.fn(() => 'arkusz-mapa/0.1 (ops@example.com)'),
+      executeOdebraneZHarmonogramu: vi.fn(async () => ({ appendedCount: 3 })),
+      syncBazaCenHarmonogram: vi.fn(async () => ({})),
+      syncZestawienieHarmonogram: vi.fn(async () => ({})),
+      fillMissingReportRates: vi.fn(async () => ({ filledCells: 1 })),
+      executePhase3: vi.fn(() => ({ rowsDuplikatyPlomb: [], rowsBezDuplikatow: rows, groupedByAddress: grouped })),
+      executePhase5: vi.fn(async () => ({
+        geocoded: [],
+        geocodedNoPostcode: [],
+        uncertainGeocoded: [],
+        cityOnlyGeocoded: [],
+        rowsBledneAdresy: [],
+        rowsNiepewneWyniki: [],
+        groupedNiepewneAdresy: [],
+        groupedBledneAdresy: [],
+        totalBatches: 0,
+      })),
+      executePhase4: vi.fn(async () => undefined),
+      executePhase6: vi.fn(async () => ({ fileName: 'mapa.html', filePath: '/tmp/out/mapa.html', htmlContent: '' })),
+      logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+      ...overrides,
+    };
+  }
+
+  it('test_runPhase7Pipeline_when_sync_zestawienie_fails_should_still_generate_map_and_report_step', async () => {
+    const deps = writeStepDeps({
+      syncZestawienieHarmonogram: vi.fn(async () => {
+        throw new Error('sheet locked');
+      }),
+    });
+
+    const result = await runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>);
+
+    expect(deps.fillMissingReportRates).toHaveBeenCalled();
+    expect(deps.executePhase6).toHaveBeenCalled();
+    expect(result.failedWriteSteps).toEqual(['syncZestawienieHarmonogram']);
+    expect(result.odebraneAppendedCount).toBe(3);
+    const report = String(deps.logger.error.mock.calls[0]?.[0]);
+    expect(report).toContain('kod: MAP-E-SHEETS-WRITE');
+    expect(report).toContain('miejsce: phase7.ts syncZestawienieHarmonogram');
+    expect(report).toContain('technicznie: sheet locked');
+  });
+
+  it('test_runPhase7Pipeline_when_odebrane_and_phase4_fail_should_still_generate_map', async () => {
+    const deps = writeStepDeps({
+      executeOdebraneZHarmonogramu: vi.fn(async () => {
+        throw new Error('no access');
+      }),
+      executePhase4: vi.fn(async () => {
+        throw new Error('tab protected');
+      }),
+    });
+
+    const result = await runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>);
+
+    expect(deps.executePhase6).toHaveBeenCalled();
+    expect(result.failedWriteSteps).toEqual(['executeOdebraneZHarmonogramu', 'executePhase4']);
+    expect(result.odebraneAppendedCount).toBe(0);
+  });
+
+  it('test_runPhase7Pipeline_when_all_write_steps_ok_should_report_no_failed_steps', async () => {
+    const result = await runPhase7Pipeline(writeStepDeps() as unknown as Partial<Phase7Deps>);
+    expect(result.failedWriteSteps).toEqual([]);
+  });
+
+  it('test_runPhase7Pipeline_should_pass_nominatim_user_agent_to_phase5', async () => {
+    const deps = writeStepDeps();
+    await runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>);
+    expect(deps.executePhase5).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ userAgent: 'arkusz-mapa/0.1 (ops@example.com)' }),
+    );
+    expect(deps.logger.warn).not.toHaveBeenCalledWith(expect.stringContaining('NOMINATIM_CONTACT_EMAIL'));
+  });
+
+  it('test_runPhase7Pipeline_when_no_nominatim_contact_should_warn', async () => {
+    const deps = writeStepDeps({ getNominatimUserAgent: vi.fn(() => undefined) });
+    await runPhase7Pipeline(deps as unknown as Partial<Phase7Deps>);
+    expect(deps.logger.warn).toHaveBeenCalledWith(expect.stringContaining('NOMINATIM_CONTACT_EMAIL'));
+  });
+});
+
 describe('isRetryableGoogleApiError', () => {
   it('test_isRetryableGoogleApiError_when_premature_close_should_return_true', () => {
     expect(
@@ -566,5 +660,31 @@ describe('phase7 cli', () => {
 
     expect(logger.error).toHaveBeenCalledWith('Pipeline failed: %s', 'boom');
     expect(exitFn).toHaveBeenCalledWith(1);
+  });
+
+  it('test_runPhase7Cli_when_write_steps_failed_should_exit_with_code_2', async () => {
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const exitFn = vi.fn();
+
+    await runPhase7Cli({
+      pipelineFn: async () => ({ failedWriteSteps: ['executePhase4'] }) as unknown as Phase7Result,
+      logger,
+      exitFn,
+    });
+
+    expect(exitFn).toHaveBeenCalledWith(2);
+    expect(logger.error).toHaveBeenCalledWith('Map generated, but write steps failed: %s', 'executePhase4');
+  });
+
+  it('test_runPhase7Cli_when_all_steps_ok_should_not_exit', async () => {
+    const exitFn = vi.fn();
+
+    await runPhase7Cli({
+      pipelineFn: async () => ({ failedWriteSteps: [] }) as unknown as Phase7Result,
+      logger: { info: vi.fn(), error: vi.fn() },
+      exitFn,
+    });
+
+    expect(exitFn).not.toHaveBeenCalled();
   });
 });

@@ -190,6 +190,18 @@ export function getEwidencjaOdbiorowSheetsId(): string {
   );
 }
 
+/**
+ * User-Agent dla Nominatim z kontaktem (wymóg polityki usage-policy).
+ * `undefined`, gdy `NOMINATIM_CONTACT_EMAIL` pusty albo nie wygląda na e-mail.
+ */
+export function getNominatimUserAgent(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const email = env.NOMINATIM_CONTACT_EMAIL?.trim() ?? '';
+  if (!/^[^\s@()<>]+@[^\s@()<>]+\.[^\s@()<>]+$/.test(email)) {
+    return undefined;
+  }
+  return `arkusz-mapa/0.1 (${email})`;
+}
+
 export function getOptionalWordMapAssetPaths(): {
   templatePath: string;
   podwykoPath: string;

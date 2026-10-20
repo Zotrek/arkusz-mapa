@@ -2,7 +2,14 @@
  * Faza 7: orkiestracja pełnego pipeline + obsługa CLI.
  */
 
-import { getConfig, getPhase5CacheFilePath, getEwidencjaOdbiorowSheetsId, getTransportSheetsId, GEOJSON_WOJEWODZTWA_URL } from './config.js';
+import {
+  getConfig,
+  getPhase5CacheFilePath,
+  getEwidencjaOdbiorowSheetsId,
+  getNominatimUserAgent,
+  getTransportSheetsId,
+  GEOJSON_WOJEWODZTWA_URL,
+} from './config.js';
 import { isCopyOdebraneZHarmonogramuEnabled } from './harmonogramDays.js';
 import { syncBazaCenHarmonogram } from './bazaCenHarmonogram.js';
 import { executeOdebraneZHarmonogramu } from './odebraneZHarmonogramu.js';
@@ -122,6 +129,7 @@ export interface Phase7Deps {
   fillMissingReportRates: typeof fillMissingReportRates;
   isCopyOdebraneZHarmonogramuEnabled: typeof isCopyOdebraneZHarmonogramuEnabled;
   getEwidencjaOdbiorowSheetsId: typeof getEwidencjaOdbiorowSheetsId;
+  getNominatimUserAgent: () => string | undefined;
   executePhase3: typeof executePhase3;
   executePhase5: typeof executePhase5;
   executePhase4: typeof executePhase4;
@@ -143,7 +151,12 @@ export interface Phase7Result {
   mapFilePath: string;
   odebraneAppendedCount: number;
   reportRatesFilledCount: number;
+  /** Kroki zapisu do arkuszy, które padły; mapa i tak powstała. */
+  failedWriteSteps: string[];
 }
+
+/** Kod wyjścia CLI: mapa gotowa, ale część zapisów do arkuszy się nie udała. */
+export const EXIT_CODE_WRITE_STEPS_FAILED = 2;
 
 const defaultDeps: Phase7Deps = {
   getConfig,
@@ -155,6 +168,7 @@ const defaultDeps: Phase7Deps = {
   fillMissingReportRates,
   isCopyOdebraneZHarmonogramuEnabled,
   getEwidencjaOdbiorowSheetsId,
+  getNominatimUserAgent: () => getNominatimUserAgent(),
   executePhase3,
   executePhase5,
   executePhase4,
@@ -195,6 +209,23 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
     }
   }
 
+  const failedWriteSteps: string[] = [];
+  async function runWriteStep<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
+    try {
+      return await withGoogleApiRetry(label, fn, deps.logger);
+    } catch (error) {
+      failedWriteSteps.push(label);
+      logArkuszMapaError(deps.logger, {
+        code: 'MAP-E-SHEETS-WRITE',
+        place: `phase7.ts ${label}`,
+        summary: `Zapis do arkusza w kroku ${label} się nie udał.`,
+        effect: 'Mapa powstaje dalej. Przebieg kończy się błędem po publikacji; następny przebieg ponowi zapis.',
+        technical: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
   let odebraneAppendedCount = 0;
   let reportRatesFilledCount = 0;
   if (deps.isCopyOdebraneZHarmonogramuEnabled()) {
@@ -208,53 +239,29 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
       'COPY_ODEBRANE_Z_HARMONOGRAMU enabled — read trasówki, write ewidencja (%s)',
       ewidencjaId,
     );
-    const odebrane = await withGoogleApiRetry(
-      'executeOdebraneZHarmonogramu',
-      () =>
-        deps.executeOdebraneZHarmonogramu(
-          sheetsClient,
-          {
-            targetSpreadsheetId: ewidencjaId,
-            headers: source.headers,
-            rows: source.rows,
-            columnMap: source.columnMap,
-          },
-          deps.logger,
-        ),
-      deps.logger,
+    const odebrane = await runWriteStep('executeOdebraneZHarmonogramu', () =>
+      deps.executeOdebraneZHarmonogramu(
+        sheetsClient,
+        {
+          targetSpreadsheetId: ewidencjaId,
+          headers: source.headers,
+          rows: source.rows,
+          columnMap: source.columnMap,
+        },
+        deps.logger,
+      ),
     );
-    odebraneAppendedCount = odebrane.appendedCount;
-    await withGoogleApiRetry(
-      'syncBazaCenHarmonogram',
-      () =>
-        deps.syncBazaCenHarmonogram(
-          sheetsClient,
-          { spreadsheetId: ewidencjaId },
-          deps.logger,
-        ),
-      deps.logger,
+    odebraneAppendedCount = odebrane?.appendedCount ?? 0;
+    await runWriteStep('syncBazaCenHarmonogram', () =>
+      deps.syncBazaCenHarmonogram(sheetsClient, { spreadsheetId: ewidencjaId }, deps.logger),
     );
-    await withGoogleApiRetry(
-      'syncZestawienieHarmonogram',
-      () =>
-        deps.syncZestawienieHarmonogram(
-          sheetsClient,
-          { spreadsheetId: ewidencjaId },
-          deps.logger,
-        ),
-      deps.logger,
+    await runWriteStep('syncZestawienieHarmonogram', () =>
+      deps.syncZestawienieHarmonogram(sheetsClient, { spreadsheetId: ewidencjaId }, deps.logger),
     );
-    const reportRates = await withGoogleApiRetry(
-      'fillMissingReportRates',
-      () =>
-        deps.fillMissingReportRates(
-          sheetsClient,
-          { spreadsheetId: ewidencjaId },
-          deps.logger,
-        ),
-      deps.logger,
+    const reportRates = await runWriteStep('fillMissingReportRates', () =>
+      deps.fillMissingReportRates(sheetsClient, { spreadsheetId: ewidencjaId }, deps.logger),
     );
-    reportRatesFilledCount = reportRates.filledCells;
+    reportRatesFilledCount = reportRates?.filledCells ?? 0;
   }
 
   deps.logger.info('Executing phase 3 (duplicates + grouping)');
@@ -285,9 +292,16 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   }
 
   deps.logger.info('Executing phase 5 (geocoding)');
+  const nominatimUserAgent = deps.getNominatimUserAgent();
+  if (!nominatimUserAgent) {
+    (deps.logger.warn ?? deps.logger.info)(
+      'NOMINATIM_CONTACT_EMAIL nie ustawiony (albo nie jest adresem e-mail) — User-Agent Nominatim bez kontaktu',
+    );
+  }
   const phase5 = await deps.executePhase5(phase3.groupedByAddress, {
     cacheFilePath: getPhase5CacheFilePath(config.outputDir),
     poprawAdresIndex,
+    userAgent: nominatimUserAgent,
     batchSize: 20,
     requestTimeoutMs: 5000,
     rateLimitMs: 1100,
@@ -295,22 +309,19 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
   });
 
   deps.logger.info('Executing phase 4 (write tabs)');
-  await withGoogleApiRetry(
-    'executePhase4',
-    () =>
-      deps.executePhase4(sheetsClient, {
-        spreadsheetId: config.sheetsId,
-        headers: source.headers,
-        rowsDuplikatyPlomb: phase3.rowsDuplikatyPlomb,
-        rowsNiepewneWyniki: phase5.rowsNiepewneWyniki,
-        groupedNiepewneAdresy: phase5.groupedNiepewneAdresy,
-        groupedBledneAdresy: phase5.groupedBledneAdresy,
-        geocoded: phase5.geocoded,
-        geocodedNoPostcode: phase5.geocodedNoPostcode,
-        uncertainGeocoded: phase5.uncertainGeocoded,
-        cityOnlyGeocoded: phase5.cityOnlyGeocoded,
-      }),
-    deps.logger,
+  await runWriteStep('executePhase4', () =>
+    deps.executePhase4(sheetsClient, {
+      spreadsheetId: config.sheetsId,
+      headers: source.headers,
+      rowsDuplikatyPlomb: phase3.rowsDuplikatyPlomb,
+      rowsNiepewneWyniki: phase5.rowsNiepewneWyniki,
+      groupedNiepewneAdresy: phase5.groupedNiepewneAdresy,
+      groupedBledneAdresy: phase5.groupedBledneAdresy,
+      geocoded: phase5.geocoded,
+      geocodedNoPostcode: phase5.geocodedNoPostcode,
+      uncertainGeocoded: phase5.uncertainGeocoded,
+      cityOnlyGeocoded: phase5.cityOnlyGeocoded,
+    }),
   );
 
   deps.logger.info('Executing phase 6 (generate map HTML)');
@@ -336,6 +347,7 @@ export async function runPhase7Pipeline(customDeps?: Partial<Phase7Deps>): Promi
     mapFilePath: phase6.filePath,
     odebraneAppendedCount,
     reportRatesFilledCount,
+    failedWriteSteps,
   };
 
   deps.logger.info('Sheets loaded from tab: %s', result.sheetTitle);
@@ -368,7 +380,11 @@ export async function runPhase7Cli(options: RunCliOptions = {}): Promise<void> {
   const exitFn = options.exitFn ?? process.exit;
 
   try {
-    await pipelineFn();
+    const result = await pipelineFn();
+    if (result.failedWriteSteps.length > 0) {
+      logger.error('Map generated, but write steps failed: %s', result.failedWriteSteps.join(', '));
+      exitFn(EXIT_CODE_WRITE_STEPS_FAILED);
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Pipeline failed: %s', message);

@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   getConfig,
+  getNominatimUserAgent,
   getOptionalWordMapAssetPaths,
   getPhase5CacheFilePath,
   getTransportWebAppUrl,
@@ -220,6 +221,23 @@ describe('config', () => {
     it('should default transport sheets id when env unset', () => {
       delete process.env.GOOGLE_TRANSPORT_SHEETS_ID;
       expect(getTransportSheetsId()).toBe(DEFAULT_TRANSPORT_SHEETS_ID);
+    });
+  });
+
+  describe('getNominatimUserAgent', () => {
+    it('test_getNominatimUserAgent_when_contact_email_set_should_include_it', () => {
+      expect(getNominatimUserAgent({ NOMINATIM_CONTACT_EMAIL: ' ops@example.com ' })).toBe(
+        'arkusz-mapa/0.1 (ops@example.com)',
+      );
+    });
+
+    it('test_getNominatimUserAgent_when_contact_missing_should_return_undefined', () => {
+      expect(getNominatimUserAgent({})).toBeUndefined();
+    });
+
+    it('test_getNominatimUserAgent_when_contact_not_an_email_should_return_undefined', () => {
+      expect(getNominatimUserAgent({ NOMINATIM_CONTACT_EMAIL: 'ops at example' })).toBeUndefined();
+      expect(getNominatimUserAgent({ NOMINATIM_CONTACT_EMAIL: 'a@b.pl)\r\nX: y' })).toBeUndefined();
     });
   });
 

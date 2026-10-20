@@ -83,6 +83,7 @@ jobs:
           printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > .ci-credentials.json
 
       - name: Generuj mapę + kopiuj odebrane z harmonogramu
+        id: generate
         env:
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
           # Opcjonalny override; gdy pusty — kod używa domyślnego ID ewidencji (rejestr transportów).
@@ -92,13 +93,21 @@ jobs:
           PHASE5_CACHE_PATH: ${{ github.workspace }}/.cache/phase5-cache.json
           TRANSPORT_WEBAPP_URL: /api/transport
           COPY_ODEBRANE_Z_HARMONOGRAMU: '1'
+          NOMINATIM_CONTACT_EMAIL: ${{ secrets.NOMINATIM_CONTACT_EMAIL }}
         run: |
           if [ -z "$GOOGLE_SHEETS_ID" ]; then
             echo "::error::Brak sekretu GOOGLE_SHEETS_ID"
             exit 1
           fi
           mkdir -p "$OUTPUT_DIR"
-          npm run generate
+          # Kod 2 = mapa gotowa, ale zapis do arkusza nie wszedł → publikujemy, job czerwony na końcu.
+          status=0
+          npm run generate || status=$?
+          if [ "$status" -eq 2 ]; then
+            echo "write_failed=1" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
 
       - name: Strona indeksu i stały adres /map
         run: node scripts/build-pages-index.mjs
@@ -118,3 +127,9 @@ jobs:
             exit 1
           fi
           npx --yes wrangler@4 pages deploy ./site --project-name="$PROJECT" --commit-dirty=true
+
+      - name: Zgłoś nieudane zapisy do arkuszy
+        if: steps.generate.outputs.write_failed == '1'
+        run: |
+          echo "::error::Mapa opublikowana, ale część zapisów do arkuszy się nie udała — szukaj MAP-E-SHEETS-WRITE w logu kroku generowania."
+          exit 1
