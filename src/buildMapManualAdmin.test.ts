@@ -121,6 +121,20 @@ describe('buildMapManualAdmin', () => {
     expect(script).toContain('return readMapJson_(res)');
   });
 
+  it('test_manualAdminSave_when_ui_fails_after_successful_save_should_not_report_failed_save', () => {
+    const script = manualAdminBrowserScript();
+    const bind = script.slice(script.indexOf('function bindManualAdminUi('));
+    expect(bind).not.toMatch(/\}\)\.catch\(function\(err\) \{\s*reportManualAdminSave_\(/);
+    expect(bind.split('}, function(err) {').length - 1).toBe(4);
+    expect(bind.split('.catch(reportManualAdminAfterSave_)').length - 1).toBe(4);
+    const after = script.slice(
+      script.indexOf('function reportManualAdminAfterSave_('),
+      script.indexOf('function rateValidFromFromPicker('),
+    );
+    expect(after).toContain("code: 'MAP-E-ADMIN-AFTER-SAVE'");
+    expect(after).toContain('Zapis wszedł do arkusza');
+  });
+
   it('test_manualAdminBrowserScript_when_built_should_wire_bulk_rates_contractor_combobox', () => {
     const script = manualAdminBrowserScript();
     expect(script).toContain("setupRateCombobox('bulk-rates-podwykonawca'");

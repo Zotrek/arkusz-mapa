@@ -539,4 +539,8 @@ describe('wordMapSupport', () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it('test_warnIfWordTemplateMissingPlaceholders_when_zip_is_corrupt_should_throw', () => {
+    expect(() => warnIfWordTemplateMissingPlaceholders(Buffer.from('to nie jest zip'))).toThrow();
+  });
 });

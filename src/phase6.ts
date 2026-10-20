@@ -3142,7 +3142,10 @@ ${mapSharedBrowserScript()}
         s.src = src;
         s.crossOrigin = '';
         s.onload = function () { s.setAttribute('data-loaded', '1'); resolve(); };
-        s.onerror = function () { reject(new Error('script: ' + src)); };
+        s.onerror = function () {
+          if (s.parentNode) s.parentNode.removeChild(s);
+          reject(new Error('script: ' + src));
+        };
         document.head.appendChild(s);
       });
     }
@@ -3153,7 +3156,11 @@ ${mapSharedBrowserScript()}
       if (!docxLibsPromise) {
         docxLibsPromise = loadScriptOnce('https://unpkg.com/pizzip@3.1.7/dist/pizzip.min.js')
           .then(function () { return loadScriptOnce('https://unpkg.com/docxtemplater@3.50.0/build/docxtemplater.js'); })
-          .then(function () { return loadScriptOnce('https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js'); });
+          .then(function () { return loadScriptOnce('https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js'); })
+          .catch(function (err) {
+            docxLibsPromise = null;
+            throw err;
+          });
       }
       return docxLibsPromise;
     }
@@ -3701,10 +3708,10 @@ ${mapSharedBrowserScript()}
     function proposeFreshRouteName(currentName) {
       var contractor = contractorShortNameForRoute();
       var date = pickupDateForRoute();
-      function failFresh(technical, resp) {
+      function failFresh(technical, resp, summary) {
         mapApiErrorCard_({
           code: 'MAP-E-ROUTE-NAME-FRESH',
-          summary: 'Nie udało się pobrać zajętych nazw tras.',
+          summary: summary || 'Nie udało się pobrać zajętych nazw tras.',
           effect: 'Zapis przerwany, żeby nie nadać numeru, który już jest. Stawka poprzedniej trasy nie została zmieniona.',
           place: 'phase6.ts proposeFreshRouteName',
           technical: String(technical || 'brak listy names')
@@ -3718,7 +3725,7 @@ ${mapSharedBrowserScript()}
             : (names || []).concat([currentName]);
           return proposeRouteName(occupied, contractor, date);
         } catch (err) {
-          return failFresh(err && err.message || err);
+          return failFresh(err && err.message || err, null, 'Nie udało się wyliczyć nazwy nowej trasy.');
         }
       }
       if (!transportApiEnabled) return Promise.resolve(fromNames([]));
@@ -4113,15 +4120,17 @@ ${mapSharedBrowserScript()}
           closeDocModal();
           showAwizacjaNotice_(head, bolecinError, null, false);
         });
-      }).catch(function (err) {
-        console.error(err);
+      }, function (libsErr) {
+        console.error(libsErr);
         showMapErrorCard({
           code: 'MAP-E-WORD-LIBS',
           summary: 'Nie udało się załadować bibliotek Word (PizZip/docxtemplater).',
           effect: 'Protokoły zbiorcze się nie pobrały. Sprawdź połączenie z internetem i spróbuj ponownie.',
           place: 'phase6.ts runBulkDocGenerate',
-          technical: String(err && err.message || err)
+          technical: String(libsErr && libsErr.message || libsErr)
         });
+      }).catch(function (err) {
+        docGenerateCrashed_(err, 'phase6.ts runBulkDocGenerate');
       }).then(function () {
         if (okBtn) okBtn.disabled = false;
         setTransportDatesLoading(false);
@@ -4185,9 +4194,10 @@ ${mapSharedBrowserScript()}
                 place: 'phase6.ts finishWithNumber',
                 technical: 'pusty numer'
               });
-              return;
+              return false;
             }
             renderDocxAndDownload(p, pr, md, prOpt, dz, dzPlik, numerZlecenia, filteredSeals, preparedLists);
+            return true;
           } catch (err) {
             console.error(err);
             showMapErrorCard({
@@ -4197,6 +4207,7 @@ ${mapSharedBrowserScript()}
               place: 'phase6.ts finishWithNumber',
               technical: String(err && err.message || err)
             });
+            return false;
           } finally {
             if (!keepLoading) {
               if (okBtn) okBtn.disabled = false;
@@ -4216,6 +4227,7 @@ ${mapSharedBrowserScript()}
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
           }
+          return false;
         });
       }
       if (transportApiEnabled) {
@@ -4239,39 +4251,53 @@ ${mapSharedBrowserScript()}
         assignBolecinAwizacja_(transportPayload, form.mdOpt);
         var awizacjaChoice = window.__bolecinAwizacjaChoice;
         if (manualNumer) {
-          finishWithNumber(numerWpisany, true);
+          var docDownloaded = finishWithNumber(numerWpisany, true);
           appendTransportRow(transportPayload).then(function (resp) {
-            if (!resp || !resp.ok) {
+            return docDownloaded.then(function (downloaded) {
+              if (!resp || !resp.ok) {
+                mapApiErrorCard_({
+                  code: 'MAP-E-REGISTER-SAVE',
+                  summary: downloaded
+                    ? 'Dokument pobrany, ale zapis w arkuszu nie powiódł się.'
+                    : 'Nie udało się zapisać transportu w arkuszu.',
+                  effect: downloaded
+                    ? 'Protokół jest na dysku. Wiersz rejestru transportu może nie być w arkuszu.'
+                    : 'Protokół też się nie pobrał (przyczyna na osobnej karcie). Wiersz rejestru transportu może nie być w arkuszu.',
+                  place: 'phase6.ts runDocGenerate',
+                  technical: String(resp && resp.error ? resp.error : 'błąd API')
+                }, resp, null);
+                return;
+              }
+              rememberRouteAfterSuccessfulSave(form.routeFields);
+              updateTransportCutoffAfterAppend(p, dz, prOpt.label);
+              if (typeof markerEntries !== 'undefined') {
+                markerEntries.forEach(function (entry) {
+                  if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
+                });
+              }
+              showAwizacjaNotice_(
+                (downloaded ? 'Dokument pobrany.\\n' : '') + 'Zapisano transport: ' + numerWpisany,
+                resp.bolecinError,
+                awizacjaChoice
+              );
+            });
+          }, function (err) {
+            console.error(err);
+            return docDownloaded.then(function (downloaded) {
               mapApiErrorCard_({
                 code: 'MAP-E-REGISTER-SAVE',
-                summary: 'Dokument pobrany, ale zapis w arkuszu nie powiódł się.',
-                effect: 'Protokół jest na dysku. Wiersz rejestru transportu może nie być w arkuszu.',
+                summary: downloaded
+                  ? 'Dokument pobrany, ale nie udało się zapisać transportu w arkuszu.'
+                  : 'Nie udało się zapisać transportu w arkuszu.',
+                effect: downloaded
+                  ? 'Protokół jest na dysku. Sprawdź połączenie i URL Web App.'
+                  : 'Protokół też się nie pobrał (przyczyna na osobnej karcie). Sprawdź połączenie i URL Web App.',
                 place: 'phase6.ts runDocGenerate',
-                technical: String(resp && resp.error ? resp.error : 'błąd API')
-              }, resp, null);
-              return;
-            }
-            rememberRouteAfterSuccessfulSave(form.routeFields);
-            updateTransportCutoffAfterAppend(p, dz, prOpt.label);
-            if (typeof markerEntries !== 'undefined') {
-              markerEntries.forEach(function (entry) {
-                if (entry.pointIdx === idx) refreshMarkerDisplay(entry);
-              });
-            }
-            showAwizacjaNotice_(
-              'Dokument pobrany.\\nZapisano transport: ' + numerWpisany,
-              resp.bolecinError,
-              awizacjaChoice
-            );
+                technical: String(err && err.message || err)
+              }, null, err);
+            });
           }).catch(function (err) {
-            console.error(err);
-            mapApiErrorCard_({
-              code: 'MAP-E-REGISTER-SAVE',
-              summary: 'Dokument pobrany, ale nie udało się zapisać transportu w arkuszu.',
-              effect: 'Protokół jest na dysku. Sprawdź połączenie i URL Web App.',
-              place: 'phase6.ts runDocGenerate',
-              technical: String(err && err.message || err)
-            }, null, err);
+            docGenerateCrashed_(err, 'phase6.ts runDocGenerate');
           }).then(function () {
             if (okBtn) okBtn.disabled = false;
             setTransportDatesLoading(false);
@@ -4386,7 +4412,10 @@ ${mapSharedBrowserScript()}
       setTransportDatesLoading(true, 'Ładowanie granic województw…');
     }
     fetch(${jsonForScript(geoJsonUrl)})
-      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
       .then(function(geojson) {
         L.geoJSON(geojson, {
           onEachFeature: function(feature, layer) {
@@ -4405,7 +4434,7 @@ ${mapSharedBrowserScript()}
           code: 'MAP-E-VOIVODESHIP',
           summary: 'Nie udało się wczytać granic województw.',
           effect: 'Filtr województwa nie ma granic do trafienia. Pinezki i reszta mapy działają.',
-          place: 'phase6.ts fetchWojewodztwaGeoJson',
+          place: 'phase6.ts fetch geoJsonUrl (granice województw)',
           technical: String(err && err.message || err || 'Nie załadowano granic województw.')
         });
       })

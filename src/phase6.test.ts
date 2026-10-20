@@ -1239,6 +1239,81 @@ showMapErrorCard({
       expect(body).not.toContain('showMapNotice(');
     });
 
+    it('test_runBulkDocGenerate_when_error_is_not_word_libs_should_not_report_word_libs', () => {
+      const html = protocolHtml();
+      const body = html.slice(html.indexOf('function runBulkDocGenerate('), html.indexOf('function runDocGenerate('));
+      expect(body).toMatch(/\}, function \(libsErr\) \{\s*console\.error\(libsErr\);\s*showMapErrorCard\(\{\s*code: 'MAP-E-WORD-LIBS'/);
+      expect(body).not.toMatch(/\.catch\(function \(err\) \{\s*console\.error\(err\);\s*showMapErrorCard\(\{\s*code: 'MAP-E-WORD-LIBS'/);
+      expect(body.split("docGenerateCrashed_(err, 'phase6.ts runBulkDocGenerate')").length - 1).toBe(2);
+    });
+
+    it('test_runDocGenerate_manual_number_when_word_failed_should_not_say_document_downloaded', () => {
+      const html = protocolHtml();
+      const finish = html.slice(html.indexOf('function finishWithNumber('), html.indexOf('if (transportApiEnabled) {', html.indexOf('function finishWithNumber(')));
+      expect(finish).toMatch(/renderDocxAndDownload\([^)]*\);\s*return true;/);
+      expect(finish.split('return false;').length - 1).toBe(3);
+      const manual = html.slice(html.indexOf('if (manualNumer) {'), html.indexOf('var numerManual = numEl'));
+      expect(manual).toContain('var docDownloaded = finishWithNumber(numerWpisany, true);');
+      expect(manual.split('docDownloaded.then(function (downloaded) {').length - 1).toBe(2);
+      expect(manual).toContain("(downloaded ? 'Dokument pobrany.\\n' : '') + 'Zapisano transport: ' + numerWpisany");
+      expect(manual).toContain('Protokół też się nie pobrał (przyczyna na osobnej karcie).');
+    });
+
+    it('test_ensureDocxLibrariesLoaded_when_script_fails_should_load_again_on_next_call', async () => {
+      const html = protocolHtml();
+      const src = html.slice(html.indexOf('var docxLibsPromise = null;'), html.indexOf('function sanitizeFileNamePart('));
+      type FakeScript = {
+        src: string;
+        parentNode: { removeChild: (s: FakeScript) => void } | null;
+        onload: (() => void) | null;
+        onerror: (() => void) | null;
+        setAttribute: (name: string, value: string) => void;
+        getAttribute: (name: string) => string | null;
+      };
+      const inHead: FakeScript[] = [];
+      let failNext = true;
+      const head = {
+        appendChild(s: FakeScript) {
+          inHead.push(s);
+          s.parentNode = head;
+          const fail = failNext;
+          failNext = false;
+          queueMicrotask(() => (fail ? s.onerror?.() : s.onload?.()));
+        },
+        removeChild(s: FakeScript) {
+          inHead.splice(inHead.indexOf(s), 1);
+        },
+      };
+      const document = {
+        head,
+        querySelector: (sel: string) => inHead.find((s) => sel === `script[src="${s.src}"]`) ?? null,
+        createElement: (): FakeScript => {
+          const attrs: Record<string, string> = {};
+          return {
+            src: '',
+            parentNode: null,
+            onload: null,
+            onerror: null,
+            setAttribute: (name, value) => { attrs[name] = value; },
+            getAttribute: (name) => attrs[name] ?? null,
+          };
+        },
+      };
+      const ensure = runInNewContext(`${src}\nensureDocxLibrariesLoaded;`, { document, Promise }) as () => Promise<void>;
+
+      await expect(ensure()).rejects.toThrow('script: ');
+      expect(inHead).toHaveLength(0);
+      await expect(ensure()).resolves.toBeUndefined();
+      expect(inHead).toHaveLength(3);
+    });
+
+    it('test_proposeFreshRouteName_when_name_calculation_fails_should_not_blame_fetch', () => {
+      const html = protocolHtml();
+      const body = html.slice(html.indexOf('function proposeFreshRouteName('), html.indexOf('function resolveRouteFieldsBeforeSave('));
+      expect(body).toContain('Nie udało się pobrać zajętych nazw tras.');
+      expect(body).toContain("failFresh(err && err.message || err, null, 'Nie udało się wyliczyć nazwy nowej trasy.')");
+    });
+
     it('test_loadBulkTransportDates_when_fetch_or_ok_false_should_show_dismissible_error_card', () => {
       const html = protocolHtml();
       const body = html.slice(
@@ -1591,7 +1666,9 @@ __api = {
       expect(prewarm).toContain("place: 'phase6.ts prewarmDocxTemplateCache'");
       expect(html).toContain("code: 'MAP-E-VOIVODESHIP'");
       expect(html).toContain('Nie udało się wczytać granic województw.');
-      expect(html).toContain("place: 'phase6.ts fetchWojewodztwaGeoJson'");
+      expect(html).toContain("place: 'phase6.ts fetch geoJsonUrl (granice województw)'");
+      expect(html).not.toContain('fetchWojewodztwaGeoJson');
+      expect(html).toMatch(/\.then\(function\(res\) \{\s*if \(!res\.ok\) throw new Error\('HTTP ' \+ res\.status\);\s*return res\.json\(\);/);
       expect(html).toContain('Nie załadowano granic województw.');
     });
 

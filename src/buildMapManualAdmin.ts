@@ -275,6 +275,19 @@ ${referenceFormatsBrowserScript()}
       }, resp, err);
     }
 
+    function reportManualAdminAfterSave_(err) {
+      console.error(err);
+      setManualAdminStatus('Zapisano, ale formularz się nie odświeżył. Odśwież stronę.', 'error');
+      if (typeof showMapErrorCard !== 'function') return;
+      showMapErrorCard({
+        code: 'MAP-E-ADMIN-AFTER-SAVE',
+        summary: 'Zapisano, ale formularz się nie odświeżył.',
+        effect: 'Zapis wszedł do arkusza. Nie powtarzaj go — odśwież stronę, żeby zobaczyć zmiany.',
+        place: 'buildMapManualAdmin.ts bindManualAdminUi',
+        technical: String(err && err.message || err)
+      });
+    }
+
     function rateValidFromFromPicker(value) {
       var raw = String(value || '').trim();
       if (!raw) return '';
@@ -686,9 +699,9 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-lista-adres').value = '';
             document.getElementById('manual-admin-lista-nip').value = '';
             document.getElementById('manual-admin-lista-bdo').value = '';
-          }).catch(function(err) {
+          }, function(err) {
             reportManualAdminSave_('Zapis nieudany.', null, err);
-          }).then(function() {
+          }).catch(reportManualAdminAfterSave_).then(function() {
             setManualAdminBusy(listaSubmit, false);
           });
         });
@@ -718,9 +731,9 @@ ${referenceFormatsBrowserScript()}
               return;
             }
             setManualAdminStatus('Zapisano poprawkę — odśwież mapę (npm run generate), aby zobaczyć pinezkę.', 'ok');
-          }).catch(function(err) {
+          }, function(err) {
             reportManualAdminSave_('Zapis poprawki nieudany.', null, err);
-          }).then(function() {
+          }).catch(reportManualAdminAfterSave_).then(function() {
             setManualAdminBusy(poprawSubmit, false);
           });
         });
@@ -759,9 +772,9 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-stawki-podjazd').value = '';
             document.getElementById('manual-admin-stawki-worek').value = '';
             document.getElementById('manual-admin-stawki-od-kiedy').value = '';
-          }).catch(function(err) {
+          }, function(err) {
             reportManualAdminSave_('Zapis nieudany.', null, err);
-          }).then(function() {
+          }).catch(reportManualAdminAfterSave_).then(function() {
             setManualAdminBusy(stawkiSubmit, false);
           });
         });
@@ -802,9 +815,9 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-harmonogram-worek').value = '';
             setDayMultiValue('manual-admin-harmonogram-dni', '');
             document.getElementById('manual-admin-harmonogram-od-kiedy').value = '';
-          }).catch(function(err) {
+          }, function(err) {
             reportManualAdminSave_('Zapis nieudany.', null, err);
-          }).then(function() {
+          }).catch(reportManualAdminAfterSave_).then(function() {
             setManualAdminBusy(harmonogramSubmit, false);
           });
         });

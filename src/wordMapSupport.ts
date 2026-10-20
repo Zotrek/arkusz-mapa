@@ -917,13 +917,9 @@ export function preprocessDocxMergeAdjacentTextRuns(buf: Buffer): Buffer {
 }
 
 function wordDocumentXmlContainsDoubleMustache(buf: Buffer): boolean {
-  try {
-    const zip = new PizZip(buf);
-    const xml = zip.file('word/document.xml')?.asText() ?? '';
-    return xml.includes('{{');
-  } catch {
-    return true;
-  }
+  const zip = new PizZip(buf);
+  const xml = zip.file('word/document.xml')?.asText() ?? '';
+  return xml.includes('{{');
 }
 
 export function warnIfWordTemplateMissingPlaceholders(buf: Buffer): void {
