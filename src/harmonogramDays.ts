@@ -3,6 +3,8 @@
  * Reguła: data_zamknięcia < D < dziś (D = roboczy dzień z harmonogramu, Europe/Warsaw).
  */
 
+import { jsonForScript } from './jsonForScript.js';
+import { functionSourceForBrowser } from './routeName.js';
 import { classifyMapPointZbiorka, normalizeWgHarmonogramu } from './zbiorkaClassify.js';
 import { parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 
@@ -145,50 +147,12 @@ export function harmonogramDaysPickerCss(): string {
 
 /** Skrypt przeglądarki: setDayMultiValue / syncDayMultiFromChecks / initDayMultiPickers. */
 export function harmonogramDaysPickerBrowserScript(): string {
-  const tokenOrder = HARMONOGRAM_DAY_OPTIONS.map((d) => d.value);
-  const normMap: Record<string, string> = {};
-  for (const d of HARMONOGRAM_DAY_OPTIONS) {
-    normMap[normalizePlDayToken(d.value)] = d.value;
-  }
-  // Alias bez diakrytyków → kanoniczny skrót (śr ← sr)
-  for (const [alias, jsDay] of Object.entries(WEEKDAY_BY_NORM)) {
-    const opt = HARMONOGRAM_DAY_OPTIONS.find((d) => d.jsDay === jsDay);
-    if (opt && !(alias in normMap)) {
-      normMap[alias] = opt.value;
-    }
-  }
   return `
-    var DAY_MULTI_TOKEN_ORDER = ${JSON.stringify(tokenOrder)};
-    var DAY_MULTI_NORM_TO_TOKEN = ${JSON.stringify(normMap)};
-    function normalizeDayMultiToken(raw) {
-      return String(raw || '').toLowerCase()
-        .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e').replace(/ł/g, 'l')
-        .replace(/ń/g, 'n').replace(/ó/g, 'o').replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z')
-        .replace(/[^a-z]/g, '');
-    }
-    function parseDayMultiTokens(raw) {
-      var text = String(raw || '').trim();
-      if (!text) return [];
-      var found = {};
-      var parts = text.split(/[/;,]+|\\s+/);
-      var i, j, norm, token, name;
-      for (i = 0; i < parts.length; i++) {
-        norm = normalizeDayMultiToken(parts[i]);
-        if (!norm) continue;
-        token = DAY_MULTI_NORM_TO_TOKEN[norm];
-        if (token) { found[token] = true; continue; }
-        for (name in DAY_MULTI_NORM_TO_TOKEN) {
-          if (name.length >= 2 && (norm === name || norm.indexOf(name) !== -1)) {
-            found[DAY_MULTI_NORM_TO_TOKEN[name]] = true;
-          }
-        }
-      }
-      var out = [];
-      for (j = 0; j < DAY_MULTI_TOKEN_ORDER.length; j++) {
-        if (found[DAY_MULTI_TOKEN_ORDER[j]]) out.push(DAY_MULTI_TOKEN_ORDER[j]);
-      }
-      return out;
-    }
+    var WEEKDAY_BY_NORM = ${jsonForScript(WEEKDAY_BY_NORM)};
+    var HARMONOGRAM_DAY_OPTIONS = ${jsonForScript(HARMONOGRAM_DAY_OPTIONS)};
+${functionSourceForBrowser(normalizePlDayToken)}
+${functionSourceForBrowser(parseWeekdaysFromDniHarmonogramu)}
+${functionSourceForBrowser(parseHarmonogramDayTokens)}
     function dayMultiWrap(hiddenId) {
       return document.querySelector('[data-day-multi="' + hiddenId + '"]');
     }
@@ -217,7 +181,7 @@ export function harmonogramDaysPickerBrowserScript(): string {
         if (hiddenOnly) hiddenOnly.value = String(raw || '').trim();
         return;
       }
-      var tokens = parseDayMultiTokens(raw);
+      var tokens = parseHarmonogramDayTokens(raw);
       var wanted = {};
       var i;
       for (i = 0; i < tokens.length; i++) wanted[tokens[i]] = true;

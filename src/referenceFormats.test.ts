@@ -1,5 +1,6 @@
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import { formatPodwykoForWord } from './referenceFormats.js';
+import { formatPodwykoForWord, referenceFormatsBrowserScript } from './referenceFormats.js';
 
 describe('formatPodwykoForWord', () => {
   it('test_formatPodwykoForWord_joins_fields_in_order', () => {
@@ -26,5 +27,15 @@ describe('formatPodwykoForWord', () => {
         bdo: '',
       }),
     ).toBe('Firma Sp. z o.o.');
+  });
+});
+
+describe('referenceFormatsBrowserScript VM', () => {
+  it('test_referenceFormatsBrowserScript_formatPodwykoForWord_should_match_ts', () => {
+    const record = { nazwa: 'X', nazwaDoProtokolu: ' Trans  Pol ', adres: 'ul. A 1', nip: '123', bdo: 'BDO 9' };
+    const sandbox: Record<string, unknown> = {};
+    runInNewContext(`${referenceFormatsBrowserScript()}\n__api = formatPodwykoForWord;`, sandbox);
+    const format = sandbox.__api as (r: typeof record) => string;
+    expect(format(record)).toBe(formatPodwykoForWord(record));
   });
 });

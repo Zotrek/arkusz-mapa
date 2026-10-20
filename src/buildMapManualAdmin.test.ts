@@ -76,10 +76,10 @@ describe('buildMapManualAdmin', () => {
     expect(script).toContain('point.adres');
     expect(script).toContain('point.sklep');
     expect(script).toContain('point.miasto');
-    expect(script).toContain('addressWithCommaAfterLocalityMap');
+    expect(script).toContain('addressWithCommaAfterLocality(adres, miasto)');
     expect(script).toContain('PODWYKOLISTA[i].label');
     expect(script).toContain('function rateTextMatchesQuery');
-    expect(script).toContain('normalizeForAddressSearchMap(String(text || \'\').replace(/,/g, \'\')).indexOf(q)');
+    expect(script).toContain('normalizeForAddressSearch(String(text || \'\').replace(/,/g, \'\')).indexOf(q)');
     expect(script).toContain('manual-admin-stawki-sklep-value');
     expect(script).toContain('manual-admin-stawki-podwykonawca-value');
     expect(script).toContain('manual-admin-harmonogram-sklep-value');

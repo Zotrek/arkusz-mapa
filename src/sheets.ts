@@ -203,7 +203,7 @@ export function buildAddress(parts: AddressParts): string {
 }
 
 /** Drugi człon miejscowości (Zielona Góra, Środa Wielkopolska). Nie nazwy ulic. */
-const LOCALITY_SECOND_WORD = new Set([
+export const LOCALITY_SECOND_WORD = new Set([
   'gora',
   'sol',
   'targ',
@@ -230,7 +230,7 @@ const LOCALITY_SECOND_WORD = new Set([
   'slaska',
 ]);
 
-function foldLocality(text: string): string {
+export function foldLocality(text: string): string {
   return text
     .toLocaleLowerCase('pl')
     .normalize('NFD')
@@ -239,7 +239,7 @@ function foldLocality(text: string): string {
     .replace(/\./g, '');
 }
 
-function splitLeadingPostcode(address: string): { prefix: string; rest: string } {
+export function splitLeadingPostcode(address: string): { prefix: string; rest: string } {
   const match = /^(\d{2}-\d{3})(?:\s+|$)/.exec(address);
   if (!match) {
     return { prefix: '', rest: address };
@@ -247,7 +247,7 @@ function splitLeadingPostcode(address: string): { prefix: string; rest: string }
   return { prefix: match[1], rest: address.slice(match[0].length).trim() };
 }
 
-function insertCommaAfterPlace(address: string, locality: string): string | null {
+export function insertCommaAfterPlace(address: string, locality: string): string | null {
   const place = locality.replace(/\s+/g, ' ').trim();
   if (!place) {
     return null;
@@ -274,7 +274,7 @@ function insertCommaAfterPlace(address: string, locality: string): string | null
   return `${head}, ${tail}`;
 }
 
-function insertCommaAfterLocalityHeuristic(address: string): string {
+export function insertCommaAfterLocalityHeuristic(address: string): string {
   if (address.includes(',')) {
     return address;
   }
@@ -307,11 +307,11 @@ function insertCommaAfterLocalityHeuristic(address: string): string {
  * Znana miejscowość ma pierwszeństwo. Inaczej drugi człon tylko dla typowych nazw (Góra, Wielkopolska).
  */
 export function addressWithCommaAfterLocality(address: string, locality = ''): string {
-  const addr = address.replace(/\s+/g, ' ').trim();
+  const addr = String(address ?? '').replace(/\s+/g, ' ').trim();
   if (!addr) {
     return '';
   }
-  const placed = insertCommaAfterPlace(addr, locality);
+  const placed = insertCommaAfterPlace(addr, String(locality ?? ''));
   if (placed !== null) {
     return placed;
   }

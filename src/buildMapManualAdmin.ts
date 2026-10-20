@@ -412,9 +412,9 @@ ${referenceFormatsBrowserScript()}
     var rateComboboxInited = false;
 
     function rateTextMatchesQuery(text, query) {
-      var q = normalizeForAddressSearchMap(String(query || '').replace(/,/g, ''));
+      var q = normalizeForAddressSearch(String(query || '').replace(/,/g, ''));
       if (!q) return true;
-      return normalizeForAddressSearchMap(String(text || '').replace(/,/g, '')).indexOf(q) !== -1;
+      return normalizeForAddressSearch(String(text || '').replace(/,/g, '')).indexOf(q) !== -1;
     }
 
     function hideRateComboboxList(listEl, inputEl) {
@@ -477,10 +477,10 @@ ${referenceFormatsBrowserScript()}
         hiddenEl.value = '';
         return;
       }
-      var q = normalizeForAddressSearchMap(text);
+      var q = normalizeForAddressSearch(text);
       var i;
       for (i = 0; i < options.length; i++) {
-        if (normalizeForAddressSearchMap(options[i].text) === q) {
+        if (normalizeForAddressSearch(options[i].text) === q) {
           selectRateComboboxOption(inputEl, hiddenEl, null, options[i]);
           return;
         }
@@ -578,7 +578,7 @@ ${referenceFormatsBrowserScript()}
     }
 
     function rateShopOptionLabel(sklep, adres, miasto) {
-      var shown = addressWithCommaAfterLocalityMap(adres, miasto);
+      var shown = addressWithCommaAfterLocality(adres, miasto);
       if (sklep && sklep !== adres && sklep !== shown) return sklep + ' — ' + shown;
       return shown;
     }
@@ -672,7 +672,7 @@ ${referenceFormatsBrowserScript()}
           }
           if (!nazwa) nazwa = protokol || adres;
           if (!protokol) protokol = nazwa;
-          var dane = formatPodwykoForWordJs({
+          var dane = formatPodwykoForWord({
             nazwaDoProtokolu: protokol,
             adres: adres,
             nip: nip,

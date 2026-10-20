@@ -210,13 +210,6 @@ export function harmonogramPanelBrowserScript(): string {
       return adres;
     }
 
-    function harmonogramIsBolecin(text) {
-      var combined = String(text || '').toLowerCase()
-        .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e').replace(/ł/g, 'l')
-        .replace(/ń/g, 'n').replace(/ó/g, 'o').replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z');
-      return combined.indexOf('bolecin') >= 0 || combined.indexOf('biosystem') >= 0;
-    }
-
     function harmonogramErrorText(code) {
       var raw = String(code || '');
       if (raw.indexOf('BOLECIN_SHEETS_ID') >= 0) {
@@ -286,7 +279,7 @@ export function harmonogramPanelBrowserScript(): string {
       var extra = card.querySelector('.harmonogram-bolecin');
       var awizuj = card.querySelector('.harmonogram-awizuj');
       var miejsce = harmonogramField(card, 'miejsceZrzutu');
-      var show = harmonogramIsBolecin(miejsce);
+      var show = isBolecinPlace(miejsce);
       if (extra) extra.hidden = !show;
       if (awizuj) awizuj.hidden = !show;
     }

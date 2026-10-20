@@ -19,7 +19,7 @@ import {
 } from './config.js';
 import type { GeocodedAddress } from './phase5.js';
 import type { GroupedBlednyAdres, GroupedNiepewnyAdres } from './phase5.js';
-import { buildCloseGeocodedAddressPairs } from './phase6.js';
+import { buildCloseGeocodedAddressPairs } from './map/geometry.js';
 import { findPostcodeZoneMismatches, loadPostcodeExceptions } from './postcodeZoneCheck.js';
 import type { SheetRow } from './sheets.js';
 

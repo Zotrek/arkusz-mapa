@@ -1,7 +1,9 @@
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
   easterSundayUtc,
   formatHarmonogramDayTokens,
+  harmonogramDaysPickerBrowserScript,
   hasPastScheduleDayAfterClosure,
   isCopyOdebraneZHarmonogramuEnabled,
   isPolishPublicHolidayUtc,
@@ -164,4 +166,16 @@ describe('shouldCopyToOdebraneZHarmonogramu', () => {
     expect(isCopyOdebraneZHarmonogramuEnabled({ COPY_ODEBRANE_Z_HARMONOGRAMU: 'true' })).toBe(true);
     expect(isCopyOdebraneZHarmonogramuEnabled({ COPY_ODEBRANE_Z_HARMONOGRAMU: '0' })).toBe(false);
   });
+});
+
+describe('harmonogramDaysPickerBrowserScript VM', () => {
+  it.each(['pn, śr', 'Poniedziałki i czwartki', 'sr/pt', 'nd', '', 'xyz'])(
+    'test_harmonogramDaysPickerBrowserScript_parseHarmonogramDayTokens_%s_should_match_ts',
+    (raw) => {
+      const sandbox: Record<string, unknown> = {};
+      runInNewContext(`${harmonogramDaysPickerBrowserScript()}\n__api = parseHarmonogramDayTokens;`, sandbox);
+      const parse = sandbox.__api as (text: string) => string[];
+      expect(JSON.parse(JSON.stringify(parse(raw)))).toEqual(parseHarmonogramDayTokens(raw));
+    },
+  );
 });

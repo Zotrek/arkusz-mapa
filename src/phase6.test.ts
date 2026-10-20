@@ -20,40 +20,50 @@ import {
   formatTimestampForFileName,
   formatGeneratedAtLabel,
   buildMapFileName,
-  defaultDateZaladunkuYmd,
   buildMapHtml,
   executePhase6,
-  MAP_SEARCH_INPUT_DEBOUNCE_MS,
-  normalizeForAddressSearch,
-  podwykoOptionMatchesSearch,
-  addressMatchesSearch,
-  mapPointMatchesSearch,
-  uniquePodmiotyHandloweFromRows,
-  classifyMapPointZbiorka,
-  mapPointMatchesZbiorkaFilter,
-  normalizeWgHarmonogramu,
-  mapPointMatchesWgHarmonogramuFilter,
-  normalizeWojewodztwoLabel,
-  uniqueWojewodztwaFromMapPoints,
-  mapPointMatchesWojewodztwoFilter,
-  formatWojewodztwoFilterSummary,
-  haversineMeters,
-  spreadCloseMarkerPositions,
-  findCloseMapPointPairs,
-  buildCloseGeocodedAddressPairs,
-  buildTransportShopKey,
-  resolveTransportCutoffMsForPoint,
-  mapSharedBrowserScript,
-  MAP_MARKER_CLUSTER_MAX_M,
-  MAP_SEARCH_SINGLE_MATCH_ZOOM,
-  MAP_SEARCH_FIT_PADDING,
 } from './phase6';
 import {
+  MAP_SEARCH_FIT_PADDING,
+  MAP_SEARCH_INPUT_DEBOUNCE_MS,
+  MAP_SEARCH_SINGLE_MATCH_ZOOM,
+} from './map/browser/bootstrap';
+import {
+  MAP_MARKER_CLUSTER_MAX_M,
+  buildCloseGeocodedAddressPairs,
+  findCloseMapPointPairs,
+  haversineMeters,
+  spreadCloseMarkerPositions,
+} from './map/geometry';
+import { uniquePodmiotyHandloweFromRows } from './map/mapPoint';
+import {
+  addressMatchesSearch,
+  buildTransportShopKey,
+  formatWojewodztwoFilterSummary,
+  mapPointMatchesSearch,
+  mapPointMatchesWgHarmonogramuFilter,
+  mapPointMatchesWojewodztwoFilter,
+  mapPointMatchesZbiorkaFilter,
+  normalizeForAddressSearch,
+  normalizeWojewodztwoLabel,
+  podwykoOptionMatchesSearch,
+  resolveTransportCutoffMsForPoint,
+  resolveTransportLastForPoint,
+  uniqueWojewodztwaFromMapPoints,
+} from './map/searchFilters';
+import { isBolecinPlace } from './harmonogramGroup';
+import { addressWithCommaAfterLocality } from './sheets';
+import { mapSharedBrowserScript } from './map/sharedBrowserScript';
+import {
   aggregateRodzajZbiorkiFromSealRows,
+  buildDocListaPlombFields,
+  defaultDateZaladunkuYmd,
   filterSealRowsByMinClosureDate,
   formatRodzajZbiorkiForDoc,
   parseDataZamknieciaWorkaToSortMs,
+  resolveCollectibleSealCount,
 } from './wordMapSupport';
+import { classifyMapPointZbiorka, normalizeWgHarmonogramu } from './zbiorkaClassify';
 import { functionSourceForBrowser, routeNameBrowserScript } from './routeName';
 import { routeProtocolBrowserScript } from './routeProtocol';
 
@@ -340,7 +350,7 @@ describe('phase6', () => {
       expect(html).toContain('ODEBRANA');
       expect(html).toContain('BIEZACA');
       // Fallback jak resolveCollectibleSealCount: puste sealRows → total (p.count), nie 0
-      expect(html).toContain('countSealRows(p.sealRows) === 0 ? total : collectible.length');
+      expect(html).toContain('resolveCollectibleSealCount(p.sealRows, total)');
     });
 
     it('test_buildMapHtml_when_harmonogram_data_present_should_embed_filter_controls', () => {
@@ -886,9 +896,9 @@ describe('phase6', () => {
       expect(html).toContain('Generuj bez awizacji');
       expect(html).toContain('Dodaj awizację');
       expect(html).toContain('awizujBolecin');
-      expect(html).toContain('function isBolecinMiejsce_');
+      expect(html).toContain('function isBolecinPlace');
       expect(html).toContain('function offerBolecinAwizacja_');
-      expect(html).toContain('filterSealRowsByMinDate');
+      expect(html).toContain('filterSealRowsByMinClosureDate');
       expect(html).toContain('buildDocListsFromSealRows');
       expect(html).toContain('function aggregateRodzajZbiorkiFromSealRows');
       expect(html).toContain("rodzaj_zbiorki: rodzajZbiorki ? (' ' + rodzajZbiorki) : ''");
@@ -1148,7 +1158,7 @@ showMapErrorCard({
   code: 'MAP-E-TRANSPORT-DATES',
   summary: 'Nie udało się pobrać ostatnich dat transportu.',
   effect: 'Pinezki są bez ostatniego odbioru.',
-  place: 'phase6.ts loadBulkTransportDates',
+  place: 'map/browser/errorsApi.ts loadBulkTransportDates',
   technical: 'Failed to fetch'
 });`,
         sandbox,
@@ -1165,7 +1175,7 @@ showMapErrorCard({
         [
           'ARKUSZ-MAPA-ERROR',
           'kod: MAP-E-TRANSPORT-DATES',
-          'miejsce: phase6.ts loadBulkTransportDates',
+          'miejsce: map/browser/errorsApi.ts loadBulkTransportDates',
           'objaw: Nie udało się pobrać ostatnich dat transportu.',
           'skutek: Pinezki są bez ostatniego odbioru.',
           'technicznie: Failed to fetch',
@@ -1197,7 +1207,7 @@ showMapErrorCard({
       expect(body).toContain('Dokument pobrany, ale zapis w arkuszu nie powiódł się.');
       expect(body).toContain('Dokument pobrany, ale nie udało się zapisać transportu w arkuszu.');
       expect(body).toContain('Nie udało się zapisać transportu w arkuszu.');
-      expect(body).toContain("place: 'phase6.ts runDocGenerate'");
+      expect(body).toContain("place: 'map/browser/docGenerate.ts runDocGenerate'");
       expect(body).toContain("String(resp && resp.error ? resp.error : 'błąd API')");
       expect(body).toContain('String(err && err.message || err)');
       expect(body).not.toContain('showMapNotice(');
@@ -1216,7 +1226,7 @@ showMapErrorCard({
       expect(body).toContain('Nie udało się utworzyć dokumentu.');
       expect(body).toContain("code: 'MAP-E-WORD-LIBS'");
       expect(body).toContain('Nie udało się załadować bibliotek Word (PizZip/docxtemplater).');
-      expect(body).toContain("place: 'phase6.ts finishWithNumber'");
+      expect(body).toContain("place: 'map/browser/docGenerate.ts finishWithNumber'");
       expect(body).toContain('String(err && err.message || err)');
       expect(body).not.toContain('showMapNotice(');
     });
@@ -1234,7 +1244,7 @@ showMapErrorCard({
       expect(body).toContain('Word nie powstał, wiersz rejestru mógł już wejść');
       expect(body).toContain('rejestr nie zapisany');
       expect(body).toContain("code: 'MAP-E-WORD-LIBS'");
-      expect(body).toContain("place: 'phase6.ts runBulkDocGenerate'");
+      expect(body).toContain("place: 'map/browser/docGenerate.ts runBulkDocGenerate'");
       expect(body).toContain('showAwizacjaNotice_(head, bolecinError, null, false)');
       expect(body).not.toContain('head +=');
       expect(body).not.toContain('showMapNotice(');
@@ -1245,7 +1255,7 @@ showMapErrorCard({
       const body = html.slice(html.indexOf('function runBulkDocGenerate('), html.indexOf('function runDocGenerate('));
       expect(body).toMatch(/\}, function \(libsErr\) \{\s*console\.error\(libsErr\);\s*showMapErrorCard\(\{\s*code: 'MAP-E-WORD-LIBS'/);
       expect(body).not.toMatch(/\.catch\(function \(err\) \{\s*console\.error\(err\);\s*showMapErrorCard\(\{\s*code: 'MAP-E-WORD-LIBS'/);
-      expect(body.split("docGenerateCrashed_(err, 'phase6.ts runBulkDocGenerate')").length - 1).toBe(2);
+      expect(body.split("docGenerateCrashed_(err, 'map/browser/docGenerate.ts runBulkDocGenerate')").length - 1).toBe(2);
     });
 
     it('test_runDocGenerate_manual_number_when_word_failed_should_not_say_document_downloaded', () => {
@@ -1324,7 +1334,7 @@ showMapErrorCard({
       expect(body.split("code: 'MAP-E-TRANSPORT-DATES'").length - 1).toBe(2);
       expect(body).toContain('Nie udało się pobrać ostatnich dat transportu.');
       expect(body).toContain('Pinezki są bez ostatniego odbioru. Filtr worków nie odcina starych dat.');
-      expect(body).toContain("place: 'phase6.ts loadBulkTransportDates'");
+      expect(body).toContain("place: 'map/browser/errorsApi.ts loadBulkTransportDates'");
       expect(body).toContain("String(resp && resp.error ? resp.error : 'ok: false')");
       expect(body).toContain('String(err && err.message || err)');
       expect(body).toContain('window.__transportDatesLoaded = true');
@@ -1345,11 +1355,11 @@ showMapErrorCard({
       expect(single.split("code: 'MAP-E-DOC-NUMBER'").length - 1).toBe(2);
       expect(single).toContain('Nie udało się pobrać numeru protokołu.');
       expect(single).toContain('Nie udało się pobrać danych transportu do protokołu.');
-      expect(single).toContain("place: 'phase6.ts loadDocModalData'");
+      expect(single).toContain("place: 'map/browser/docModal.ts loadDocModalData'");
       expect(single).not.toContain('Nie udało się pobrać danych transportu —');
       expect(bulk.split("code: 'MAP-E-BULK-DOC-NUMBER'").length - 1).toBe(2);
       expect(bulk).toContain('Nie udało się podejrzeć numeru protokołów zbiorczych.');
-      expect(bulk).toContain("place: 'phase6.ts loadBulkDocModalData'");
+      expect(bulk).toContain("place: 'map/browser/docModal.ts loadBulkDocModalData'");
       expect(bulk).toContain("finishBulkLoading('')");
     });
 
@@ -1365,15 +1375,15 @@ showMapErrorCard({
       );
       const resolve = html.slice(
         html.indexOf('function resolveRouteFieldsBeforeSave('),
-        html.indexOf('function isBolecinMiejsce_('),
+        html.indexOf('function miejsceIsBolecin_('),
       );
       expect(rate).toContain("code: 'MAP-E-ROUTE-RATE'");
       expect(rate).toContain('Nie udało się pobrać stawki trasy.');
-      expect(rate).toContain("place: 'phase6.ts lookupRouteRateNow'");
+      expect(rate).toContain("place: 'map/browser/routeForm.ts lookupRouteRateNow'");
       expect(rate).toContain('if (ticket !== routeRateRequest) return;');
       expect(fresh).toContain("code: 'MAP-E-ROUTE-NAME-FRESH'");
       expect(fresh).toContain('Zapis przerwany, żeby nie nadać numeru, który już jest.');
-      expect(fresh).toContain("place: 'phase6.ts proposeFreshRouteName'");
+      expect(fresh).toContain("place: 'map/browser/routeForm.ts proposeFreshRouteName'");
       expect(fresh).not.toContain('return fromNames([]);');
       expect(resolve).toContain('if (proposal == null) return null;');
       expect(resolve).toContain("code: 'MAP-E-ROUTE-FULL'");
@@ -1423,7 +1433,7 @@ showMapErrorCard({
 
     it('test_docGenerateCrashed_when_called_should_unlock_button_and_show_card', () => {
       const html = protocolHtml();
-      const src = html.slice(html.indexOf('function docGenerateCrashed_('), html.indexOf('function isBolecinMiejsce_('));
+      const src = html.slice(html.indexOf('function docGenerateCrashed_('), html.indexOf('function miejsceIsBolecin_('));
       const okBtn = { disabled: true };
       const loading: unknown[] = [];
       const shown: Array<{ code: string; place: string; technical: string }> = [];
@@ -1434,12 +1444,12 @@ showMapErrorCard({
         showMapErrorCard: (r: { code: string; place: string; technical: string }) => shown.push(r),
       }) as (err: Error, place: string) => void;
 
-      crashed(new Error('boom'), 'phase6.ts runDocGenerate');
+      crashed(new Error('boom'), 'map/browser/docGenerate.ts runDocGenerate');
 
       expect(okBtn.disabled).toBe(false);
       expect(loading).toEqual([[false]]);
       expect(shown).toEqual([
-        expect.objectContaining({ code: 'MAP-E-DOC-GENERATE', place: 'phase6.ts runDocGenerate', technical: 'boom' }),
+        expect.objectContaining({ code: 'MAP-E-DOC-GENERATE', place: 'map/browser/docGenerate.ts runDocGenerate', technical: 'boom' }),
       ]);
     });
 
@@ -1536,8 +1546,8 @@ showMapErrorCard({
 
     it('test_buildMapHtml_route_fields_then_should_be_caught_in_single_and_bulk_generate', () => {
       const html = protocolHtml();
-      expect(html).toContain(".catch(function (err) { docGenerateCrashed_(err, 'phase6.ts runDocGenerate'); });");
-      expect(html).toContain(".catch(function (err) { docGenerateCrashed_(err, 'phase6.ts runBulkDocGenerate'); });");
+      expect(html).toContain(".catch(function (err) { docGenerateCrashed_(err, 'map/browser/docGenerate.ts runDocGenerate'); });");
+      expect(html).toContain(".catch(function (err) { docGenerateCrashed_(err, 'map/browser/docGenerate.ts runBulkDocGenerate'); });");
     });
 
     it('test_buildMapHtml_point_doc_should_embed_only_miejsce_zaladunku', () => {
@@ -1552,26 +1562,21 @@ showMapErrorCard({
       expect(protocolHtml()).toContain(mapSharedBrowserScript());
     });
 
-    it.each([
-      'normalizeRateShopKey',
-      'polishAsciiLower',
-      'normalizeForAddressSearch',
-      'mapPointMatchesSearch',
-      'buildTransportShopKey',
-      'parseZbiorkaFlags',
-      'classifyMapPointZbiorka',
-      'normalizeWgHarmonogramu',
-      'mapPointMatchesZbiorkaFilter',
-      'mapPointMatchesWgHarmonogramuFilter',
-      'normalizeWojewodztwoLabel',
-      'mapPointMatchesWojewodztwoFilter',
-      'formatWojewodztwoFilterSummary',
-      'defaultDateZaladunkuYmd',
-      'parseDataZamknieciaWorkaToSortMs',
-      'rodzajZbiorkiLabel',
-      'formatRodzajZbiorkiForDoc',
-      'aggregateRodzajZbiorkiFromSealRows',
-    ])('test_buildMapHtml_shared_function_%s_declared_once', (name) => {
+    const sharedFunctionNames = [...mapSharedBrowserScript().matchAll(/^function (\w+)\(/gm)].map((m) => m[1]);
+
+    it('test_mapSharedBrowserScript_should_declare_seal_list_and_address_helpers', () => {
+      expect(sharedFunctionNames).toEqual(
+        expect.arrayContaining([
+          'buildDocListaPlombFields',
+          'resolveTransportLastForPoint',
+          'addressWithCommaAfterLocality',
+          'isBolecinPlace',
+          'podwykoOptionMatchesSearch',
+        ]),
+      );
+    });
+
+    it.each(sharedFunctionNames)('test_buildMapHtml_shared_function_%s_declared_once', (name) => {
       const declarations = protocolHtml().split(`function ${name}(`).length - 1;
       expect(declarations).toBe(1);
     });
@@ -1581,25 +1586,99 @@ showMapErrorCard({
       const sandbox: Record<string, unknown> = {};
       runInNewContext(
         `${mapSharedBrowserScript()}
-__api = {
-  normalizeForAddressSearch: normalizeForAddressSearch,
-  mapPointMatchesSearch: mapPointMatchesSearch,
-  buildTransportShopKey: buildTransportShopKey,
-  classifyMapPointZbiorka: classifyMapPointZbiorka,
-  mapPointMatchesZbiorkaFilter: mapPointMatchesZbiorkaFilter,
-  mapPointMatchesWgHarmonogramuFilter: mapPointMatchesWgHarmonogramuFilter,
-  normalizeWojewodztwoLabel: normalizeWojewodztwoLabel,
-  mapPointMatchesWojewodztwoFilter: mapPointMatchesWojewodztwoFilter,
-  formatWojewodztwoFilterSummary: formatWojewodztwoFilterSummary,
-  defaultDateZaladunkuYmd: defaultDateZaladunkuYmd,
-  parseDataZamknieciaWorkaToSortMs: parseDataZamknieciaWorkaToSortMs,
-  formatRodzajZbiorkiForDoc: formatRodzajZbiorkiForDoc,
-  aggregateRodzajZbiorkiFromSealRows: aggregateRodzajZbiorkiFromSealRows
-};`,
+__api = { ${sharedFunctionNames.map((n) => `${n}: ${n}`).join(', ')} };`,
         sandbox,
       );
       return sandbox.__api as Record<string, (...args: unknown[]) => unknown>;
     }
+
+    /** Wynik z innego realm VM → zwykły obiekt do porównania. */
+    function plain(value: unknown): unknown {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    const docSealRows = [
+      { numerPlomby: ' 1001 ', dataZamknieciaWorka: '2026-06-03', zbiorka: 'Ręczna' },
+      { numerPlomby: '1002', dataZamknieciaWorka: '15.06.2026', zbiorka: 'Maszyna' },
+      { numerPlomby: '1003', dataZamknieciaWorka: '46190', zbiorka: 'Recz' },
+      { numerPlomby: '1004', dataZamknieciaWorka: '2026-13-40', zbiorka: '' },
+      { numerPlomby: '', dataZamknieciaWorka: '01.06.2026', zbiorka: 'Ręczna' },
+      { numerPlomby: 'A<&>"', dataZamknieciaWorka: '', zbiorka: 'Maszyna' },
+    ];
+
+    it('test_mapSharedBrowserScript_buildDocListaPlombFields_should_match_ts', () => {
+      expect(plain(loadShared().buildDocListaPlombFields(docSealRows, { withoutListaPlomb: false }))).toEqual(
+        buildDocListaPlombFields(docSealRows as SheetRow[], { withoutListaPlomb: false }),
+      );
+    });
+
+    it('test_mapSharedBrowserScript_buildDocListaPlombFields_without_list_should_match_ts', () => {
+      expect(plain(loadShared().buildDocListaPlombFields(docSealRows, { withoutListaPlomb: true }))).toEqual(
+        buildDocListaPlombFields(docSealRows as SheetRow[], { withoutListaPlomb: true }),
+      );
+    });
+
+    it('test_mapSharedBrowserScript_filterSealRowsByMinClosureDate_should_match_ts', () => {
+      const cutoff = Date.UTC(2026, 5, 10);
+      expect(plain(loadShared().filterSealRowsByMinClosureDate(docSealRows, cutoff))).toEqual(
+        filterSealRowsByMinClosureDate(docSealRows, cutoff),
+      );
+    });
+
+    it('test_mapSharedBrowserScript_resolveCollectibleSealCount_should_match_ts', () => {
+      const api = loadShared();
+      const rows = [{ odebraneZHarmonogramu: true }, {}, { odebraneZHarmonogramu: false }];
+      expect(api.resolveCollectibleSealCount(rows, 9)).toBe(resolveCollectibleSealCount(rows, 9));
+      expect(api.resolveCollectibleSealCount([], 9)).toBe(resolveCollectibleSealCount([], 9));
+      expect(api.resolveCollectibleSealCount(undefined, 4)).toBe(4);
+    });
+
+    it('test_mapSharedBrowserScript_resolveTransportLastForPoint_should_match_ts', () => {
+      const adres = '00-001 Warszawa ul. Testowa 1';
+      const keyA = buildTransportShopKey('Firma A', adres);
+      const keyB = buildTransportShopKey('Firma B', adres);
+      const byKey = { [keyA]: Date.UTC(2026, 5, 1), [keyB]: Date.UTC(2026, 5, 10) };
+      const ktoByKey = { [keyB]: 'Kierowca B' };
+      const point = { podmiotHandlowy: 'Firma A', podmiotyHandlowe: ['Firma B', 'firma a'], adres };
+      expect(plain(loadShared().resolveTransportLastForPoint(point, byKey, ktoByKey))).toEqual(
+        resolveTransportLastForPoint(point, byKey, ktoByKey),
+      );
+      expect(loadShared().resolveTransportLastForPoint(point, undefined, undefined)).toBeNull();
+    });
+
+    it.each([
+      ['62-320 Miłosław ul. Leśna 1', 'Miłosław'],
+      ['65-001 Zielona Góra Wrocławska 5', ''],
+      ['63-000 Środa Wielkopolska Kórnicka 2', ''],
+      ['33-300 Nowy Sącz Lwowska 1', 'Nowy Sącz'],
+      ['55-200 Oława, Rynek 1', 'Oława'],
+      ['ul. Bez Kodu 7', ''],
+      ['', 'Gdzieś'],
+    ])('test_mapSharedBrowserScript_addressWithCommaAfterLocality_%s_should_match_ts', (adres, miasto) => {
+      expect(loadShared().addressWithCommaAfterLocality(adres, miasto)).toBe(
+        addressWithCommaAfterLocality(adres, miasto),
+      );
+    });
+
+    it('test_mapSharedBrowserScript_addressWithCommaAfterLocality_when_null_input_should_return_empty', () => {
+      expect(loadShared().addressWithCommaAfterLocality(null, null)).toBe('');
+    });
+
+    it.each(['Bolęcin', 'BIOSYSTEM S.A.', 'Bolecin ', 'Kraków', ''])(
+      'test_mapSharedBrowserScript_isBolecinPlace_%s_should_match_ts',
+      (text) => {
+        expect(loadShared().isBolecinPlace(text)).toBe(isBolecinPlace(text));
+      },
+    );
+
+    it('test_mapSharedBrowserScript_podwykoOptionMatchesSearch_should_match_ts', () => {
+      const api = loadShared();
+      for (const q of ['', 'trans', 'NIP 123', 'żółw']) {
+        expect(api.podwykoOptionMatchesSearch('Trans-Pol', 'Trans-Pol Sp. z o.o. NIP 1234567890', q)).toBe(
+          podwykoOptionMatchesSearch('Trans-Pol', 'Trans-Pol Sp. z o.o. NIP 1234567890', q),
+        );
+      }
+    });
 
     it('test_mapSharedBrowserScript_classifyMapPointZbiorka_when_reczna_without_polish_letter_should_return_reczna', () => {
       const api = loadShared();
@@ -1677,10 +1756,10 @@ __api = {
       );
       expect(prewarm).toContain("code: 'MAP-E-TEMPLATE-BYTES'");
       expect(prewarm).toContain('Szablon Word jest uszkodzony.');
-      expect(prewarm).toContain("place: 'phase6.ts prewarmDocxTemplateCache'");
+      expect(prewarm).toContain("place: 'map/browser/docxRender.ts prewarmDocxTemplateCache'");
       expect(html).toContain("code: 'MAP-E-VOIVODESHIP'");
       expect(html).toContain('Nie udało się wczytać granic województw.');
-      expect(html).toContain("place: 'phase6.ts fetch geoJsonUrl (granice województw)'");
+      expect(html).toContain("place: 'map/browser/bootstrap.ts fetch geoJsonUrl (granice województw)'");
       expect(html).not.toContain('fetchWojewodztwaGeoJson');
       expect(html).toMatch(/\.then\(function\(res\) \{\s*if \(!res\.ok\) throw new Error\('HTTP ' \+ res\.status\);\s*return res\.json\(\);/);
       expect(html).toContain('Nie załadowano granic województw.');
@@ -2002,6 +2081,30 @@ __api = {
           byKey,
         ),
       ).toBe(Date.UTC(2026, 5, 10));
+    });
+
+    it('test_resolveTransportLastForPoint_when_multiple_podmioty_should_return_latest_with_kto_odbiera', () => {
+      const adres = '00-001 Warszawa ul. Testowa 1';
+      const keyA = buildTransportShopKey('Firma A', adres);
+      const keyB = buildTransportShopKey('Firma B', adres);
+      const byKey = { [keyA]: Date.UTC(2026, 5, 1), [keyB]: Date.UTC(2026, 5, 10) };
+      const ktoByKey = { [keyA]: 'Kierowca A', [keyB]: 'Kierowca B' };
+      expect(
+        resolveTransportLastForPoint(
+          { podmiotHandlowy: 'Firma A', podmiotyHandlowe: ['Firma B'], adres },
+          byKey,
+          ktoByKey,
+        ),
+      ).toEqual({ ms: Date.UTC(2026, 5, 10), ktoOdbiera: 'Kierowca B' });
+    });
+
+    it('test_resolveTransportLastForPoint_when_kto_map_missing_should_return_empty_kto', () => {
+      const adres = '00-001 Warszawa ul. Testowa 1';
+      const byKey = { [buildTransportShopKey('Firma A', adres)]: Date.UTC(2026, 5, 1) };
+      expect(resolveTransportLastForPoint({ podmiotHandlowy: 'Firma A', adres }, byKey)).toEqual({
+        ms: Date.UTC(2026, 5, 1),
+        ktoOdbiera: '',
+      });
     });
 
     it('test_filterSealRows_when_last_transport_june10_should_keep_june10_and_later_dmy', () => {
@@ -2540,7 +2643,6 @@ __api = {
 ${html.slice(podwykoStart, podwykoEnd)}
 ${routeNameBrowserScript()}
 ${mapSharedBrowserScript()}
-${sliceHtml(html, 'function normalizeForAddressSearchMap(', 'var LOCALITY_SECOND_WORD')}
 ${sliceHtml(html, 'function podwykoOptionMatchesQuery(', 'var docComboboxInited = false;')}
 ${sliceHtml(html, 'function findPodwykoIdxByLabel(', 'function selectDocComboboxOption(')}
 ${sliceHtml(html, 'function contractorShortNameForRoute(', 'function pickupDateForRoute(')}
@@ -3170,7 +3272,7 @@ function getPointSealCounts() { return { total: 1, filtered: 1, cutoffYmd: '', k
 function formatYmdToDisplay(v) { return v; }
 function normalizeWgHarmonogramuMap() { return 'tak'; }
 function isBulkPointSelected() { return false; }
-function addressWithCommaAfterLocalityMap(a) { return a; }
+function addressWithCommaAfterLocality(a) { return a; }
 ${html.slice(start, end)}
 __api = buildPopupContent;`,
         sandbox,

@@ -2,6 +2,8 @@
  * Formatowanie wpisów listy podwykonawców do kolumny „Dane do Worda”.
  */
 
+import { functionSourceForBrowser } from './routeName.js';
+
 export interface PodwykoStructuredRecord {
   /** Etykieta comboboxa (kolumna A). */
   nazwa: string;
@@ -11,17 +13,13 @@ export interface PodwykoStructuredRecord {
   bdo: string;
 }
 
-function clean(s: string): string {
-  return String(s ?? '').trim();
-}
-
-/** Skleja pola podwykonawcy do kolumny B (Word / combobox value). */
+/** Skleja pola podwykonawcy do kolumny B (Word / combobox value). Wykonywana także w przeglądarce. */
 export function formatPodwykoForWord(r: PodwykoStructuredRecord): string {
   const parts: string[] = [];
-  const nazwa = clean(r.nazwaDoProtokolu);
-  const adres = clean(r.adres);
-  const nip = clean(r.nip);
-  const bdo = clean(r.bdo);
+  const nazwa = String(r.nazwaDoProtokolu ?? '').trim();
+  const adres = String(r.adres ?? '').trim();
+  const nip = String(r.nip ?? '').trim();
+  const bdo = String(r.bdo ?? '').trim();
 
   if (nazwa) {
     parts.push(nazwa);
@@ -39,20 +37,7 @@ export function formatPodwykoForWord(r: PodwykoStructuredRecord): string {
   return parts.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-/** JS wstrzykiwany do mapy — te same reguły co w Node i Apps Script. */
+/** JS wstrzykiwany do mapy — ten sam kod co w Node. */
 export function referenceFormatsBrowserScript(): string {
-  return `
-    function formatPodwykoForWordJs(r) {
-      var parts = [];
-      var nazwa = String(r.nazwaDoProtokolu || '').trim();
-      var adres = String(r.adres || '').trim();
-      var nip = String(r.nip || '').trim();
-      var bdo = String(r.bdo || '').trim();
-      if (nazwa) parts.push(nazwa);
-      if (adres) parts.push(adres);
-      if (bdo) parts.push(/^bdo\\b/i.test(bdo) ? bdo : ('BDO ' + bdo));
-      if (nip) parts.push(/^nip\\b/i.test(nip) ? nip : ('NIP ' + nip));
-      return parts.join(' ').replace(/\\s+/g, ' ').trim();
-    }
-`;
+  return `\n${functionSourceForBrowser(formatPodwykoForWord)}\n`;
 }
