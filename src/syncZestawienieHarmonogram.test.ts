@@ -3,12 +3,16 @@ import { BAZA_CEN_HEADERS } from './bazaCenHarmonogram.js';
 import {
   buildScheduleSyncExpected,
   defaultSyncWindow,
+  planOffScheduleCleanup,
+  scheduleDateOnOrAfter,
   planScheduleSync,
   scheduleMonthSheetName,
+  scheduleRowKey,
   sheetRateWriteValue,
   syncZestawienieHarmonogram,
   zestawienieRowValues,
   ZESTAWIENIE_HARMONOGRAM_HEADERS,
+  type ScheduleCleanupSourceRow,
 } from './syncZestawienieHarmonogram.js';
 
 const ODEBRANE_HEADERS = [
@@ -157,6 +161,204 @@ describe('buildScheduleSyncExpected', () => {
       pickupDate: '01.10.2026',
       bagCount: 0,
     });
+  });
+
+  it('test_scheduleDateOnOrAfter_when_friday_only_should_keep_friday_or_move_forward', () => {
+    expect(scheduleDateOnOrAfter('09.10.2026', [5])).toBe('09.10.2026');
+    expect(scheduleDateOnOrAfter('03.10.2026', [5])).toBe('09.10.2026');
+    expect(scheduleDateOnOrAfter('15.10.2026', [5])).toBe('16.10.2026');
+  });
+
+  it('test_buildScheduleSyncExpected_when_bags_closed_off_schedule_day_should_roll_to_next_pickup', () => {
+    const rows = buildScheduleSyncExpected(
+      '01.10.2026',
+      '17.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [['38-242 Skołyszyn Skołyszyn 11B', 'Zagroda', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({
+          'Kod pocztowy': '38-242',
+          Miasto: 'Skołyszyn',
+          Ulica: 'Skołyszyn',
+          'Numer budynku': '11B',
+          'Firma transportowa': 'Zagroda',
+          Sklep: 'Delikatesy Szubryt Nr 005',
+          'Podmiot handlowy': 'SZUBRYT DELIKATESY',
+          'Data zamknięcia worka': '03.10.2026',
+          'Tryb zbiórki': 'Ręczna',
+          'Numer plomby': 'P1',
+        }),
+        odebraneRow({
+          'Kod pocztowy': '38-242',
+          Miasto: 'Skołyszyn',
+          Ulica: 'Skołyszyn',
+          'Numer budynku': '11B',
+          'Firma transportowa': 'Zagroda',
+          'Data zamknięcia worka': '09.10.2026',
+          'Tryb zbiórki': 'Maszyna',
+          'Numer plomby': 'P2',
+        }),
+        odebraneRow({
+          'Kod pocztowy': '38-242',
+          Miasto: 'Skołyszyn',
+          Ulica: 'Skołyszyn',
+          'Numer budynku': '11B',
+          'Firma transportowa': 'Zagroda',
+          'Data zamknięcia worka': '15.10.2026',
+          'Tryb zbiórki': 'Ręczna',
+          'Numer plomby': 'P3',
+        }),
+      ],
+    );
+    expect(rows.map((r) => r.pickupDate)).toEqual(['02.10.2026', '09.10.2026', '16.10.2026']);
+    expect(rows.map((r) => r.bagCount)).toEqual([0, 2, 1]);
+    expect(rows[1]).toMatchObject({ rodzajZbiorki: 'ręczna i automatyczna' });
+    expect(rows[2]).toMatchObject({ rodzajZbiorki: 'ręczna' });
+  });
+
+  it('test_buildScheduleSyncExpected_when_next_pickup_is_after_window_should_omit_off_day_row', () => {
+    const rows = buildScheduleSyncExpected(
+      '01.10.2026',
+      '04.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [['38-242 Skołyszyn Skołyszyn 11B', 'Zagroda', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({
+          'Kod pocztowy': '38-242',
+          Miasto: 'Skołyszyn',
+          Ulica: 'Skołyszyn',
+          'Numer budynku': '11B',
+          'Firma transportowa': 'Zagroda',
+          'Data zamknięcia worka': '03.10.2026',
+          'Numer plomby': 'P1',
+        }),
+      ],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ pickupDate: '02.10.2026', bagCount: 0 });
+  });
+});
+
+const SKOLYSZYN = '38-242 Skołyszyn Skołyszyn 11B';
+
+function cleanupRow(overrides: Partial<ScheduleCleanupSourceRow> = {}): ScheduleCleanupSourceRow {
+  return {
+    sheetName: 'Harmonogram Październik 2026',
+    sheetRow: 2,
+    address: SKOLYSZYN,
+    shopName: 'Delikatesy Szubryt Nr 005',
+    podmiot: 'SZUBRYT DELIKATESY',
+    contractor: 'Zagroda',
+    pickupDate: '02.10.2026',
+    bagCount: 0,
+    rodzajZbiorki: '',
+    settled: false,
+    transport: '',
+    invoice: '',
+    routeName: '',
+    routeRate: '',
+    pickupRate: '',
+    bagRate: '',
+    ...overrides,
+  };
+}
+
+describe('planOffScheduleCleanup', () => {
+  const baza = [['38-242 Skołyszyn Skołyszyn 11B', 'Zagroda', 'Z1', '50', '10', '', '', 'pt']];
+
+  it('test_planOffScheduleCleanup_when_bags_closed_off_schedule_day_should_add_them_to_pickup_and_drop_row', () => {
+    const friday = cleanupRow({
+      sheetRow: 5,
+      pickupDate: '09.10.2026',
+      bagCount: 1,
+      rodzajZbiorki: 'automatyczna',
+    });
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      baza,
+      [
+        friday,
+        cleanupRow({ sheetRow: 3, pickupDate: '03.10.2026', bagCount: 4, rodzajZbiorki: 'ręczna' }),
+        cleanupRow({ sheetRow: 4, pickupDate: '06.10.2026', bagCount: 3, rodzajZbiorki: 'ręczna' }),
+      ],
+      new Map([
+        [
+          scheduleRowKey(friday.address, friday.pickupDate, friday.contractor),
+          { bagCount: 1, rodzajZbiorki: 'automatyczna' },
+        ],
+      ]),
+    );
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 8,
+        rodzajZbiorki: 'ręczna i automatyczna',
+        existing: { sheetName: 'Harmonogram Październik 2026', sheetRow: 5 },
+      }),
+    ]);
+    expect(plan.remove.map((row) => row.sheetRow).sort()).toEqual([3, 4]);
+    expect(plan.skippedSettled).toBe(0);
+  });
+
+  it('test_planOffScheduleCleanup_when_off_day_row_is_settled_should_leave_it', () => {
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      baza,
+      [cleanupRow({ sheetRow: 7, pickupDate: '08.10.2026', bagCount: 2, settled: true, invoice: 'FV/1' })],
+      new Map(),
+    );
+    expect(plan.remove).toHaveLength(0);
+    expect(plan.absorb).toHaveLength(0);
+    expect(plan.skippedSettled).toBe(1);
+  });
+
+  it('test_planOffScheduleCleanup_when_pickup_day_is_settled_should_keep_off_day_row', () => {
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      baza,
+      [
+        cleanupRow({ sheetRow: 5, pickupDate: '09.10.2026', bagCount: 1, settled: true }),
+        cleanupRow({ sheetRow: 3, pickupDate: '03.10.2026', bagCount: 4, rodzajZbiorki: 'ręczna' }),
+      ],
+      new Map(),
+    );
+    expect(plan.remove).toHaveLength(0);
+    expect(plan.absorb).toHaveLength(0);
+    expect(plan.skippedTargetSettled).toBe(1);
+  });
+
+  it('test_planOffScheduleCleanup_when_shop_has_no_pickup_days_should_leave_close_date', () => {
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      baza,
+      [
+        cleanupRow({
+          sheetRow: 9,
+          address: '30-001 Testowa 1',
+          contractor: 'INNY',
+          pickupDate: '03.10.2026',
+          bagCount: 2,
+        }),
+      ],
+      new Map(),
+    );
+    expect(plan.remove).toHaveLength(0);
+    expect(plan.absorb).toHaveLength(0);
+  });
+
+  it('test_planOffScheduleCleanup_when_transport_did_not_happen_should_drop_row_without_bags', () => {
+    const friday = cleanupRow({ sheetRow: 2, pickupDate: '02.10.2026', bagCount: 0 });
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      baza,
+      [friday, cleanupRow({ sheetRow: 8, pickupDate: '01.10.2026', bagCount: 14, transport: 'nie' })],
+      new Map([
+        [scheduleRowKey(friday.address, friday.pickupDate, friday.contractor), { bagCount: 0, rodzajZbiorki: '' }],
+      ]),
+    );
+    expect(plan.absorb).toHaveLength(0);
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([8]);
   });
 });
 
@@ -592,6 +794,60 @@ describe('syncZestawienieHarmonogram', () => {
     expect(values[1]![ix('transport się odbył')]).toBe('nie');
     expect(values[1]![ix('Stawka za podjazd')]).toBe(175);
     expect(values[1]![ix('Ilość worków')]).toBe(3);
+  });
+
+  it('test_syncZestawienieHarmonogram_when_off_schedule_rows_should_move_bags_and_delete_rows', async () => {
+    const monthSheet = 'Harmonogram Październik 2026';
+    const sheets = new Map<string, string[][]>();
+    sheets.set('odebrane z harmonogramu', [ODEBRANE_HEADERS]);
+    sheets.set('Baza cen harmonogram', [
+      [...BAZA_CEN_HEADERS],
+      ['38-242 Skołyszyn Skołyszyn 11B', 'Zagroda', 'Z1', '50', '10', '', '', 'pt'],
+    ]);
+    sheets.set(monthSheet, [
+      [...ZESTAWIENIE_HARMONOGRAM_HEADERS],
+      registerRow({
+        'Adres odbioru': SKOLYSZYN,
+        'Data odbioru': '02.10.2026',
+        'Kto odbiera': 'Zagroda',
+        'Ilość worków': '0',
+        'Rodzaj zbiórki': 'brak worków',
+      }),
+      registerRow({
+        'Adres odbioru': SKOLYSZYN,
+        'Data odbioru': '03.10.2026',
+        'Kto odbiera': 'Zagroda',
+        'Ilość worków': '4',
+        'Rodzaj zbiórki': 'ręczna',
+      }),
+      registerRow({
+        'Adres odbioru': SKOLYSZYN,
+        'Data odbioru': '09.10.2026',
+        'Kto odbiera': 'Zagroda',
+        'Ilość worków': '1',
+        'Rodzaj zbiórki': 'automatyczna',
+      }),
+    ]);
+    const api = fakeSheetsApi(sheets);
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '01.10.2026',
+      dataDo: '10.10.2026',
+    });
+
+    expect(result.removedCount).toBe(1);
+    const bagWrites = api.spreadsheets.values.batchUpdate.mock.calls.flatMap(
+      (call) => call[0].requestBody.data as Array<{ range: string; values: unknown[][] }>,
+    );
+    const fridayBags = bagWrites.find((item) => item.range === `'${monthSheet}'!H4`);
+    expect(fridayBags?.values).toEqual([[5]]);
+    const deletes = api.spreadsheets.batchUpdate.mock.calls.flatMap(
+      (call) =>
+        (call[0].requestBody.requests as Array<{ deleteDimension?: { range: { startIndex: number } } }>) ??
+        [],
+    );
+    expect(deletes.some((request) => request.deleteDimension?.range.startIndex === 2)).toBe(true);
   });
 });
 

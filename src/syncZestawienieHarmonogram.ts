@@ -1,8 +1,10 @@
 /**
  * Rejestr Harmonogram — zakładki miesięczne `Harmonogram {Miesiąc} {YYYY}` + legacy
- * `zestawienie z harmonogramu`. Sync po „odebrane”: uzupełnia braki / aktualizuje nierozliczone;
- * NIGDY nie czyści zakładki. Nowe wiersze → zakładka miesiąca z daty odbioru (po nazwie).
+ * `zestawienie z harmonogramu`. Sync po „odebrane”: uzupełnia braki / aktualizuje nierozliczone.
+ * Nie czyści całej zakładki. Nowe wiersze → zakładka miesiąca z daty odbioru (po nazwie).
  * Ilość worków przy update: tylko w górę (max z istniejącej i z odebrane).
+ * Sklep z dniami w Bazie cen: wiersz spoza tych dni (nierozliczony) oddaje worki na najbliższy
+ * dzień odbioru i jest usuwany.
  */
 
 import {
@@ -85,6 +87,43 @@ export interface ScheduleSyncPlan {
   skippedSettled: number;
   /** Wiersze z kluczem powtórzonym dalej w rejestrze — sync ich nie widzi. */
   duplicates: ScheduleRegisterExistingRow[];
+}
+
+/** Wiersz rejestru potrzebny do zdjęcia dni spoza harmonogramu. */
+export interface ScheduleCleanupSourceRow {
+  sheetName: string;
+  sheetRow: number;
+  address: string;
+  shopName: string;
+  podmiot: string;
+  contractor: string;
+  pickupDate: string;
+  bagCount: number;
+  rodzajZbiorki: string;
+  settled: boolean;
+  /** Złożone: tak / nie / puste. */
+  transport: string;
+  invoice: string;
+  routeName: string;
+  routeRate: string;
+  pickupRate: string;
+  bagRate: string;
+}
+
+export interface OffScheduleAbsorb {
+  targetKey: string;
+  bagCount: number;
+  rodzajZbiorki: string;
+  /** Wiersz dnia odbioru już jest w rejestrze. */
+  existing: { sheetName: string; sheetRow: number } | null;
+  row: ScheduleSyncExpectedRow;
+}
+
+export interface OffScheduleCleanupPlan {
+  absorb: OffScheduleAbsorb[];
+  remove: Array<{ sheetName: string; sheetRow: number; key: string }>;
+  skippedSettled: number;
+  skippedTargetSettled: number;
 }
 
 /** `Harmonogram Październik 2026` z daty dd.mm.yyyy. */
@@ -307,7 +346,38 @@ type BazaRate = {
 };
 
 /**
+ * Dzień odbioru worka przy znanym harmonogramie.
+ * Data zamknięcia, gdy wpada w dni odbiorów; inaczej najbliższy taki dzień później (do 6 dni).
+ */
+export function scheduleDateOnOrAfter(closeDate: string, weekdays: number[]): string | null {
+  if (!closeDate || weekdays.length === 0) {
+    return null;
+  }
+  const start = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(closeDate);
+  if (!start) {
+    return null;
+  }
+  const wanted = new Set(weekdays);
+  let y = Number(start[3]);
+  let m = Number(start[2]);
+  let d = Number(start[1]);
+  for (let i = 0; i < 7; i++) {
+    if (wanted.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay())) {
+      return formatDdMmYyyy(y, m, d);
+    }
+    const next = new Date(Date.UTC(y, m - 1, d + 1));
+    y = next.getUTCFullYear();
+    m = next.getUTCMonth() + 1;
+    d = next.getUTCDate();
+  }
+  return null;
+}
+
+/**
  * Oczekiwane wiersze: dni z Bazy cen + worki z odebrane.
+ * Sklep z dniami odbiorów dostaje wiersz tylko w te dni. Worki zamknięte w inny dzień
+ * doliczają się do najbliższego takiego odbioru, bez osobnego wiersza.
+ * Sklep bez dni w Bazie cen zostaje na dacie zamknięcia worka.
  * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
  * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
  * Rodzaj zbiórki = agregat Tryb zbiórki z worków grupy; przy 0 workach = „brak worków”.
@@ -488,7 +558,6 @@ export function buildScheduleSyncExpected(
       expected.set(key, row);
       order.push(key);
     } else {
-      row.bagCount = bagCount;
       if (rodzajZbiorki) row.rodzajZbiorki = rodzajZbiorki;
       if (shopName && !row.shopName) row.shopName = shopName;
       if (podmiot && !row.podmiot) row.podmiot = podmiot;
@@ -496,9 +565,31 @@ export function buildScheduleSyncExpected(
     return row;
   }
 
+  const sealsByKey = new Map<string, Array<{ numerPlomby: string; zbiorka: string }>>();
+  function addBags(
+    row: ScheduleSyncExpectedRow,
+    seals: Array<{ numerPlomby: string; zbiorka: string }>,
+  ): void {
+    const collected = sealsByKey.get(row.key) ?? [];
+    collected.push(...seals);
+    sealsByKey.set(row.key, collected);
+    row.bagCount = collected.length;
+    row.rodzajZbiorki = aggregateRodzajZbiorkiFromSealRows(
+      collected.map((seal) => ({
+        numerPlomby: seal.numerPlomby,
+        zbiorka: seal.zbiorka,
+      })),
+    );
+  }
+
+  const weekdaysByShop = new Map<string, number[]>();
   for (const meta of shops.values()) {
     const weekdays = parseWeekdaysFromDniHarmonogramu(meta.days);
     if (weekdays.length === 0) continue;
+    weekdaysByShop.set(
+      `${foldScheduleKeyPart(meta.address)}\n${foldScheduleKeyPart(meta.contractor)}`,
+      weekdays,
+    );
     for (const day of datesMatchingWeekdays(start, end, weekdays)) {
       if (!pickupReadyForZestawienie(day, end)) continue;
       const names = namesByAddress.get(foldScheduleKeyPart(meta.address));
@@ -529,40 +620,41 @@ export function buildScheduleSyncExpected(
         row.pickupRate = best.pickupAmount;
         row.bagRate = best.bagAmount;
       }
-      const bagKey = scheduleRowKey(meta.address, day, meta.contractor);
-      const bags = bagGroups.get(bagKey);
-      if (bags) {
-        row.bagCount = bags.bagCount;
-        row.rodzajZbiorki = aggregateRodzajZbiorkiFromSealRows(
-          bags.seals.map((s) => ({
-            numerPlomby: s.numerPlomby,
-            dataZamknieciaWorka: bags.pickupDate,
-            zbiorka: s.zbiorka,
-          })),
-        );
-        if (bags.shopName) row.shopName = bags.shopName;
-        if (bags.podmiot) row.podmiot = bags.podmiot;
-        bagGroups.delete(bagKey);
-      }
     }
   }
 
   for (const g of bagGroups.values()) {
-    if (!pickupReadyForZestawienie(g.pickupDate, end)) continue;
-    ensure(
+    const shopKey = `${foldScheduleKeyPart(g.address)}\n${foldScheduleKeyPart(g.contractor)}`;
+    const weekdays = weekdaysByShop.get(shopKey) ?? [];
+    let pickupDate = g.pickupDate;
+    if (weekdays.length > 0) {
+      const target = scheduleDateOnOrAfter(g.pickupDate, weekdays);
+      if (
+        !target ||
+        !dateInRange(target, start, end) ||
+        !pickupReadyForZestawienie(target, end)
+      ) {
+        continue;
+      }
+      pickupDate = target;
+    } else if (!pickupReadyForZestawienie(g.pickupDate, end)) {
+      continue;
+    }
+    const row = ensure(
       g.address,
       g.contractor,
-      g.pickupDate,
+      pickupDate,
       g.shopName,
       g.podmiot,
-      g.bagCount,
-      aggregateRodzajZbiorkiFromSealRows(
-        g.seals.map((s) => ({
-          numerPlomby: s.numerPlomby,
-          dataZamknieciaWorka: g.pickupDate,
-          zbiorka: s.zbiorka,
-        })),
-      ),
+      0,
+      '',
+    );
+    addBags(
+      row,
+      g.seals.map((seal) => ({
+        numerPlomby: seal.numerPlomby,
+        zbiorka: seal.zbiorka,
+      })),
     );
   }
 
@@ -685,6 +777,334 @@ export function planScheduleSync(
     create.push(row);
   }
   return { create, update, skippedSettled, duplicates };
+}
+
+function weekdayOfDdMmYyyy(date: string): number | null {
+  const parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+  if (!parts) {
+    return null;
+  }
+  return new Date(Date.UTC(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1]))).getUTCDay();
+}
+
+function rodzajFlags(raw: string): { reczna: boolean; maszyna: boolean } {
+  const folded = foldScheduleKeyPart(raw);
+  if (!folded || folded.includes('brak')) {
+    return { reczna: false, maszyna: false };
+  }
+  return {
+    reczna: folded.includes('reczn'),
+    maszyna: folded.includes('maszyn') || folded.includes('automat'),
+  };
+}
+
+function mergeScheduleRodzaj(parts: string[]): string {
+  let reczna = false;
+  let maszyna = false;
+  for (const part of parts) {
+    const flags = rodzajFlags(part);
+    reczna = reczna || flags.reczna;
+    maszyna = maszyna || flags.maszyna;
+  }
+  if (reczna && maszyna) {
+    return 'ręczna i automatyczna';
+  }
+  if (reczna) {
+    return 'ręczna';
+  }
+  if (maszyna) {
+    return 'automatyczna';
+  }
+  return '';
+}
+
+export function parseScheduleCleanupRows(
+  headers: string[],
+  rows: string[][],
+  sheetName: string,
+): ScheduleCleanupSourceRow[] {
+  if (!isScheduleHeaderRow(headers)) {
+    return [];
+  }
+  const ixAddress = headerIndex(headers, 'Adres odbioru');
+  const ixPodmiot = headerIndex(headers, 'Nazwa kontrahenta / podmiot handlowy');
+  const ixShop = headerIndex(headers, 'Nazwa punktu / nazwa skrócona');
+  const ixDate = headerIndex(headers, 'Data odbioru');
+  const ixContractor = headerIndex(headers, 'Kto odbiera');
+  const ixRodzaj = headerIndex(headers, 'Rodzaj zbiórki');
+  const ixBags = headerIndex(headers, 'Ilość worków');
+  const ixTransport = headerIndex(headers, 'transport się odbył');
+  const ixRoute = headerIndex(headers, 'Trasa');
+  const ixRouteRate = headerIndex(headers, 'Stawka za trasę');
+  const ixPickup = headerIndex(headers, 'Stawka za podjazd');
+  const ixBagRate = headerIndex(headers, 'Stawka za worek');
+  const ixSettled = headerIndex(headers, 'Rozliczony');
+  const ixInvoice = headerIndex(headers, 'Numer faktury');
+  const out: ScheduleCleanupSourceRow[] = [];
+  rows.forEach((row, index) => {
+    const address = cell(row, ixAddress);
+    const pickupDate = parseToDdMmYyyy(cell(row, ixDate));
+    const contractor = cell(row, ixContractor);
+    if (!address || !pickupDate || !contractor) {
+      return;
+    }
+    out.push({
+      sheetName,
+      sheetRow: index + 2,
+      address,
+      shopName: ixShop >= 0 ? cell(row, ixShop) : '',
+      podmiot: ixPodmiot >= 0 ? cell(row, ixPodmiot) : '',
+      contractor,
+      pickupDate,
+      bagCount: ixBags >= 0 ? parseBagCountCell(cell(row, ixBags)) : 0,
+      rodzajZbiorki: ixRodzaj >= 0 ? cell(row, ixRodzaj) : '',
+      settled: ixSettled >= 0 && foldScheduleKeyPart(cell(row, ixSettled)) === 'tak',
+      transport: ixTransport >= 0 ? foldScheduleKeyPart(cell(row, ixTransport)) : '',
+      invoice: ixInvoice >= 0 ? cell(row, ixInvoice) : '',
+      routeName: ixRoute >= 0 ? cell(row, ixRoute) : '',
+      routeRate: ixRouteRate >= 0 ? cell(row, ixRouteRate) : '',
+      pickupRate: ixPickup >= 0 ? cell(row, ixPickup) : '',
+      bagRate: ixBagRate >= 0 ? cell(row, ixBagRate) : '',
+    });
+  });
+  return out;
+}
+
+function weekdaysByShopFromBaza(
+  bazaHeaders: string[],
+  bazaRows: string[][],
+): { weekdays: Map<string, number[]>; rates: BazaRate[] } {
+  const ixShop = headerIndex(bazaHeaders, 'Adres sklepu');
+  const ixContractor = headerIndex(bazaHeaders, 'Podwykonawca');
+  const ixRoute = headerIndex(bazaHeaders, 'Nazwa trasy');
+  const ixPickup = headerIndex(bazaHeaders, 'Cena za podjazd');
+  const ixBag = headerIndex(bazaHeaders, 'Cena za worek');
+  const ixRoutePrice = headerIndex(bazaHeaders, 'Cena za trasę');
+  const ixFrom = headerIndex(bazaHeaders, 'Od kiedy obowiązuje cena');
+  const ixDays = headerIndex(bazaHeaders, 'Dni odbiorów');
+  const weekdays = new Map<string, number[]>();
+  const rates: BazaRate[] = [];
+  if (ixShop < 0 || ixContractor < 0) {
+    return { weekdays, rates };
+  }
+  for (const row of bazaRows) {
+    const shop = cell(row, ixShop);
+    const contractor = cell(row, ixContractor);
+    if (!shop || !contractor) continue;
+    const rawFrom = ixFrom >= 0 ? cell(row, ixFrom) : '';
+    let validFrom = '';
+    if (rawFrom) {
+      const parsed = parseToDdMmYyyy(rawFrom);
+      if (!parsed) continue;
+      validFrom = parsed;
+    }
+    const days = ixDays >= 0 ? cell(row, ixDays) : '';
+    const parsedDays = parseWeekdaysFromDniHarmonogramu(days);
+    rates.push({
+      shop,
+      contractor,
+      routeName: ixRoute >= 0 ? cell(row, ixRoute) : '',
+      pickupAmount: ixPickup >= 0 ? cell(row, ixPickup) : '',
+      bagAmount: ixBag >= 0 ? cell(row, ixBag) : '',
+      routeAmount: ixRoutePrice >= 0 ? cell(row, ixRoutePrice) : '',
+      validFrom,
+      days,
+    });
+    if (parsedDays.length === 0) continue;
+    const key = `${foldScheduleKeyPart(shop)}\n${foldScheduleKeyPart(contractor)}`;
+    if (!weekdays.has(key)) {
+      weekdays.set(key, parsedDays);
+    }
+  }
+  return { weekdays, rates };
+}
+
+function bestBazaRate(rates: BazaRate[], address: string, contractor: string, day: string): BazaRate | null {
+  let best: BazaRate | null = null;
+  for (const rate of rates) {
+    if (foldScheduleKeyPart(rate.shop) !== foldScheduleKeyPart(address)) continue;
+    if (foldScheduleKeyPart(rate.contractor) !== foldScheduleKeyPart(contractor)) continue;
+    if (rate.validFrom && compareDdMmYyyy(rate.validFrom, day) > 0) continue;
+    if (
+      !best ||
+      compareDdMmYyyy(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
+    ) {
+      best = rate;
+    }
+  }
+  return best;
+}
+
+/**
+ * Wiersze spoza dni Bazy cen. Worki doliczają się do najbliższego dnia odbioru,
+ * a sam wiersz wypada z rejestru. Rozliczony i wiersz z numerem faktury zostają.
+ * „transport się odbył = nie” wypada bez doliczania (do rozliczenia i tak nie wchodzi).
+ * Liczba na dniu odbioru = max(to, co sync i tak zapisze z odebrane, suma z arkusza + worki z błędnych dni),
+ * żeby worki jeszcze obecne w odebrane nie weszły drugi raz.
+ */
+export function planOffScheduleCleanup(
+  bazaHeaders: string[],
+  bazaRows: string[][],
+  existing: ScheduleCleanupSourceRow[],
+  scheduledByKey: ReadonlyMap<string, { bagCount: number; rodzajZbiorki: string }>,
+): OffScheduleCleanupPlan {
+  const { weekdays: weekdaysByShop, rates } = weekdaysByShopFromBaza(bazaHeaders, bazaRows);
+  const byKey = new Map<string, ScheduleCleanupSourceRow>();
+  for (const row of existing) {
+    byKey.set(scheduleRowKey(row.address, row.pickupDate, row.contractor), row);
+  }
+  const buckets = new Map<
+    string,
+    {
+      targetDate: string;
+      address: string;
+      contractor: string;
+      shopName: string;
+      podmiot: string;
+      rolledBags: number;
+      rodzaje: string[];
+      routeName: string;
+      routeRate: string;
+      pickupRate: string;
+      bagRate: string;
+    }
+  >();
+  const remove: OffScheduleCleanupPlan['remove'] = [];
+  let skippedSettled = 0;
+  let skippedTargetSettled = 0;
+
+  for (const row of existing) {
+    const shopKey = `${foldScheduleKeyPart(row.address)}\n${foldScheduleKeyPart(row.contractor)}`;
+    const weekdays = weekdaysByShop.get(shopKey);
+    if (!weekdays || weekdays.length === 0) continue;
+    const weekday = weekdayOfDdMmYyyy(row.pickupDate);
+    if (weekday == null || weekdays.includes(weekday)) continue;
+    if (row.settled || row.invoice.trim() !== '') {
+      skippedSettled += 1;
+      continue;
+    }
+    const sourceKey = scheduleRowKey(row.address, row.pickupDate, row.contractor);
+    if (row.transport === 'nie') {
+      remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
+      continue;
+    }
+    const targetDate = scheduleDateOnOrAfter(row.pickupDate, weekdays);
+    if (!targetDate) continue;
+    const targetKey = scheduleRowKey(row.address, targetDate, row.contractor);
+    const target = byKey.get(targetKey);
+    if ((target && target.settled) || (target && target.invoice.trim() !== '')) {
+      skippedTargetSettled += 1;
+      continue;
+    }
+    let bucket = buckets.get(targetKey);
+    if (!bucket) {
+      bucket = {
+        targetDate,
+        address: row.address,
+        contractor: row.contractor,
+        shopName: row.shopName,
+        podmiot: row.podmiot,
+        rolledBags: 0,
+        rodzaje: [],
+        routeName: '',
+        routeRate: '',
+        pickupRate: '',
+        bagRate: '',
+      };
+      buckets.set(targetKey, bucket);
+    }
+    bucket.rolledBags += row.bagCount;
+    if (row.rodzajZbiorki) bucket.rodzaje.push(row.rodzajZbiorki);
+    if (!bucket.shopName && row.shopName) bucket.shopName = row.shopName;
+    if (!bucket.podmiot && row.podmiot) bucket.podmiot = row.podmiot;
+    if (!bucket.routeName && row.routeName) {
+      bucket.routeName = row.routeName;
+      bucket.routeRate = row.routeRate;
+      bucket.pickupRate = row.pickupRate;
+      bucket.bagRate = row.bagRate;
+    }
+    remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
+  }
+
+  const absorb: OffScheduleAbsorb[] = [];
+  for (const [targetKey, bucket] of buckets) {
+    if (bucket.rolledBags <= 0) continue;
+    const target = byKey.get(targetKey);
+    const scheduled = scheduledByKey.get(targetKey);
+    const base = target?.bagCount ?? 0;
+    const planned = scheduled?.bagCount;
+    const bagCount = planned == null ? base + bucket.rolledBags : Math.max(planned, base + bucket.rolledBags);
+    const rodzajZbiorki = mergeScheduleRodzaj([
+      scheduled?.rodzajZbiorki ?? '',
+      target?.rodzajZbiorki ?? '',
+      ...bucket.rodzaje,
+    ]);
+    const rate = bestBazaRate(rates, bucket.address, bucket.contractor, bucket.targetDate);
+    const row: ScheduleSyncExpectedRow = {
+      key: targetKey,
+      address: target?.address || bucket.address,
+      shopName: target?.shopName || bucket.shopName,
+      podmiot: target?.podmiot || bucket.podmiot,
+      contractor: target?.contractor || bucket.contractor,
+      pickupDate: bucket.targetDate,
+      bagCount,
+      rodzajZbiorki,
+      routeName: rate?.routeName || bucket.routeName,
+      routeRate: rate?.routeAmount || bucket.routeRate,
+      pickupRate: rate?.pickupAmount || bucket.pickupRate,
+      bagRate: rate?.bagAmount || bucket.bagRate,
+    };
+    absorb.push({
+      targetKey,
+      bagCount,
+      rodzajZbiorki,
+      existing: target ? { sheetName: target.sheetName, sheetRow: target.sheetRow } : null,
+      row,
+    });
+  }
+  return { absorb, remove, skippedSettled, skippedTargetSettled };
+}
+
+function applyOffScheduleCleanup(plan: ScheduleSyncPlan, cleanup: OffScheduleCleanupPlan): void {
+  const updateByKey = new Map(plan.update.map((item) => [item.row.key, item]));
+  const createByKey = new Map(plan.create.map((row) => [row.key, row]));
+  for (const item of cleanup.absorb) {
+    const update = updateByKey.get(item.targetKey);
+    if (update) {
+      update.row = {
+        ...update.row,
+        bagCount: item.bagCount,
+        rodzajZbiorki: item.rodzajZbiorki || update.row.rodzajZbiorki,
+      };
+      continue;
+    }
+    const create = createByKey.get(item.targetKey);
+    if (create) {
+      create.bagCount = item.bagCount;
+      if (item.rodzajZbiorki) create.rodzajZbiorki = item.rodzajZbiorki;
+      continue;
+    }
+    if (item.existing) {
+      const updateItem = {
+        sheetName: item.existing.sheetName,
+        sheetRow: item.existing.sheetRow,
+        row: {
+          ...item.row,
+          shopName: '',
+          podmiot: '',
+          routeName: '',
+          routeRate: '',
+          pickupRate: '',
+          bagRate: '',
+        },
+      };
+      plan.update.push(updateItem);
+      updateByKey.set(item.targetKey, updateItem);
+      continue;
+    }
+    plan.create.push(item.row);
+    createByKey.set(item.targetKey, item.row);
+  }
 }
 
 async function listSpreadsheetSheetTitles(
@@ -886,6 +1306,8 @@ export interface SyncZestawienieHarmonogramResult {
   skippedSettled: number;
   /** Wiersze przesunięte / rozliczone między odczytem a zapisem — bez update. */
   skippedChanged: number;
+  /** Nierozliczone wiersze spoza dni odbioru, zdjęte po przeniesieniu worków. */
+  removedCount: number;
   sheetCreated: boolean;
   dataOd: string;
   dataDo: string;
@@ -962,6 +1384,86 @@ async function writeScheduleUpdates(
   return { updated, skippedChanged };
 }
 
+async function listSheetIdByTitle(
+  api: SheetsClient,
+  spreadsheetId: string,
+): Promise<Map<string, number>> {
+  const metaResponse = await api.spreadsheets.get({ spreadsheetId });
+  const sheets = (metaResponse.data as { sheets?: Array<{ properties?: SheetProperties }> }).sheets;
+  const out = new Map<string, number>();
+  for (const sheet of sheets ?? []) {
+    const title = String(sheet.properties?.title ?? '').trim();
+    const sheetId = sheet.properties?.sheetId;
+    if (title && sheetId != null) {
+      out.set(title, sheetId);
+    }
+  }
+  return out;
+}
+
+/** Usuwa wskazane wiersze od dołu. Pomija wiersz, który między odczytem a zapisem zmienił klucz albo został rozliczony. */
+async function deleteScheduleRows(
+  api: SheetsClient,
+  spreadsheetId: string,
+  rows: Array<{ sheetName: string; sheetRow: number; key: string }>,
+  logger?: LoggerLike,
+): Promise<number> {
+  if (rows.length === 0) {
+    return 0;
+  }
+  const bySheet = new Map<string, Array<{ sheetRow: number; key: string }>>();
+  for (const row of rows) {
+    const list = bySheet.get(row.sheetName) ?? [];
+    list.push({ sheetRow: row.sheetRow, key: row.key });
+    bySheet.set(row.sheetName, list);
+  }
+  const sheetIds = await listSheetIdByTitle(api, spreadsheetId);
+  const requests: unknown[] = [];
+  let removed = 0;
+  for (const [sheetName, items] of bySheet) {
+    const sheetId = sheetIds.get(sheetName);
+    if (sheetId == null) continue;
+    const values = (await readValues(api, spreadsheetId, sheetName)).map((row) =>
+      row.map((cellValue) => String(cellValue ?? '')),
+    );
+    const headers = values[0] ?? [];
+    const confirmed: number[] = [];
+    for (const item of items) {
+      const now = readRegisterRow(headers, values[item.sheetRow - 1]);
+      if (!now || now.key !== item.key || now.settled) {
+        logger?.info(
+          'Zestawienie Harmonogram: zostawiono %s!%d — wiersz zmienił się od odczytu',
+          sheetName,
+          item.sheetRow,
+        );
+        continue;
+      }
+      confirmed.push(item.sheetRow);
+    }
+    confirmed.sort((a, b) => b - a);
+    for (const sheetRow of confirmed) {
+      removed += 1;
+      requests.push({
+        deleteDimension: {
+          range: {
+            sheetId,
+            dimension: 'ROWS',
+            startIndex: sheetRow - 1,
+            endIndex: sheetRow,
+          },
+        },
+      });
+    }
+  }
+  if (requests.length > 0) {
+    await api.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests },
+    });
+  }
+  return removed;
+}
+
 function isBlankRow(row: string[]): boolean {
   return row.every((c) => c.trim() === '');
 }
@@ -1009,6 +1511,7 @@ export async function syncZestawienieHarmonogram(
   const titles = await listSpreadsheetSheetTitles(api, spreadsheetId);
   const registerNames = scheduleRegisterSheetNamesFromTitles(titles);
   const existing: ScheduleRegisterExistingRow[] = [];
+  const cleanupRows: ScheduleCleanupSourceRow[] = [];
   const firstRowBySheet = new Map<string, string[]>();
 
   for (const sheetName of registerNames) {
@@ -1021,16 +1524,21 @@ export async function syncZestawienieHarmonogram(
       currentHeaders = (currentValues[0] ?? []).map((h) => String(h ?? ''));
     }
     firstRowBySheet.set(sheetName, currentHeaders);
-    existing.push(
-      ...parseScheduleRegisterRows(
-        currentHeaders,
-        currentValues.slice(1).map((r) => r.map((c) => String(c ?? ''))),
-        sheetName,
-      ),
-    );
+    const dataRows = currentValues.slice(1).map((r) => r.map((c) => String(c ?? '')));
+    existing.push(...parseScheduleRegisterRows(currentHeaders, dataRows, sheetName));
+    cleanupRows.push(...parseScheduleCleanupRows(currentHeaders, dataRows, sheetName));
   }
 
   const plan = planScheduleSync(expected, existing);
+  const scheduledByKey = new Map<string, { bagCount: number; rodzajZbiorki: string }>();
+  for (const row of plan.create) {
+    scheduledByKey.set(row.key, { bagCount: row.bagCount, rodzajZbiorki: row.rodzajZbiorki });
+  }
+  for (const item of plan.update) {
+    scheduledByKey.set(item.row.key, { bagCount: item.row.bagCount, rodzajZbiorki: item.row.rodzajZbiorki });
+  }
+  const cleanup = planOffScheduleCleanup(bazaHeaders, bazaRows, cleanupRows, scheduledByKey);
+  applyOffScheduleCleanup(plan, cleanup);
   for (const dup of plan.duplicates) {
     logger?.info(
       'Zestawienie Harmonogram: UWAGA zdublowany klucz — %s!%d pominięty (ten sam adres, data i odbierający niżej w rejestrze)',
@@ -1090,11 +1598,14 @@ export async function syncZestawienieHarmonogram(
       ? await writeScheduleUpdates(api, spreadsheetId, plan.update, logger)
       : { updated: 0, skippedChanged: 0 };
 
+  const removedCount = await deleteScheduleRows(api, spreadsheetId, cleanup.remove, logger);
+
   logger?.info(
-    'Zestawienie Harmonogram: oczekiwane %d, nowe %d, zaktualizowane %d, pominięte rozliczone %d, pominięte zmienione %d, okno %s–%s, nowa zakładka=%s (bez clear)',
+    'Zestawienie Harmonogram: oczekiwane %d, nowe %d, zaktualizowane %d, zdjęte spoza dni %d, pominięte rozliczone %d, pominięte zmienione %d, okno %s–%s, nowa zakładka=%s (bez clear)',
     expected.length,
     plan.create.length,
     updated,
+    removedCount,
     plan.skippedSettled,
     skippedChanged,
     dataOd,
@@ -1108,6 +1619,7 @@ export async function syncZestawienieHarmonogram(
     updatedCount: updated,
     skippedSettled: plan.skippedSettled,
     skippedChanged,
+    removedCount,
     sheetCreated,
     dataOd,
     dataDo,

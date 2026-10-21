@@ -120,6 +120,16 @@ type GasFns = {
     bazaCen: { sheetRow: number; cells: Cell[] }[],
     odebrane: { headers: string[]; rows: Cell[][] },
   ) => Record<string, unknown>[];
+  planOffScheduleCleanup_: (
+    bazaCen: { sheetRow: number; cells: Cell[] }[],
+    existingRows: Record<string, unknown>[],
+    scheduledByKey: Record<string, { bagCount: number; rodzajZbiorki: string }>,
+  ) => {
+    absorb: Array<{ bagCount: number; rodzajZbiorki: string; sheetRow: number }>;
+    remove: Array<{ sheetRow: number }>;
+    skippedSettled: number;
+    skippedTargetSettled: number;
+  };
 };
 
 const gsPath = join(
@@ -210,6 +220,7 @@ beforeAll(() => {
   const buildStats = context.buildSettlementStats_;
   const buildHarm = context.buildSettlementHarmonogramRead_;
   const buildSync = context.buildScheduleSyncExpected_;
+  const planCleanup = context.planOffScheduleCleanup_;
   if (
     typeof search !== 'function' ||
     typeof stats !== 'function' ||
@@ -217,7 +228,8 @@ beforeAll(() => {
     typeof buildRead !== 'function' ||
     typeof buildStats !== 'function' ||
     typeof buildHarm !== 'function' ||
-    typeof buildSync !== 'function'
+    typeof buildSync !== 'function' ||
+    typeof planCleanup !== 'function'
   ) {
     throw new Error('transport-log.gs nie wystawił settlementSearch/settlementStats');
   }
@@ -229,6 +241,7 @@ beforeAll(() => {
     buildSettlementStats_: buildStats as GasFns['buildSettlementStats_'],
     buildSettlementHarmonogramRead_: buildHarm as GasFns['buildSettlementHarmonogramRead_'],
     buildScheduleSyncExpected_: buildSync as GasFns['buildScheduleSyncExpected_'],
+    planOffScheduleCleanup_: planCleanup as GasFns['planOffScheduleCleanup_'],
   };
 });
 
@@ -1062,5 +1075,96 @@ describe('buildScheduleSyncExpected_', () => {
       },
     );
     expect(rows).toHaveLength(0);
+  });
+
+  it('test_buildScheduleSyncExpected_when_bags_closed_off_schedule_day_should_roll_to_next_pickup', () => {
+    function bag(closeDate: string, plomba: string): string[] {
+      return [
+        '',
+        'SZUBRYT DELIKATESY',
+        'Delikatesy Szubryt Nr 005',
+        'Tak',
+        'pt',
+        'Zagroda',
+        '38-242',
+        'Skołyszyn',
+        'Skołyszyn',
+        '11B',
+        '',
+        '',
+        plomba,
+        '',
+        '',
+        closeDate,
+      ];
+    }
+    const rows = gas.buildScheduleSyncExpected_(
+      '01.10.2026',
+      '17.10.2026',
+      [
+        {
+          sheetRow: 2,
+          cells: ['38-242 Skołyszyn Skołyszyn 11B', 'Zagroda', '', 50, 10, '', '', 'pt'],
+        },
+      ],
+      { headers: odebraneHeaders, rows: [bag('03.10.2026', 'P1'), bag('09.10.2026', 'P2'), bag('15.10.2026', 'P3')] },
+    );
+    expect(rows.map((r) => r.pickupDate)).toEqual(['02.10.2026', '09.10.2026', '16.10.2026']);
+    expect(rows.map((r) => r.bagCount)).toEqual([0, 2, 1]);
+  });
+});
+
+describe('planOffScheduleCleanup_', () => {
+  it('test_planOffScheduleCleanup_when_bags_closed_off_schedule_day_should_add_them_to_pickup_and_drop_row', () => {
+    const address = '38-242 Skołyszyn Skołyszyn 11B';
+    const plan = gas.planOffScheduleCleanup_(
+      [{ sheetRow: 2, cells: [address, 'Zagroda', '', 50, 10, '', '', 'pt'] }],
+      [
+        {
+          sheetName: 'Harmonogram Październik 2026',
+          sheetRow: 5,
+          address,
+          shopName: 'Delikatesy Szubryt Nr 005',
+          podmiot: 'SZUBRYT DELIKATESY',
+          contractor: 'Zagroda',
+          pickupDate: '09.10.2026',
+          bagCount: 1,
+          rodzajZbiorki: 'automatyczna',
+          settled: false,
+          transport: '',
+          invoice: '',
+        },
+        {
+          sheetName: 'Harmonogram Październik 2026',
+          sheetRow: 3,
+          address,
+          contractor: 'Zagroda',
+          pickupDate: '03.10.2026',
+          bagCount: 4,
+          rodzajZbiorki: 'ręczna',
+          settled: false,
+          transport: '',
+          invoice: '',
+        },
+        {
+          sheetName: 'Harmonogram Październik 2026',
+          sheetRow: 4,
+          address,
+          contractor: 'Zagroda',
+          pickupDate: '06.10.2026',
+          bagCount: 3,
+          rodzajZbiorki: 'ręczna',
+          settled: false,
+          transport: '',
+          invoice: '',
+        },
+      ],
+      {},
+    );
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({ bagCount: 8, rodzajZbiorki: 'ręczna i automatyczna', sheetRow: 5 }),
+    ]);
+    expect(plan.remove.map((row) => row.sheetRow).sort()).toEqual([3, 4]);
+    expect(plan.skippedSettled).toBe(0);
   });
 });
