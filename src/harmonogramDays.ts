@@ -1,6 +1,7 @@
 /**
  * „Dni harmonogramu” + kwalifikacja kopii do „odebrane z harmonogramu”.
- * Reguła: data_zamknięcia < D < dziś (D = roboczy dzień z harmonogramu, Europe/Warsaw).
+ * Reguła: data_zamknięcia <= D < dziś (D = roboczy dzień z harmonogramu, Europe/Warsaw).
+ * Dzień zamknięcia liczy się, gdy sam jest odbiorem i już minął. Święto nie jest odbiorem.
  */
 
 import { jsonForScript } from './jsonForScript.js';
@@ -306,7 +307,8 @@ export function utcMidnightFromSortMs(ms: number): number | null {
 }
 
 /**
- * Czy istnieje roboczy D z harmonogramu: closureUtc < D < todayUtc.
+ * Czy istnieje roboczy D z harmonogramu: closureUtc <= D < todayUtc.
+ * Zamknięcie w dniu odbioru wchodzi do „odebrane” następnego dnia, nie po kolejnym tygodniu.
  */
 export function hasPastScheduleDayAfterClosure(
   weekdays: number[],
@@ -320,7 +322,7 @@ export function hasPastScheduleDayAfterClosure(
     return false;
   }
   const wanted = new Set(weekdays);
-  for (let t = closureUtc + MS_PER_DAY; t < todayUtc; t += MS_PER_DAY) {
+  for (let t = closureUtc; t < todayUtc; t += MS_PER_DAY) {
     const d = new Date(t);
     if (!wanted.has(d.getUTCDay())) {
       continue;

@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BAZA_CEN_HEADERS } from './bazaCenHarmonogram.js';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import {
   buildScheduleSyncExpected,
+  compareDdMmYyyy,
+  datesMatchingWeekdays,
   defaultSyncWindow,
   planOffScheduleCleanup,
   scheduleDateOnOrAfter,
@@ -239,6 +245,100 @@ describe('buildScheduleSyncExpected', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ pickupDate: '02.10.2026', bagCount: 0 });
   });
+
+  function expectRawBagOnCanonicalFriday(canonical: string, raw: Record<string, string>): void {
+    const rows = buildScheduleSyncExpected(
+      '01.10.2026',
+      '10.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [[canonical, 'THOR', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({
+          'Firma transportowa': 'THOR',
+          'Data zamknięcia worka': '03.10.2026',
+          'Numer plomby': 'P1',
+          ...raw,
+        }),
+      ],
+    );
+    expect(rows.map((r) => `${r.pickupDate}|${r.bagCount}|${r.address}`)).toEqual([
+      `02.10.2026|0|${canonical}`,
+      `09.10.2026|1|${canonical}`,
+    ]);
+  }
+
+  it('test_buildScheduleSyncExpected_when_city_gdanska_should_join_gdansk_friday', () => {
+    expectRawBagOnCanonicalFriday('80-001 Gdańsk Chmielna 1', {
+      'Kod pocztowy': '80-001',
+      Miasto: 'Gdańska',
+      Ulica: 'Chmielna',
+      'Numer budynku': '1',
+    });
+  });
+
+  it('test_buildScheduleSyncExpected_when_wroclaw_fabryczna_should_join_wroclaw_friday', () => {
+    expectRawBagOnCanonicalFriday('51-602 Wrocław Kochanowskiego 33', {
+      'Kod pocztowy': '51-602',
+      Miasto: 'WROCŁAW-FABRYCZNA',
+      Ulica: 'Kochanowskiego',
+      'Numer budynku': '33',
+    });
+  });
+
+  it('test_buildScheduleSyncExpected_when_city_parenthetical_should_join_city_without_note', () => {
+    expectRawBagOnCanonicalFriday('31-342 Kraków Radzikowskiego 138', {
+      Miasto: 'Kraków (Nowa Huta)',
+    });
+  });
+
+  it('test_buildScheduleSyncExpected_when_glued_al_prefix_should_join_street_without_prefix', () => {
+    expectRawBagOnCanonicalFriday('90-001 Łódź Chryzantem 12', {
+      'Kod pocztowy': '90-001',
+      Miasto: 'Łódź',
+      Ulica: 'al.Chryzantem',
+      'Numer budynku': '12',
+    });
+  });
+
+  it('test_scheduleDateOnOrAfter_when_friday_is_public_holiday_should_use_next_working_friday', () => {
+    expect(scheduleDateOnOrAfter('30.04.2026', [5])).toBe('08.05.2026');
+    expect(scheduleDateOnOrAfter('24.12.2026', [5])).toBe('08.01.2027');
+    expect(scheduleDateOnOrAfter('26.12.2026', [5])).toBe('08.01.2027');
+    expect(scheduleDateOnOrAfter('01.01.2027', [5])).toBe('08.01.2027');
+  });
+
+  it('test_datesMatchingWeekdays_when_public_holiday_should_skip_that_friday', () => {
+    expect(datesMatchingWeekdays('24.04.2026', '08.05.2026', [5])).toEqual(['24.04.2026', '08.05.2026']);
+    expect(datesMatchingWeekdays('01.05.2026', '01.05.2026', [5])).toEqual([]);
+    expect(datesMatchingWeekdays('18.12.2026', '08.01.2027', [5])).toEqual(['18.12.2026', '08.01.2027']);
+  });
+
+  it('test_buildScheduleSyncExpected_when_friday_holiday_should_roll_bag_to_next_working_friday', () => {
+    const rows = buildScheduleSyncExpected(
+      '24.04.2026',
+      '09.05.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '30.04.2026', 'Numer plomby': 'P1' })],
+    );
+    expect(rows.map((r) => r.pickupDate)).toEqual(['24.04.2026', '08.05.2026']);
+    expect(rows.map((r) => r.bagCount)).toEqual([0, 1]);
+  });
+
+  it('test_buildScheduleSyncExpected_when_christmas_and_new_year_fridays_should_land_on_8_01', () => {
+    const rows = buildScheduleSyncExpected(
+      '18.12.2026',
+      '09.01.2027',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '24.12.2026', 'Numer plomby': 'P1' })],
+    );
+    expect(rows.map((r) => r.pickupDate)).toEqual(['18.12.2026', '08.01.2027']);
+    expect(rows.map((r) => r.bagCount)).toEqual([0, 1]);
+  });
 });
 
 const SKOLYSZYN = '38-242 Skołyszyn Skołyszyn 11B';
@@ -326,6 +426,43 @@ describe('planOffScheduleCleanup', () => {
     expect(plan.remove).toHaveLength(0);
     expect(plan.absorb).toHaveLength(0);
     expect(plan.skippedTargetSettled).toBe(1);
+  });
+
+  it('test_planOffScheduleCleanup_when_raw_address_should_absorb_into_normalized_friday', () => {
+    const canonical = '80-001 Gdańsk Chmielna 1';
+    const friday = cleanupRow({
+      address: canonical,
+      contractor: 'THOR',
+      pickupDate: '09.10.2026',
+      bagCount: 0,
+      sheetRow: 5,
+    });
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      [[canonical, 'THOR', '', '50', '10', '', '', 'pt']],
+      [
+        friday,
+        cleanupRow({
+          address: '80-001 Gdańska Chmielna 1',
+          contractor: 'THOR',
+          pickupDate: '03.10.2026',
+          bagCount: 2,
+          rodzajZbiorki: 'ręczna',
+          sheetRow: 3,
+        }),
+      ],
+      new Map([
+        [scheduleRowKey(canonical, '09.10.2026', 'THOR'), { bagCount: 0, rodzajZbiorki: 'brak worków' }],
+      ]),
+    );
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([3]);
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 2,
+        existing: { sheetName: friday.sheetName, sheetRow: 5 },
+        targetKey: scheduleRowKey(canonical, '09.10.2026', 'THOR'),
+      }),
+    ]);
   });
 
   it('test_planOffScheduleCleanup_when_shop_has_no_pickup_days_should_leave_close_date', () => {
@@ -526,6 +663,102 @@ describe('defaultSyncWindow', () => {
       [odebraneRow({ 'Data zamknięcia worka': '30.09.2026' })],
     );
     expect(rows.map((r) => r.pickupDate)).toEqual(['30.09.2026']);
+  });
+
+  it('test_defaultSyncWindow_when_run_after_day_7_should_keep_bag_closed_before_month', () => {
+    const window = defaultSyncWindow(new Date('2026-11-09T12:00:00Z'));
+    const rows = buildScheduleSyncExpected(
+      window.dataOd,
+      window.dataDo,
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '31.10.2026', 'Numer plomby': 'P1' })],
+    );
+    expect(rows.find((r) => r.pickupDate === '06.11.2026')?.bagCount).toBe(1);
+    expect(rows.some((r) => r.pickupDate === '31.10.2026')).toBe(false);
+  });
+
+  it('test_defaultSyncWindow_when_january_after_holiday_fridays_should_put_december_bag_on_8_01', () => {
+    const window = defaultSyncWindow(new Date('2027-01-09T12:00:00Z'));
+    const rows = buildScheduleSyncExpected(
+      window.dataOd,
+      window.dataDo,
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '24.12.2026', 'Numer plomby': 'P1' })],
+    );
+    expect(rows.find((r) => r.pickupDate === '08.01.2027')?.bagCount).toBe(1);
+    expect(rows.some((r) => r.pickupDate === '25.12.2026' || r.pickupDate === '01.01.2027')).toBe(false);
+  });
+});
+
+const gasPath = join(dirname(fileURLToPath(import.meta.url)), '../google-apps-script/transport-log.gs');
+
+function gasFunctionBody(source: string, name: string): string {
+  const start = source.indexOf(`function ${name}(`);
+  if (start < 0) {
+    throw new Error(`missing ${name}`);
+  }
+  let depth = 0;
+  for (let i = source.indexOf('{', start); i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '{') {
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, i + 1);
+      }
+    }
+  }
+  throw new Error(`unclosed ${name}`);
+}
+
+/** Okno ręcznego syncu ze skryptu arkusza, z podmienioną „dzisiejszą” datą. */
+function sheetSyncWindow(nowIso: string): { dataOd: string; dataDo: string } {
+  const source = readFileSync(gasPath, 'utf8');
+  const code = [
+    gasFunctionBody(source, 'settlementPad2_'),
+    gasFunctionBody(source, 'settlementFormatDate_'),
+    gasFunctionBody(source, 'scheduleSyncDefaultWindow_'),
+  ].join('\n');
+  const sandbox: { __api?: { dataOd: string; dataDo: string } } = {};
+  runInNewContext(
+    `var __fixed = ${JSON.stringify(nowIso)};
+var __RealDate = Date;
+Date = class extends __RealDate {
+  constructor(...args) {
+    if (args.length === 0) super(__fixed);
+    else super(...args);
+  }
+};
+${code}
+__api = scheduleSyncDefaultWindow_();`,
+    sandbox,
+  );
+  return sandbox.__api!;
+}
+
+describe('scheduleSyncDefaultWindow_ sheet script', () => {
+  it('test_scheduleSyncDefaultWindow_when_first_of_month_should_reach_back_a_week', () => {
+    expect(sheetSyncWindow('2026-11-01T12:00:00Z')).toEqual({
+      dataOd: '25.10.2026',
+      dataDo: '01.11.2026',
+    });
+  });
+
+  it('test_scheduleSyncDefaultWindow_when_after_first_week_should_still_include_pre_month_close', () => {
+    const window = sheetSyncWindow('2026-11-09T12:00:00Z');
+    expect(compareDdMmYyyy(window.dataOd, '31.10.2026') <= 0).toBe(true);
+    expect(window.dataDo).toBe('09.11.2026');
+  });
+
+  it('test_scheduleSyncDefaultWindow_when_9_january_should_include_bag_closed_before_christmas', () => {
+    const window = sheetSyncWindow('2027-01-09T12:00:00Z');
+    expect(compareDdMmYyyy(window.dataOd, '24.12.2026') <= 0).toBe(true);
+    expect(window.dataDo).toBe('09.01.2027');
   });
 });
 

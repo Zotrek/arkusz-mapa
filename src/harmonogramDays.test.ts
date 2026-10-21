@@ -60,10 +60,17 @@ describe('hasPastScheduleDayAfterClosure', () => {
     ).toBe(true);
   });
 
-  it('test_hasPastScheduleDay_when_closed_on_monday_before_next_monday_should_false', () => {
-    // 10.08.2026 = pn — nie liczy się; kolejny pn=17.08; dziś=12.08
+  it('test_hasPastScheduleDay_when_closed_on_schedule_day_and_later_day_should_true', () => {
+    // 10.08.2026 = pn już minął; dziś=12.08 — worek z dnia odbioru jest do skopiowania
     expect(
       hasPastScheduleDayAfterClosure([1], Date.UTC(2026, 7, 10), Date.UTC(2026, 7, 12)),
+    ).toBe(true);
+  });
+
+  it('test_hasPastScheduleDay_when_closed_on_schedule_day_same_day_should_false', () => {
+    // Wiersz jest gotowy dopiero następnego dnia.
+    expect(
+      hasPastScheduleDayAfterClosure([1], Date.UTC(2026, 7, 10), Date.UTC(2026, 7, 10)),
     ).toBe(false);
   });
 
@@ -73,11 +80,18 @@ describe('hasPastScheduleDayAfterClosure', () => {
     ).toBe(true);
   });
 
-  it('test_hasPastScheduleDay_when_today_is_schedule_day_should_false', () => {
-    // zamknięcie 05.08 (śr), dziś=12.08 (śr) — D=12 nie jest < dziś
+  it('test_hasPastScheduleDay_when_closure_weekday_already_passed_should_true', () => {
+    // Zamknięcie 05.08 (śr) jest dniem odbioru i już minęło; dziś=12.08.
     expect(
       hasPastScheduleDayAfterClosure([3], Date.UTC(2026, 7, 5), Date.UTC(2026, 7, 12)),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it('test_hasPastScheduleDay_when_closed_on_friday_09_10_and_today_10_10_should_true', () => {
+    // Piątek 09.10 zostaje odbiorem tego worka. W sobotę 10.10 dzień już minął.
+    expect(
+      hasPastScheduleDayAfterClosure([5], Date.UTC(2026, 9, 9), Date.UTC(2026, 9, 10)),
+    ).toBe(true);
   });
 
   it('test_hasPastScheduleDay_when_first_wednesday_is_new_year_holiday_should_wait', () => {
@@ -109,12 +123,34 @@ describe('shouldCopyToOdebraneZHarmonogramu', () => {
     ).toBe(true);
   });
 
-  it('test_shouldCopy_when_closed_10_08_generate_12_08_should_false', () => {
+  it('test_shouldCopy_when_closed_on_monday_10_08_and_today_12_08_should_true', () => {
     expect(
       shouldCopyToOdebraneZHarmonogramu({
         ...base,
         dataZamknieciaWorka: '10.08.2026',
         todayUtc: Date.UTC(2026, 7, 12),
+      }),
+    ).toBe(true);
+  });
+
+  it('test_shouldCopy_when_closed_on_friday_09_10_and_today_10_10_should_true', () => {
+    expect(
+      shouldCopyToOdebraneZHarmonogramu({
+        ...base,
+        dniHarmonogramu: 'pt',
+        dataZamknieciaWorka: '09.10.2026',
+        todayUtc: Date.UTC(2026, 9, 10),
+      }),
+    ).toBe(true);
+  });
+
+  it('test_shouldCopy_when_closed_on_friday_09_10_and_today_still_09_10_should_false', () => {
+    expect(
+      shouldCopyToOdebraneZHarmonogramu({
+        ...base,
+        dniHarmonogramu: 'pt',
+        dataZamknieciaWorka: '09.10.2026',
+        todayUtc: Date.UTC(2026, 9, 9),
       }),
     ).toBe(false);
   });

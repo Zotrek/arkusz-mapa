@@ -14,7 +14,11 @@ import {
   SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU,
   SHEET_NAME_ZESTAWIENIE_HARMONOGRAM,
 } from './config.js';
-import { parseWeekdaysFromDniHarmonogramu, todayWarsawUtcMidnight } from './harmonogramDays.js';
+import {
+  isPolishPublicHolidayUtc,
+  parseWeekdaysFromDniHarmonogramu,
+  todayWarsawUtcMidnight,
+} from './harmonogramDays.js';
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
 import { normalizeRateShopKey } from './saveRate.js';
@@ -170,7 +174,11 @@ export function formatDdMmYyyy(year: number, month: number, day: number): string
   return `${pad2(day)}.${pad2(month)}.${year}`;
 }
 
-/** Fold klucza sync: al./pl./Św. jak w stawkach, potem ASCII (ogonki). */
+/**
+ * Fold klucza sync: al./pl./Św. jak w stawkach, potem ASCII (ogonki).
+ * Surowy adres z odebrane schodzi do adresu z Bazy cen: Gdańska→Gdańsk,
+ * Wrocław-Fabryczna, dopisek w nawiasie, przyklejone al./ul./pl.
+ */
 export function foldScheduleKeyPart(text: string): string {
   return normalizeRateShopKey(text)
     .replace(/ą/g, 'a')
@@ -183,6 +191,10 @@ export function foldScheduleKeyPart(text: string): string {
     .replace(/ź/g, 'z')
     .replace(/ż/g, 'z')
     .replace(/,/g, ' ')
+    .replace(/\s*\([^)]*\)/g, ' ')
+    .replace(/(^|\s)(?:ul\.|al\.|pl\.)(?=[a-z])/g, '$1')
+    .replace(/\bwroclaw-fabryczna\b/g, 'wroclaw')
+    .replace(/\bgdanska\b/g, 'gdansk')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -271,7 +283,8 @@ export function datesMatchingWeekdays(
     if (compareDdMmYyyy(text, dataDo) > 0) {
       break;
     }
-    if (wanted.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay())) {
+    const ms = Date.UTC(y, m - 1, d);
+    if (wanted.has(new Date(ms).getUTCDay()) && !isPolishPublicHolidayUtc(ms)) {
       out.push(text);
     }
     const next = new Date(Date.UTC(y, m - 1, d + 1));
@@ -285,23 +298,62 @@ export function datesMatchingWeekdays(
 /** Dni wstecz, które okno zawsze obejmuje — także przez granicę miesiąca. */
 export const SYNC_WINDOW_LOOKBACK_DAYS = 7;
 
+const MS_PER_DAY = 86_400_000;
+
+/** Poprzedni taki sam dzień tygodnia, który nie jest świętem. */
+function previousWorkingSameWeekdayUtc(dayMs: number): number {
+  let prev = dayMs - 7 * MS_PER_DAY;
+  for (let i = 0; i < 8 && isPolishPublicHolidayUtc(prev); i += 1) {
+    prev -= 7 * MS_PER_DAY;
+  }
+  return prev;
+}
+
+/**
+ * Najwcześniejsze zamknięcie, które wpada na odbiór z ostatnich {@link SYNC_WINDOW_LOOKBACK_DAYS} dni.
+ * Okno nie zna dni sklepu, więc bierze każdy dzień tygodnia. Święto wydłuża odstęp.
+ */
+function earliestCloseRollingOntoRecentPickup(todayMs: number): number {
+  const recentStart = todayMs - SYNC_WINDOW_LOOKBACK_DAYS * MS_PER_DAY;
+  let earliest = todayMs;
+  for (let t = recentStart; t < todayMs; t += MS_PER_DAY) {
+    if (isPolishPublicHolidayUtc(t)) {
+      continue;
+    }
+    const close = previousWorkingSameWeekdayUtc(t) + MS_PER_DAY;
+    if (close < earliest) {
+      earliest = close;
+    }
+  }
+  return earliest;
+}
+
 /**
  * Od wcześniejszej z dat: 1. dzień bieżącego miesiąca albo dziś − {@link SYNC_WINDOW_LOOKBACK_DAYS}.
- * Odbiór z ostatniego dnia miesiąca jest gotowy dopiero 1. dnia następnego, więc samo
- * „od 1. dnia miesiąca” nigdy by go nie dopisało. „Dziś” w Europe/Warsaw (runner CI ma UTC).
+ * Po 7. dniu miesiąca samo „od 1.” ucina worki zamknięte tuż przed miesiącem, które wchodzą
+ * na odbiór z ostatnich 7 dni — także gdy święto przesuwa piątek (24.12 → 08.01).
+ * „Dziś” w Europe/Warsaw (runner CI ma UTC).
  */
 export function defaultSyncWindow(now = new Date()): { dataOd: string; dataDo: string } {
-  const today = new Date(todayWarsawUtcMidnight(now));
+  const todayMs = todayWarsawUtcMidnight(now);
+  const today = new Date(todayMs);
   const y = today.getUTCFullYear();
   const m = today.getUTCMonth() + 1;
   const d = today.getUTCDate();
   const back = new Date(Date.UTC(y, m - 1, d - SYNC_WINDOW_LOOKBACK_DAYS));
-  const dataOd =
+  let dataOdMs =
     d > SYNC_WINDOW_LOOKBACK_DAYS
-      ? formatDdMmYyyy(y, m, 1)
-      : formatDdMmYyyy(back.getUTCFullYear(), back.getUTCMonth() + 1, back.getUTCDate());
+      ? Date.UTC(y, m - 1, 1)
+      : Date.UTC(back.getUTCFullYear(), back.getUTCMonth(), back.getUTCDate());
+  if (d > SYNC_WINDOW_LOOKBACK_DAYS) {
+    const earliest = earliestCloseRollingOntoRecentPickup(todayMs);
+    if (earliest < dataOdMs) {
+      dataOdMs = earliest;
+    }
+  }
+  const od = new Date(dataOdMs);
   return {
-    dataOd,
+    dataOd: formatDdMmYyyy(od.getUTCFullYear(), od.getUTCMonth() + 1, od.getUTCDate()),
     dataDo: formatDdMmYyyy(y, m, d),
   };
 }
@@ -345,9 +397,21 @@ type BazaRate = {
   days: string;
 };
 
+/** Ile dni szukać odbioru, gdy święta zjadają dwa kolejne piątki (25.12 i 1.01 → 8.01). */
+const SCHEDULE_DATE_SEARCH_DAYS = 22;
+
+function isPublicHolidayDdMmYyyy(date: string): boolean {
+  const parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+  if (!parts) {
+    return false;
+  }
+  return isPolishPublicHolidayUtc(Date.UTC(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1])));
+}
+
 /**
  * Dzień odbioru worka przy znanym harmonogramie.
- * Data zamknięcia, gdy wpada w dni odbiorów; inaczej najbliższy taki dzień później (do 6 dni).
+ * Data zamknięcia, gdy wpada w roboczy dzień odbioru; inaczej najbliższy taki dzień później.
+ * Piątek ustawowo wolny (1.05, 25.12, 1.01) nie jest odbiorem.
  */
 export function scheduleDateOnOrAfter(closeDate: string, weekdays: number[]): string | null {
   if (!closeDate || weekdays.length === 0) {
@@ -361,8 +425,9 @@ export function scheduleDateOnOrAfter(closeDate: string, weekdays: number[]): st
   let y = Number(start[3]);
   let m = Number(start[2]);
   let d = Number(start[1]);
-  for (let i = 0; i < 7; i++) {
-    if (wanted.has(new Date(Date.UTC(y, m - 1, d)).getUTCDay())) {
+  for (let i = 0; i < SCHEDULE_DATE_SEARCH_DAYS; i++) {
+    const ms = Date.UTC(y, m - 1, d);
+    if (wanted.has(new Date(ms).getUTCDay()) && !isPolishPublicHolidayUtc(ms)) {
       return formatDdMmYyyy(y, m, d);
     }
     const next = new Date(Date.UTC(y, m - 1, d + 1));
@@ -375,8 +440,8 @@ export function scheduleDateOnOrAfter(closeDate: string, weekdays: number[]): st
 
 /**
  * Oczekiwane wiersze: dni z Bazy cen + worki z odebrane.
- * Sklep z dniami odbiorów dostaje wiersz tylko w te dni. Worki zamknięte w inny dzień
- * doliczają się do najbliższego takiego odbioru, bez osobnego wiersza.
+ * Sklep z dniami odbiorów dostaje wiersz tylko w te dni. Święto ustawowe nie jest odbiorem.
+ * Worki zamknięte w inny dzień doliczają się do najbliższego takiego odbioru, bez osobnego wiersza.
  * Sklep bez dni w Bazie cen zostaje na dacie zamknięcia worka.
  * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
  * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
@@ -978,7 +1043,8 @@ export function planOffScheduleCleanup(
     const weekdays = weekdaysByShop.get(shopKey);
     if (!weekdays || weekdays.length === 0) continue;
     const weekday = weekdayOfDdMmYyyy(row.pickupDate);
-    if (weekday == null || weekdays.includes(weekday)) continue;
+    if (weekday == null) continue;
+    if (weekdays.includes(weekday) && !isPublicHolidayDdMmYyyy(row.pickupDate)) continue;
     if (row.settled || row.invoice.trim() !== '') {
       skippedSettled += 1;
       continue;

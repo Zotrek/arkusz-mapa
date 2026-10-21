@@ -4122,7 +4122,10 @@ function buildSettlementStats_(query, register, rates, odebrane) {
   return { ok: true, rows: rows, rates: rateRows };
 }
 
-/** Fold klucza sync/statystyk: al./pl./Św. jak w stawkach, potem ASCII (ogonki). */
+/**
+ * Fold klucza sync/statystyk: al./pl./Św. jak w stawkach, potem ASCII (ogonki).
+ * Surowy adres schodzi do Bazy cen: Gdańska→Gdańsk, Wrocław-Fabryczna, nawias, al. przyklejone.
+ */
 function settlementFoldPl_(text) {
   return normalizeRateShopKey_(text)
     .replace(/ą/g, 'a')
@@ -4135,6 +4138,10 @@ function settlementFoldPl_(text) {
     .replace(/ź/g, 'z')
     .replace(/ż/g, 'z')
     .replace(/,/g, ' ')
+    .replace(/\s*\([^)]*\)/g, ' ')
+    .replace(/(^|\s)(?:ul\.|al\.|pl\.)(?=[a-z])/g, '$1')
+    .replace(/\bwroclaw-fabryczna\b/g, 'wroclaw')
+    .replace(/\bgdanska\b/g, 'gdansk')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -4214,7 +4221,69 @@ function settlementParseWeekdays_(raw) {
   return out;
 }
 
-/** Daty dd.mm.yyyy w [dataOd, dataDo] o getDay() z listy weekdays. dataOd puste = 366 dni wstecz od dataDo. */
+function settlementEasterSundayUtc_(year) {
+  var a = year % 19;
+  var b = Math.floor(year / 100);
+  var c = year % 100;
+  var d = Math.floor(b / 4);
+  var e = b % 4;
+  var f = Math.floor((b + 8) / 25);
+  var g = Math.floor((b - f + 1) / 3);
+  var h = (19 * a + b - d - g + 15) % 30;
+  var i = Math.floor(c / 4);
+  var k = c % 4;
+  var l = (32 + 2 * e + 2 * i - h - k) % 7;
+  var m = Math.floor((a + 11 * h + 22 * l) / 451);
+  var month = Math.floor((h + l - 7 * m + 114) / 31);
+  var day = ((h + l - 7 * m + 114) % 31) + 1;
+  return Date.UTC(year, month - 1, day);
+}
+
+/** Ustawowo wolne od pracy w PL (UTC midnight). */
+function settlementIsPolishPublicHolidayUtc_(ms) {
+  var dt = new Date(ms);
+  var y = dt.getUTCFullYear();
+  var month = dt.getUTCMonth() + 1;
+  var day = dt.getUTCDate();
+  var fixed = [
+    [1, 1],
+    [1, 6],
+    [5, 1],
+    [5, 3],
+    [8, 15],
+    [11, 1],
+    [11, 11],
+    [12, 25],
+    [12, 26],
+  ];
+  var fi;
+  for (fi = 0; fi < fixed.length; fi++) {
+    if (fixed[fi][0] === month && fixed[fi][1] === day) {
+      return true;
+    }
+  }
+  var easter = settlementEasterSundayUtc_(y);
+  var offsets = [0, 1, 49, 60];
+  var oi;
+  for (oi = 0; oi < offsets.length; oi++) {
+    if (easter + offsets[oi] * 86400000 === Date.UTC(y, month - 1, day)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function settlementIsPublicHolidayDate_(date) {
+  var parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date || '');
+  if (!parts) {
+    return false;
+  }
+  return settlementIsPolishPublicHolidayUtc_(
+    Date.UTC(parseInt(parts[3], 10), parseInt(parts[2], 10) - 1, parseInt(parts[1], 10)),
+  );
+}
+
+/** Daty dd.mm.yyyy w [dataOd, dataDo] o getDay() z listy weekdays. Święto pomijane. dataOd puste = 366 dni wstecz od dataDo. */
 function settlementDatesMatchingWeekdays_(dataOd, dataDo, weekdays) {
   if (!dataDo || !weekdays || !weekdays.length) {
     return [];
@@ -4255,8 +4324,9 @@ function settlementDatesMatchingWeekdays_(dataOd, dataDo, weekdays) {
     if (settlementCompareDate_(text, end) > 0) {
       break;
     }
-    var jsDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-    if (wanted[jsDay]) {
+    var dayMs = Date.UTC(y, m - 1, d);
+    var jsDay = new Date(dayMs).getUTCDay();
+    if (wanted[jsDay] && !settlementIsPolishPublicHolidayUtc_(dayMs)) {
       out.push(text);
     }
     d += 1;
@@ -4370,7 +4440,8 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
 
 /**
  * Dzień odbioru worka przy znanym harmonogramie.
- * Data zamknięcia, gdy wpada w dni odbiorów; inaczej najbliższy taki dzień później (do 6 dni).
+ * Data zamknięcia, gdy wpada w roboczy dzień odbioru; inaczej najbliższy taki dzień później.
+ * Piątek ustawowo wolny (1.05, 25.12, 1.01) nie jest odbiorem.
  */
 function settlementScheduleDateOnOrAfter_(closeDate, weekdays) {
   if (!closeDate || !weekdays || !weekdays.length) {
@@ -4389,8 +4460,9 @@ function settlementScheduleDateOnOrAfter_(closeDate, weekdays) {
   var m = parseInt(parts[2], 10);
   var d = parseInt(parts[1], 10);
   var i;
-  for (i = 0; i < 7; i++) {
-    if (wanted[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]) {
+  for (i = 0; i < 22; i++) {
+    var dayMs = Date.UTC(y, m - 1, d);
+    if (wanted[new Date(dayMs).getUTCDay()] && !settlementIsPolishPublicHolidayUtc_(dayMs)) {
       return settlementFormatDate_(y, m, d);
     }
     d += 1;
@@ -4404,8 +4476,8 @@ function settlementScheduleDateOnOrAfter_(closeDate, weekdays) {
 
 /**
  * Buduje oczekiwane wiersze sync (adres+data+firma).
- * Sklep z dniami odbiorów dostaje wiersz tylko w te dni. Worki zamknięte w inny dzień
- * doliczają się do najbliższego takiego odbioru, bez osobnego wiersza.
+ * Sklep z dniami odbiorów dostaje wiersz tylko w te dni. Święto ustawowe nie jest odbiorem.
+ * Worki zamknięte w inny dzień doliczają się do najbliższego takiego odbioru, bez osobnego wiersza.
  * Sklep bez dni w Bazie cen zostaje na dacie zamknięcia worka.
  * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
  * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
@@ -4723,13 +4795,103 @@ function scheduleAggregateRodzaj_(seals) {
   return '';
 }
 
+/**
+ * To samo okno co defaultSyncWindow w syncZestawienieHarmonogram.ts.
+ * Cała arytmetyka jest w środku: test ładuje tylko tę funkcję oraz format daty.
+ */
 function scheduleSyncDefaultWindow_() {
+  var DAY = 86400000;
+  var LOOKBACK = 7;
+
+  function easterSundayUtc_(year) {
+    var a = year % 19;
+    var b = Math.floor(year / 100);
+    var c = year % 100;
+    var d4 = Math.floor(b / 4);
+    var e = b % 4;
+    var f = Math.floor((b + 8) / 25);
+    var g = Math.floor((b - f + 1) / 3);
+    var h = (19 * a + b - d4 - g + 15) % 30;
+    var i = Math.floor(c / 4);
+    var k = c % 4;
+    var l = (32 + 2 * e + 2 * i - h - k) % 7;
+    var m451 = Math.floor((a + 11 * h + 22 * l) / 451);
+    var month = Math.floor((h + l - 7 * m451 + 114) / 31);
+    var day = ((h + l - 7 * m451 + 114) % 31) + 1;
+    return Date.UTC(year, month - 1, day);
+  }
+
+  function isHolidayUtc_(ms) {
+    var dt = new Date(ms);
+    var year = dt.getUTCFullYear();
+    var month = dt.getUTCMonth() + 1;
+    var day = dt.getUTCDate();
+    var fixed = [
+      [1, 1],
+      [1, 6],
+      [5, 1],
+      [5, 3],
+      [8, 15],
+      [11, 1],
+      [11, 11],
+      [12, 25],
+      [12, 26],
+    ];
+    var fi;
+    for (fi = 0; fi < fixed.length; fi++) {
+      if (fixed[fi][0] === month && fixed[fi][1] === day) {
+        return true;
+      }
+    }
+    var easter = easterSundayUtc_(year);
+    var offsets = [0, 1, 49, 60];
+    var oi;
+    for (oi = 0; oi < offsets.length; oi++) {
+      if (easter + offsets[oi] * DAY === Date.UTC(year, month - 1, day)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function earliestCloseUtc_(todayUtc) {
+    var recentStart = todayUtc - LOOKBACK * DAY;
+    var earliest = todayUtc;
+    var t;
+    for (t = recentStart; t < todayUtc; t += DAY) {
+      if (isHolidayUtc_(t)) {
+        continue;
+      }
+      var prev = t - 7 * DAY;
+      var guard = 0;
+      while (guard < 8 && isHolidayUtc_(prev)) {
+        prev -= 7 * DAY;
+        guard += 1;
+      }
+      var close = prev + DAY;
+      if (close < earliest) {
+        earliest = close;
+      }
+    }
+    return earliest;
+  }
+
   var now = new Date();
   var y = now.getFullYear();
   var m = now.getMonth() + 1;
   var d = now.getDate();
+  var todayUtc = Date.UTC(y, m - 1, d);
+  var back = new Date(todayUtc - LOOKBACK * DAY);
+  var dataOdUtc = d > LOOKBACK ? Date.UTC(y, m - 1, 1) : back.getTime();
+  if (d > LOOKBACK) {
+    var earliest = earliestCloseUtc_(todayUtc);
+    if (earliest < dataOdUtc) {
+      dataOdUtc = earliest;
+    }
+  }
+  var od = new Date(dataOdUtc);
   return {
-    dataOd: settlementFormatDate_(y, m, 1),
+    dataOd: settlementFormatDate_(od.getUTCFullYear(), od.getUTCMonth() + 1, od.getUTCDate()),
     dataDo: settlementFormatDate_(y, m, d),
   };
 }
@@ -4859,7 +5021,7 @@ function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
       continue;
     }
     var weekday = scheduleWeekdayOfDate_(row.pickupDate);
-    if (weekday == null || weekdays.indexOf(weekday) >= 0) {
+    if (weekday == null || (weekdays.indexOf(weekday) >= 0 && !settlementIsPublicHolidayDate_(row.pickupDate))) {
       continue;
     }
     if (row.settled || settlementText_(row.invoice) !== '') {

@@ -113,12 +113,13 @@ describe('odebraneZHarmonogramu', () => {
   it('test_filterRowsForOdebraneZHarmonogramu_when_eligible_should_include', () => {
     const rows = [
       makeRow({ numerPlomby: 'OK' }),
-      makeRow({ numerPlomby: 'NO', dataZamknieciaWorka: '10.08.2026' }),
+      // 10.08 to poniedziałek odbioru. 12.08 ten dzień już minął, więc worek wchodzi.
+      makeRow({ numerPlomby: 'PN', dataZamknieciaWorka: '10.08.2026' }),
       makeRow({ numerPlomby: 'REC', zbiorka: 'Ręczna' }),
       makeRow({ numerPlomby: 'UNK', zbiorka: 'coś innego' }),
     ];
     const out = filterRowsForOdebraneZHarmonogramu(rows, todayUtc);
-    expect(out.map((r) => r.numerPlomby)).toEqual(['OK', 'REC']);
+    expect(out.map((r) => r.numerPlomby)).toEqual(['OK', 'PN', 'REC']);
   });
 
   it('test_findNumerPlombyColumnIndex_when_ewidencja_headers_should_use_column_m', () => {
