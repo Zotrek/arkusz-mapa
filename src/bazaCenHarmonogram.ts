@@ -11,6 +11,7 @@ import {
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
 import { canonicalHarmonogramDays, HARMONOGRAM_ID_HEADER } from './harmonogramGroup.js';
+import { expandAllTables } from './sheetTables.js';
 import { normalizeRateShopKey } from './saveRate.js';
 import { buildAddress, stripTrailingHouseNumberFromStreet } from './sheets.js';
 import { normalizeCityFromSheet } from './cityNormalize.js';
@@ -543,6 +544,8 @@ export async function syncBazaCenHarmonogram(
     await deleteSheetRows(api, spreadsheetId, sheetId, plan.duplicateDeletes);
     duplicatesRemovedCount = plan.duplicateDeletes.length;
   }
+
+  await expandAllTables(api, spreadsheetId);
 
   logger?.info(
     'Baza cen harmonogram: sklepy %d, dopisane %d, dni zaktualizowane %d, adresy ujednolicone %d, duplikaty usunięte %d, nowa zakładka=%s',

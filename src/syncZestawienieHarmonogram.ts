@@ -23,6 +23,7 @@ import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
 import { normalizeRateShopKey } from './saveRate.js';
 import { buildAddress } from './sheets.js';
+import { expandAllTables } from './sheetTables.js';
 import { aggregateRodzajZbiorkiFromSealRows, parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 
 /** Bez „Nr zlecenia transportowego”. Kolumna 9 = transport się odbył (po Ilość worków). */
@@ -1375,6 +1376,8 @@ export interface SyncZestawienieHarmonogramResult {
   /** Nierozliczone wiersze spoza dni odbioru, zdjęte po przeniesieniu worków. */
   removedCount: number;
   sheetCreated: boolean;
+  /** Ile tabel Arkuszów rozciągnięto na ostatni wiersz z danymi. */
+  tablesExpanded: number;
   dataOd: string;
   dataDo: string;
 }
@@ -1536,6 +1539,7 @@ function isBlankRow(row: string[]): boolean {
 
 /**
  * Uzupełnia braki i aktualizuje nierozliczone. NIE czyści zakładki (żadnego clear/overwrite całości).
+ * Na końcu rozciąga tabele na każdej zakładce pliku.
  */
 export async function syncZestawienieHarmonogram(
   api: SheetsClient,
@@ -1666,6 +1670,8 @@ export async function syncZestawienieHarmonogram(
 
   const removedCount = await deleteScheduleRows(api, spreadsheetId, cleanup.remove, logger);
 
+  const tablesExpanded = await expandAllTables(api, spreadsheetId);
+
   logger?.info(
     'Zestawienie Harmonogram: oczekiwane %d, nowe %d, zaktualizowane %d, zdjęte spoza dni %d, pominięte rozliczone %d, pominięte zmienione %d, okno %s–%s, nowa zakładka=%s (bez clear)',
     expected.length,
@@ -1678,6 +1684,9 @@ export async function syncZestawienieHarmonogram(
     dataDo,
     sheetCreated,
   );
+  if (tablesExpanded > 0) {
+    logger?.info('Zestawienie Harmonogram: powiększono tabelę na %d zakładkach', tablesExpanded);
+  }
 
   return {
     expectedCount: expected.length,
@@ -1687,6 +1696,7 @@ export async function syncZestawienieHarmonogram(
     skippedChanged,
     removedCount,
     sheetCreated,
+    tablesExpanded,
     dataOd,
     dataDo,
   };

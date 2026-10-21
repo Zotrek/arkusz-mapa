@@ -5,6 +5,7 @@
  */
 
 import { SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU } from './config.js';
+import { expandAllTables } from './sheetTables.js';
 import { shouldCopyToOdebraneZHarmonogramu } from './harmonogramDays.js';
 import { ensureSheetExists } from './phase4.js';
 import type { SheetColumnMap, SheetRow } from './sheets.js';
@@ -356,6 +357,7 @@ export async function executeOdebraneZHarmonogramu(
     targetHeaders,
     mappedRows,
   );
+  await expandAllTables(api, targetId);
 
   logger?.info(
     'Odebrane z harmonogramu → ewidencja (%s): odświeżono %d (kandydaci %d, pominięte w partii %d, nowa zakładka=%s)',

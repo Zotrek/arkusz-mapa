@@ -24,8 +24,10 @@
  *   Oba krańce dat wymagane. podwykonawca opcjonalny (pusty = wszyscy). Nic nie zapisuje.
  *   Wiersze: rejestr (mode=report) + grupy worków z „odebrane z harmonogramu” (mode=schedule).
  *   Pola: P/Q/I, status, snapshoty L/M, adres, data, podwykonawca, mode; rates do remisów.
- * POST { action: patchBags | patchRouteRate | detachRoute | attachRoute | resolveRateTie | approve }
+ * POST { action: patchBags | patchRouteRate | patchPickupDate | detachRoute | attachRoute | resolveRateTie | approve }
  *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
+ *   patchPickupDate — Data odbioru (dd.mm.yyyy) na wierszach z body.wiersze.
+ *   Inny miesiąc przenosi wiersz na zakładkę tego miesiąca i kasuje stary. Kolumn 17–18 nie przelicza.
  *   tryb=harmonogram|schedule → zapis na „zestawienie z harmonogramu”; inaczej Arkusz1.
  *   Rejestr: sheetRow + transportNumber. Odpada, gdy w tym wierszu kolumna 1 jest inna.
  *   Kolumn 17 i 18 nie ruszają patchBags, patchRouteRate, detachRoute, attachRoute.
@@ -1309,6 +1311,7 @@ function appendTransportRow_(numer, body) {
     body.komentarz2 || '',
   ];
   sheet.appendRow(row);
+  expandSheetTablesQuiet_(sheet);
   if (bodyHasRoute_(body) && routeRate !== '') {
     applyRouteRateToUnsettled_(sheet, routeName, routeRate);
   }
@@ -1921,6 +1924,7 @@ function handleAddReferencePodwykoPost_(body) {
     return jsonResponse({ ok: false, error: 'duplicate' });
   }
   sheet.appendRow([entry.nazwa, entry.dane]);
+  expandSheetTablesQuiet_(sheet);
   return jsonResponse({
     ok: true,
     entry: entry,
@@ -1968,6 +1972,7 @@ function handleAddPoprawAdresPost_(body) {
     sheet.getRange(existingRow, 1, 1, REF_POPRAW_HEADER.length).setValues([rowValues]);
   } else {
     sheet.appendRow(rowValues);
+    expandSheetTablesQuiet_(sheet);
   }
   return jsonResponse({
     ok: true,
@@ -3212,9 +3217,11 @@ function appendBolecinMapped_(sheet, fields) {
       fields.rodzajTransportu || '',
       fields.awizacja || '',
     ]);
+    expandSheetTablesQuiet_(sheet);
     return;
   }
   sheet.appendRow(row);
+  expandSheetTablesQuiet_(sheet);
 }
 
 function wantsProtocolBolecin_(body) {
@@ -5231,9 +5238,246 @@ function scheduleApplyOffDayCleanup_(cleanup, existingByKey) {
 }
 
 /**
+ * Tabela Arkuszów (filtr w nagłówku) ma własny zakres. Dopisanie wiersza pod nią go nie powiększa.
+ * Rozciąga każdą tabelę od A1 do ostatniego wiersza z danymi. Nie skraca.
+ */
+function fetchSpreadsheetTables_(spreadsheetId) {
+  var token = ScriptApp.getOAuthToken();
+  var url =
+    'https://sheets.googleapis.com/v4/spreadsheets/' +
+    encodeURIComponent(spreadsheetId) +
+    '?fields=sheets(properties(sheetId,title),basicFilter,filterViews,tables(tableId,name,range))';
+  var res = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + token },
+    muteHttpExceptions: true,
+  });
+  var code = res.getResponseCode();
+  var body = res.getContentText();
+  if (code < 200 || code >= 300) {
+    throw new Error('tables-meta-' + code + ' ' + body.substring(0, 400));
+  }
+  var meta = JSON.parse(body);
+  return meta.sheets || [];
+}
+
+function buildTableExpandRequests_(apiSheets, lastRowById) {
+  var requests = [];
+  var s;
+  for (s = 0; s < apiSheets.length; s++) {
+    var props = apiSheets[s].properties || {};
+    var sheetId = props.sheetId;
+    var tables = apiSheets[s].tables || [];
+    if (sheetId == null || lastRowById[sheetId] == null) {
+      continue;
+    }
+    var lastRow = lastRowById[sheetId];
+    if (lastRow < 1) {
+      continue;
+    }
+    var t;
+    for (t = 0; t < tables.length; t++) {
+      var table = tables[t];
+      var range = table.range || {};
+      var startRow = range.startRowIndex != null ? range.startRowIndex : 0;
+      var startCol = range.startColumnIndex != null ? range.startColumnIndex : 0;
+      var endRow = range.endRowIndex;
+      var endCol = range.endColumnIndex;
+      if (!table.tableId || endRow == null || endCol == null) {
+        continue;
+      }
+      if (startRow !== 0 || endRow >= lastRow) {
+        continue;
+      }
+      requests.push({
+        updateTable: {
+          table: {
+            tableId: table.tableId,
+            range: {
+              sheetId: sheetId,
+              startRowIndex: startRow,
+              endRowIndex: lastRow,
+              startColumnIndex: startCol,
+              endColumnIndex: endCol,
+            },
+          },
+          fields: 'range',
+        },
+      });
+    }
+    pushFilterRangeUpdates_(requests, sheetId, lastRow, apiSheets[s].basicFilter, apiSheets[s].filterViews);
+  }
+  return requests;
+}
+
+function extendedGridRange_(range, sheetId, lastRow) {
+  if (!range || range.endRowIndex == null || range.endColumnIndex == null) {
+    return null;
+  }
+  if (range.endRowIndex >= lastRow) {
+    return null;
+  }
+  return {
+    sheetId: sheetId,
+    startRowIndex: range.startRowIndex || 0,
+    endRowIndex: lastRow,
+    startColumnIndex: range.startColumnIndex || 0,
+    endColumnIndex: range.endColumnIndex,
+  };
+}
+
+/** Filtr arkusza i widoki filtra kończą się przed ostatnim wierszem — reszta wierszy jest zawsze widoczna. */
+function pushFilterRangeUpdates_(requests, sheetId, lastRow, basicFilter, filterViews) {
+  if (basicFilter) {
+    var next = extendedGridRange_(basicFilter.range, sheetId, lastRow);
+    if (next) {
+      var filter = { range: next };
+      if (basicFilter.criteria) {
+        filter.criteria = basicFilter.criteria;
+      }
+      if (basicFilter.sortSpecs) {
+        filter.sortSpecs = basicFilter.sortSpecs;
+      }
+      if (basicFilter.filterSpecs) {
+        filter.filterSpecs = basicFilter.filterSpecs;
+      }
+      requests.push({ setBasicFilter: { filter: filter } });
+    }
+  }
+  var views = filterViews || [];
+  var v;
+  for (v = 0; v < views.length; v++) {
+    var view = views[v];
+    var viewRange = extendedGridRange_(view.range, sheetId, lastRow);
+    if (!viewRange || view.filterViewId == null) {
+      continue;
+    }
+    requests.push({
+      updateFilterView: {
+        filter: { filterViewId: view.filterViewId, range: viewRange },
+        fields: 'range',
+      },
+    });
+  }
+}
+
+function postTableExpand_(spreadsheetId, requests) {
+  if (!requests.length) {
+    return 0;
+  }
+  var token = ScriptApp.getOAuthToken();
+  var res = UrlFetchApp.fetch(
+    'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(spreadsheetId) + ':batchUpdate',
+    {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ requests: requests }),
+      muteHttpExceptions: true,
+    },
+  );
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error('tables-update-' + code + ' ' + res.getContentText().substring(0, 400));
+  }
+  return requests.length;
+}
+
+function rangeLine_(title, label, range, lastRow) {
+  var endRow = range && range.endRowIndex != null ? range.endRowIndex : 0;
+  return (
+    (title || '?') +
+    ' ' +
+    label +
+    ' wiersze ' +
+    (((range && range.startRowIndex) || 0) + 1) +
+    '-' +
+    endRow +
+    ', dane do ' +
+    (lastRow || 0)
+  );
+}
+
+function summarizeSheetTables_(apiSheets, lastRowById) {
+  var lines = [];
+  var s;
+  for (s = 0; s < apiSheets.length; s++) {
+    var props = apiSheets[s].properties || {};
+    var lastRow = lastRowById[props.sheetId] || 0;
+    var tables = apiSheets[s].tables || [];
+    var t;
+    for (t = 0; t < tables.length; t++) {
+      lines.push(rangeLine_(props.title, '«' + (tables[t].name || tables[t].tableId || '?') + '»', tables[t].range, lastRow));
+    }
+    if (apiSheets[s].basicFilter) {
+      lines.push(rangeLine_(props.title, 'filtr', apiSheets[s].basicFilter.range, lastRow));
+    }
+    var views = apiSheets[s].filterViews || [];
+    for (t = 0; t < views.length; t++) {
+      lines.push(rangeLine_(props.title, 'widok «' + (views[t].title || views[t].filterViewId) + '»', views[t].range, lastRow));
+    }
+  }
+  return lines;
+}
+
+/** Jedna zakładka — po dopisaniu wiersza. */
+function expandSheetTablesToLastRow_(sheet) {
+  if (!sheet) {
+    return 0;
+  }
+  var ss = sheet.getParent();
+  var lastRowById = {};
+  lastRowById[sheet.getSheetId()] = sheet.getLastRow();
+  var requests = buildTableExpandRequests_(fetchSpreadsheetTables_(ss.getId()), lastRowById);
+  return postTableExpand_(ss.getId(), requests);
+}
+
+function expandSheetTablesQuiet_(sheet) {
+  try {
+    expandSheetTablesToLastRow_(sheet);
+  } catch (err) {
+    Logger.log('expand tables: ' + (err && err.message ? err.message : String(err)));
+  }
+}
+
+/** Wszystkie zakładki aktywnego pliku, jeden odczyt i jeden zapis. */
+function expandAllSheetTables_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var all = ss.getSheets();
+  var lastRowById = {};
+  var i;
+  for (i = 0; i < all.length; i++) {
+    lastRowById[all[i].getSheetId()] = all[i].getLastRow();
+  }
+  var apiSheets = fetchSpreadsheetTables_(ss.getId());
+  var seen = summarizeSheetTables_(apiSheets, lastRowById);
+  var expanded = postTableExpand_(ss.getId(), buildTableExpandRequests_(apiSheets, lastRowById));
+  return { ok: true, expanded: expanded, tables: seen, errors: [] };
+}
+
+/**
+ * Ręczne: wciąga wiersze pod tabelą na każdej zakładce tego pliku.
+ * Uruchom z listy Uruchom w edytorze Apps Script (po wklejeniu skryptu).
+ */
+function expandHarmonogramTables() {
+  var out;
+  try {
+    out = expandAllSheetTables_();
+  } catch (err) {
+    out = {
+      ok: false,
+      expanded: 0,
+      errors: [err && err.message ? err.message : String(err)],
+    };
+  }
+  Logger.log(JSON.stringify(out));
+  return out;
+}
+
+/**
  * Sync Harmonogram (miesięczne + legacy) z odebrane + Baza cen.
  * Uzupełnia braki / aktualizuje nierozliczone. Nie czyści całej zakładki.
  * Sklep z dniami w Bazie: nierozliczony wiersz spoza tych dni oddaje worki na najbliższy odbiór i jest usuwany.
+ * Po zapisie rozciąga tabelę Arkuszów na ostatni wiersz (nowe rekordy wchodzą do tabeli).
  */
 function syncZestawienieHarmonogram_(body) {
   var window = scheduleSyncDefaultWindow_();
@@ -5325,6 +5569,14 @@ function syncZestawienieHarmonogram_(body) {
   }
   var cleanup = planOffScheduleCleanup_(readSettlementCells_(baza, 8), cleanupRows, scheduledByKey);
   var removed = scheduleApplyOffDayCleanup_(cleanup, existing.byKey);
+  var tablesExpanded = 0;
+  var tableExpandError = '';
+  try {
+    tablesExpanded = expandAllSheetTables_().expanded;
+  } catch (tableErr) {
+    tableExpandError = tableErr && tableErr.message ? tableErr.message : String(tableErr);
+    Logger.log('expand tables: ' + tableExpandError);
+  }
   return {
     ok: true,
     dataOd: dataOd,
@@ -5334,6 +5586,8 @@ function syncZestawienieHarmonogram_(body) {
     removed: removed,
     skippedSettled: skippedSettled,
     expected: expected.length,
+    tablesExpanded: tablesExpanded,
+    tableExpandError: tableExpandError,
   };
 }
 
@@ -5372,6 +5626,7 @@ function isSettlementWriteAction_(action) {
   return (
     action === 'patchBags' ||
     action === 'patchRouteRate' ||
+    action === 'patchPickupDate' ||
     action === 'detachRoute' ||
     action === 'attachRoute' ||
     action === 'resolveRateTie' ||
@@ -5776,12 +6031,111 @@ function approve_(body) {
   return { ok: true, zapisane: saved, pominiete: skipped };
 }
 
+/**
+ * Data odbioru na wskazanych wierszach. Pusta i zła data odpadają.
+ * Ta sama zakładka miesiąca: tylko komórka daty. Inny miesiąc: kopia wiersza
+ * na zakładkę tego miesiąca i usunięcie starego. Kosztu nie przelicza.
+ */
+function pickupDateItems_(body) {
+  var rows = body && body.wiersze;
+  if (rows && typeof rows.length === 'number' && rows.length > 0) {
+    return rows;
+  }
+  if (body && body.sheetRow != null) {
+    return [body];
+  }
+  return null;
+}
+
+function writePickupDate_(target, dateText, schedule) {
+  var dateCol = schedule ? SCHEDULE_COL.dataOdbioru : COL.dataOdbioru;
+  var width = schedule ? SCHEDULE_COL.komentarz2 : COL.komentarz2;
+  var kind = schedule ? 'schedule' : 'report';
+  var destName = schedule ? scheduleMonthSheetName_(dateText) : reportMonthSheetName_(dateText);
+  var sourceName = target.sheet.getName();
+  if (sourceName === destName) {
+    target.sheet.getRange(target.row, dateCol).setNumberFormat('@').setValue(dateText);
+    return {
+      sheetName: sourceName,
+      sheetRow: target.row,
+      transportNumber: target.transportNumber,
+    };
+  }
+  var dest = getOrCreateMonthRegisterSheet_(kind, dateText);
+  var values = target.sheet.getRange(target.row, 1, 1, width).getValues()[0];
+  values[dateCol - 1] = dateText;
+  dest.appendRow(values);
+  var newRow = dest.getLastRow();
+  dest.getRange(newRow, dateCol).setNumberFormat('@').setValue(dateText);
+  if (dest.getName() !== sourceName) {
+    target.sheet.deleteRow(target.row);
+  }
+  return {
+    sheetName: dest.getName(),
+    sheetRow: newRow,
+    transportNumber: target.transportNumber,
+  };
+}
+
+function patchPickupDate_(body) {
+  var dateText = settlementDateText_(body && body.dataOdbioru);
+  if (!dateText) {
+    return { ok: false, error: 'date' };
+  }
+  var items = pickupDateItems_(body);
+  if (!items) {
+    return { ok: false, error: 'key' };
+  }
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var pending = [];
+  var seen = {};
+  var i;
+  for (i = 0; i < items.length; i++) {
+    var item = items[i] || {};
+    if (schedule) {
+      item.tryb = 'harmonogram';
+    }
+    var target = registerWriteTarget_(null, item);
+    if (target.error) {
+      return { ok: false, error: target.error };
+    }
+    var mark = target.sheet.getName() + '\n' + String(target.row);
+    if (seen[mark]) {
+      continue;
+    }
+    seen[mark] = true;
+    pending.push({
+      sheet: target.sheet,
+      row: target.row,
+      transportNumber: schedule
+        ? ''
+        : settlementTransportNumber_(target.sheet.getRange(target.row, COL.numer).getValue()),
+    });
+  }
+  pending.sort(function (a, b) {
+    var byName = String(a.sheet.getName()).localeCompare(String(b.sheet.getName()));
+    if (byName !== 0) {
+      return byName;
+    }
+    return b.row - a.row;
+  });
+  var saved = [];
+  for (i = 0; i < pending.length; i++) {
+    saved.push(writePickupDate_(pending[i], dateText, schedule));
+  }
+  return { ok: true, zapisane: saved };
+}
+
 function runSettlementWrite_(action, body) {
   if (action === 'patchBags') {
     return patchBags_(body);
   }
   if (action === 'patchRouteRate') {
     return patchRouteRate_(body);
+  }
+  if (action === 'patchPickupDate') {
+    return patchPickupDate_(body);
   }
   if (action === 'detachRoute') {
     return detachRoute_(body);

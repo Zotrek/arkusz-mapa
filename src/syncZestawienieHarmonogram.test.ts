@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import { filterExpandRequests, tableExpandRequests } from './sheetTables.js';
 import {
   buildScheduleSyncExpected,
   compareDdMmYyyy,
@@ -834,6 +835,85 @@ function fakeSheetsApi(sheets: Map<string, string[][]>) {
   };
 }
 
+describe('filterExpandRequests', () => {
+  it('test_filterExpandRequests_when_filter_shorter_than_data_should_keep_criteria', () => {
+    const criteria = { '0': { hiddenValues: ['inny adres'] } };
+    const requests = filterExpandRequests(
+      4,
+      2973,
+      {
+        range: { startRowIndex: 0, endRowIndex: 2944, startColumnIndex: 0, endColumnIndex: 11 },
+        criteria,
+      },
+      [{ filterViewId: 9, title: 'adres', range: { startRowIndex: 0, endRowIndex: 2944, startColumnIndex: 0, endColumnIndex: 11 } }],
+    );
+    expect(requests).toEqual([
+      {
+        setBasicFilter: {
+          filter: {
+            range: { sheetId: 4, startRowIndex: 0, endRowIndex: 2973, startColumnIndex: 0, endColumnIndex: 11 },
+            criteria,
+          },
+        },
+      },
+      {
+        updateFilterView: {
+          filter: {
+            filterViewId: 9,
+            range: { sheetId: 4, startRowIndex: 0, endRowIndex: 2973, startColumnIndex: 0, endColumnIndex: 11 },
+          },
+          fields: 'range',
+        },
+      },
+    ]);
+  });
+});
+
+describe('tableExpandRequests', () => {
+  it('test_tableExpandRequests_when_table_shorter_than_data_should_extend_rows_only', () => {
+    const requests = tableExpandRequests(
+      [
+        {
+          sheetId: 7,
+          title: 'Harmonogram Październik 2026',
+          tables: [
+            {
+              tableId: 't-short',
+              range: { startRowIndex: 0, endRowIndex: 589, startColumnIndex: 0, endColumnIndex: 11 },
+            },
+            {
+              tableId: 't-side',
+              range: { startRowIndex: 0, endRowIndex: 3, startColumnIndex: 2, endColumnIndex: 4 },
+            },
+            {
+              tableId: 't-full',
+              range: { startRowIndex: 0, endRowIndex: 3000, startColumnIndex: 0, endColumnIndex: 11 },
+            },
+          ],
+        },
+      ],
+      new Map([['Harmonogram Październik 2026', 2946]]),
+    );
+    expect(requests).toEqual([
+      {
+        updateTable: {
+          table: {
+            tableId: 't-short',
+            range: {
+              sheetId: 7,
+              startRowIndex: 0,
+              endRowIndex: 2946,
+              startColumnIndex: 0,
+              endColumnIndex: 11,
+            },
+          },
+          fields: 'range',
+        },
+      },
+    ]);
+  });
+});
+
 describe('syncZestawienieHarmonogram', () => {
   it('test_syncZestawienieHarmonogram_creates_sheet_and_appends_without_clear', async () => {
     const sheets = new Map<string, string[][]>();
@@ -856,11 +936,61 @@ describe('syncZestawienieHarmonogram', () => {
     expect(result.createdCount).toBe(1);
     expect(api.spreadsheets.values.clear).not.toHaveBeenCalled();
     expect(api.spreadsheets.values.append).toHaveBeenCalled();
+    expect(result.tablesExpanded).toBe(0);
     expect(sheets.has(monthSheet)).toBe(true);
     const validationCalls = api.spreadsheets.batchUpdate.mock.calls.filter((c) =>
       JSON.stringify(c[0]).includes('setDataValidation'),
     );
     expect(validationCalls.length).toBeGreaterThan(0);
+  });
+
+  it('test_syncZestawienieHarmonogram_when_table_is_short_should_extend_it_over_new_rows', async () => {
+    const sheets = new Map<string, string[][]>();
+    sheets.set('odebrane z harmonogramu', [ODEBRANE_HEADERS, odebraneRow(), odebraneRow({ 'Numer plomby': 'P2' })]);
+    sheets.set('Baza cen harmonogram', [
+      [...BAZA_CEN_HEADERS],
+      ['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt'],
+    ]);
+    const api = fakeSheetsApi(sheets);
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const originalGet = api.spreadsheets.get.getMockImplementation()!;
+    api.spreadsheets.get.mockImplementation(async () => {
+      const base = await originalGet();
+      const data = base.data as {
+        sheets: Array<{ properties: { title: string }; tables?: unknown[] }>;
+      };
+      for (const sheet of data.sheets) {
+        if (sheet.properties.title === monthSheet || sheet.properties.title === 'Baza cen harmonogram') {
+          sheet.tables = [
+            {
+              tableId: sheet.properties.title === monthSheet ? 't-harmonogram' : 't-baza',
+              range: { startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 11 },
+            },
+          ];
+        }
+      }
+      return base;
+    });
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '15.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    expect(result.createdCount).toBe(1);
+    expect(result.tablesExpanded).toBe(2);
+    const updates = api.spreadsheets.batchUpdate.mock.calls
+      .map((c) => c[0].requestBody.requests)
+      .flat()
+      .filter((req) => 'updateTable' in req) as Array<{
+      updateTable: { table: { tableId: string; range: { endRowIndex: number; endColumnIndex: number } } };
+    }>;
+    expect(updates.map((req) => req.updateTable.table.tableId).sort()).toEqual(['t-baza', 't-harmonogram']);
+    for (const req of updates) {
+      expect(req.updateTable.table.range.endRowIndex).toBe(2);
+      expect(req.updateTable.table.range.endColumnIndex).toBe(11);
+    }
   });
 
   it('test_syncZestawienieHarmonogram_missing_rate_in_baza_keeps_manual_rates', async () => {
