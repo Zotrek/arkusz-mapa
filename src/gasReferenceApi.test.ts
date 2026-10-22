@@ -91,6 +91,14 @@ class FakeSheet {
     return this.name;
   }
 
+  getSheetId(): number {
+    return 1;
+  }
+
+  getParent(): { getId: () => string } {
+    return { getId: () => 'test-spreadsheet' };
+  }
+
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
     return value == null ? '' : value;
@@ -232,8 +240,31 @@ beforeAll(() => {
             sheets.set(name, sheet);
             return sheet;
           },
+          getId() {
+            return 'test-spreadsheet';
+          },
         };
       },
+    },
+    ScriptApp: {
+      getOAuthToken() {
+        return 'test-token';
+      },
+    },
+    UrlFetchApp: {
+      fetch() {
+        return {
+          getResponseCode() {
+            return 200;
+          },
+          getContentText() {
+            return JSON.stringify({ sheets: [] });
+          },
+        };
+      },
+    },
+    Logger: {
+      log() {},
     },
     PropertiesService: {
       getScriptProperties() {

@@ -128,6 +128,14 @@ class FakeSheet {
     return this.name;
   }
 
+  getSheetId(): number {
+    return 1;
+  }
+
+  getParent(): { getId: () => string } {
+    return { getId: () => 'test-spreadsheet' };
+  }
+
   cell(row: number, col: number): Cell {
     const value = this.cells.get(`${row},${col}`);
     return value == null ? '' : value;
@@ -283,6 +291,9 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
             }
             return sheet;
           },
+          getId() {
+            return 'test-spreadsheet';
+          },
         };
       },
       newDataValidation() {
@@ -380,6 +391,27 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
           releaseLock() {},
         };
       },
+    },
+    // Po appendRow skrypt rozciąga tabelę Arkuszów przez Sheets API.
+    ScriptApp: {
+      getOAuthToken() {
+        return 'test-token';
+      },
+    },
+    UrlFetchApp: {
+      fetch() {
+        return {
+          getResponseCode() {
+            return 200;
+          },
+          getContentText() {
+            return JSON.stringify({ sheets: [] });
+          },
+        };
+      },
+    },
+    Logger: {
+      log() {},
     },
   };
   runInNewContext(readFileSync(gsPath, 'utf8'), context);
