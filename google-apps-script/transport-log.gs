@@ -177,6 +177,13 @@ var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
 /** Cache wiersza ostatniego numeru: „sheetName\\trow”. */
 var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
 var TRANSPORT_LAST_SHEET_KEY = 'transportLastSheet';
+/** Ostatnie odbiory: Ready=1, Count i kawałki Prefix+0… (limit właściwości skryptu). */
+var TRANSPORT_LAST_PICKUP_READY = 'transportLastPickupReady';
+var TRANSPORT_LAST_PICKUP_COUNT = 'transportLastPickupCount';
+var TRANSPORT_LAST_PICKUP_PREFIX = 'transportLastPickup.';
+var TRANSPORT_ROUTE_NAMES_KEY = 'transportRouteNames';
+var TRANSPORT_ROUTE_RATES_KEY = 'transportRouteRates';
+var TRANSPORT_CACHE_CHUNK = 7000;
 /** Tajny klucz Worker → GAS. Ustaw w Apps Script → Project settings → Script properties: GAS_SHARED_SECRET. Nie commituj. */
 var GAS_SHARED_SECRET_KEY = 'GAS_SHARED_SECRET';
 
@@ -440,8 +447,8 @@ function doPost(e) {
 function rebuildTransportCounterFromSheet() {
   var result = scanMaxNumberAndRowFromSheet_();
   setStoredMaxNumber_(result.max);
-  if (result.row > 0) {
-    setStoredLastRow_(result.row);
+  if (result.row > 0 && result.sheetName) {
+    setStoredLastRow_(result.row, result.sheetName);
   } else {
     clearStoredLastRow_();
   }
@@ -709,8 +716,218 @@ function settlementRegisterSheetForWrite_(body) {
   return sheet;
 }
 
+/**
+ * Cache odczytów GET. Pełny skan rejestru za Cloudflare (limit ~100 s) wraca jako HTML 524.
+ * Ciepły cache nie otwiera arkusza. Brak cache: jeden skan i zapis. Zapis protokołu dopisuje wpis.
+ */
+function readJsonProperty_(key) {
+  var raw = PropertiesService.getScriptProperties().getProperty(key);
+  if (raw == null || raw === '') {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeJsonProperty_(key, value) {
+  var json = JSON.stringify(value);
+  if (json.length > 8500) {
+    return false;
+  }
+  PropertiesService.getScriptProperties().setProperty(key, json);
+  return true;
+}
+
+function readRouteNamesCache_() {
+  var parsed = readJsonProperty_(TRANSPORT_ROUTE_NAMES_KEY);
+  return Array.isArray(parsed) ? parsed : null;
+}
+
+function writeRouteNamesCache_(names) {
+  writeJsonProperty_(TRANSPORT_ROUTE_NAMES_KEY, names);
+}
+
+function rememberRouteName_(name) {
+  var trimmed = String(name == null ? '' : name).trim();
+  if (!trimmed) {
+    return;
+  }
+  var cached = readRouteNamesCache_();
+  if (cached == null) {
+    return;
+  }
+  var i;
+  for (i = 0; i < cached.length; i++) {
+    if (cached[i] === trimmed) {
+      return;
+    }
+  }
+  cached.push(trimmed);
+  writeRouteNamesCache_(cached);
+}
+
+function readRouteRatesCache_() {
+  var parsed = readJsonProperty_(TRANSPORT_ROUTE_RATES_KEY);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function writeRouteRatesCache_(rates) {
+  writeJsonProperty_(TRANSPORT_ROUTE_RATES_KEY, rates);
+}
+
+function rememberRouteRate_(name, rate) {
+  var trimmed = String(name == null ? '' : name).trim();
+  if (!trimmed) {
+    return;
+  }
+  var cached = readRouteRatesCache_();
+  if (cached == null) {
+    cached = {};
+  }
+  var text = rate == null || rate === '' ? '' : String(rate).trim();
+  if (Object.prototype.hasOwnProperty.call(cached, trimmed) && cached[trimmed] === text) {
+    return;
+  }
+  cached[trimmed] = text;
+  writeRouteRatesCache_(cached);
+}
+
+function readLastPickupCache_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(TRANSPORT_LAST_PICKUP_READY) !== '1') {
+    return null;
+  }
+  var n = parseInt(props.getProperty(TRANSPORT_LAST_PICKUP_COUNT) || '0', 10);
+  if (isNaN(n) || n < 0) {
+    return null;
+  }
+  var merged = {};
+  var i;
+  for (i = 0; i < n; i++) {
+    var part = props.getProperty(TRANSPORT_LAST_PICKUP_PREFIX + i);
+    if (part == null || part === '') {
+      return null;
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(part);
+    } catch (err) {
+      return null;
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    var keys = Object.keys(parsed);
+    var k;
+    for (k = 0; k < keys.length; k++) {
+      merged[keys[k]] = parsed[keys[k]];
+    }
+  }
+  return merged;
+}
+
+function writeLastPickupCache_(map) {
+  var props = PropertiesService.getScriptProperties();
+  var source = map || {};
+  var keys = Object.keys(source);
+  var chunks = [];
+  var current = {};
+  var size = 2;
+  var i;
+  for (i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var piece = JSON.stringify(source[key]);
+    var extra = JSON.stringify(key).length + piece.length + 1;
+    if (size > 2 && size + extra > TRANSPORT_CACHE_CHUNK) {
+      chunks.push(JSON.stringify(current));
+      current = {};
+      size = 2;
+    }
+    current[key] = source[key];
+    size += extra;
+  }
+  chunks.push(keys.length === 0 ? '{}' : JSON.stringify(current));
+  var old = parseInt(props.getProperty(TRANSPORT_LAST_PICKUP_COUNT) || '0', 10);
+  if (isNaN(old) || old < 0) {
+    old = 0;
+  }
+  props.setProperty(TRANSPORT_LAST_PICKUP_COUNT, String(chunks.length));
+  for (i = 0; i < chunks.length; i++) {
+    props.setProperty(TRANSPORT_LAST_PICKUP_PREFIX + i, chunks[i]);
+  }
+  for (i = chunks.length; i < old; i++) {
+    props.deleteProperty(TRANSPORT_LAST_PICKUP_PREFIX + i);
+  }
+  props.setProperty(TRANSPORT_LAST_PICKUP_READY, '1');
+}
+
+function clearLastPickupCache_() {
+  var props = PropertiesService.getScriptProperties();
+  var n = parseInt(props.getProperty(TRANSPORT_LAST_PICKUP_COUNT) || '0', 10);
+  if (isNaN(n) || n < 0) {
+    n = 0;
+  }
+  var i;
+  for (i = 0; i < n; i++) {
+    props.deleteProperty(TRANSPORT_LAST_PICKUP_PREFIX + i);
+  }
+  props.deleteProperty(TRANSPORT_LAST_PICKUP_COUNT);
+  props.deleteProperty(TRANSPORT_LAST_PICKUP_READY);
+}
+
+function rememberLastPickup_(podmiot, adres, dateText, kto) {
+  var cached = readLastPickupCache_();
+  if (cached == null) {
+    return;
+  }
+  var key = buildTransportShopKey_(podmiot, adres);
+  if (!key || key === '\0') {
+    return;
+  }
+  var ms = parseDateToMs_(dateText);
+  if (ms == null) {
+    return;
+  }
+  var prev = cached[key];
+  if (prev != null && prev.ms > ms) {
+    return;
+  }
+  cached[key] = {
+    ms: ms,
+    ktoOdbiera: String(kto || '').trim(),
+  };
+  writeLastPickupCache_(cached);
+}
+
+function forgetRouteRate_(name) {
+  var trimmed = String(name == null ? '' : name).trim();
+  if (!trimmed) {
+    return;
+  }
+  var cached = readRouteRatesCache_();
+  if (cached == null || !Object.prototype.hasOwnProperty.call(cached, trimmed)) {
+    return;
+  }
+  delete cached[trimmed];
+  writeRouteRatesCache_(cached);
+}
+
+function clearRouteNamesCache_() {
+  PropertiesService.getScriptProperties().deleteProperty(TRANSPORT_ROUTE_NAMES_KEY);
+}
+
 /** Kolumna Trasa, bez pustych — skan legacy + miesięczne Na zgłoszenie. */
 function listOccupiedRouteNames_() {
+  var cached = readRouteNamesCache_();
+  if (cached != null) {
+    return cached;
+  }
   var names = [];
   var seen = {};
   var sheets = listRegisterSheets_('report');
@@ -732,6 +949,7 @@ function listOccupiedRouteNames_() {
       names.push(name);
     }
   }
+  writeRouteNamesCache_(names);
   return names;
 }
 
@@ -746,6 +964,10 @@ function routeRateByName_(name) {
   var wanted = String(name == null ? '' : name).trim();
   if (!wanted) {
     return '';
+  }
+  var cachedRates = readRouteRatesCache_();
+  if (cachedRates && Object.prototype.hasOwnProperty.call(cachedRates, wanted)) {
+    return cachedRates[wanted];
   }
   var pattern = '^\\s*' + wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$';
   var width = COL.rozliczony - COL.trasa + 1;
@@ -794,7 +1016,11 @@ function routeRateByName_(name) {
       found = rate == null || rate === '' ? '' : String(rate).trim();
     }
   }
-  return found == null ? '' : found;
+  if (found == null) {
+    found = '';
+  }
+  rememberRouteRate_(wanted, found);
+  return found;
 }
 
 function buildModalDataResponse_(podmiot, adres) {
@@ -980,8 +1206,17 @@ function resolveNextTransportNumber_(increment) {
   return next;
 }
 
+/**
+ * Podgląd: sam cache transportMaxNum, bez otwierania arkusza.
+ * Sprawdzenie wiersza zostaje przy zapisie (allocateNextNumber_).
+ * Odczyt zakładki albo skan kolumny A na dużym rejestrze przekracza limit Cloudflare (HTTP 524).
+ */
 function getPreviewNumber_() {
-  return resolveNextTransportNumber_(false);
+  var stored = getStoredMaxNumber_();
+  if (stored == null) {
+    return resolveNextTransportNumber_(false);
+  }
+  return stored + 1;
 }
 
 function allocateNextNumber_() {
@@ -1203,6 +1438,7 @@ function applyRouteRateToUnsettled_(sheet, name, rate) {
   if (sheet && sheets.length === 0) {
     applyRouteRateToSheetUnsettled_(sheet, name, rate, COL.trasa, COL.stawkaTrasy, COL.rozliczony);
   }
+  rememberRouteRate_(name, rate);
 }
 
 /** Stawka trasy na wszystkich zakładkach Harmonogram (legacy + miesięczne). */
@@ -1315,6 +1551,10 @@ function appendTransportRow_(numer, body) {
   if (bodyHasRoute_(body) && routeRate !== '') {
     applyRouteRateToUnsettled_(sheet, routeName, routeRate);
   }
+  if (bodyHasRoute_(body)) {
+    rememberRouteName_(routeName);
+  }
+  rememberLastPickup_(body.podmiotHandlowy || '', adres, dataOdbioru, kto);
   var parsed = parseNumberFromCell_(numer);
   var stored = getStoredMaxNumber_();
   if (parsed != null && stored != null && parsed === stored) {
@@ -1391,7 +1631,11 @@ function buildBulkLastTransportDatesMap_() {
 }
 
 function buildBulkLastTransportDatesResponse_() {
-  var raw = buildBulkLastTransportDatesMap_();
+  var raw = readLastPickupCache_();
+  if (raw == null) {
+    raw = buildBulkLastTransportDatesMap_();
+    writeLastPickupCache_(raw);
+  }
   var shops = [];
   var keys = Object.keys(raw);
   for (var i = 0; i < keys.length; i++) {
@@ -1413,38 +1657,16 @@ function findLastTransportInfo_(podmiot, adres) {
   if (!normalizeTransportKeyPart_(adres)) {
     return null;
   }
-  var best = null;
-  var sheets = listRegisterSheets_('report');
-  var s;
-  for (s = 0; s < sheets.length; s++) {
-    var sheet = sheets[s].sheet;
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 2) {
-      continue;
-    }
-    var rows = readTransportPickupRows_(sheet, lastRow);
-    var i;
-    for (i = 0; i < rows.length; i++) {
-      if (transportDidNotHappen_(rows[i])) {
-        continue;
-      }
-      var rowAdres = rows[i][0];
-      var rowPodmiot = rows[i][1];
-      var rowData = rows[i][3];
-      var rowKto = rows[i][4];
-      if (!rowMatchesShop_(rowPodmiot, rowAdres, podmiot, adres)) {
-        continue;
-      }
-      var ms = parseDateToMs_(rowData);
-      if (ms != null && (best == null || ms >= best.ms)) {
-        best = {
-          ms: ms,
-          ktoOdbiera: String(rowKto || '').trim(),
-        };
-      }
-    }
+  var map = readLastPickupCache_();
+  if (map == null) {
+    map = buildBulkLastTransportDatesMap_();
+    writeLastPickupCache_(map);
   }
-  return best;
+  var key = buildTransportShopKey_(podmiot, adres);
+  if (!key || key === '\0') {
+    return null;
+  }
+  return map[key] || null;
 }
 
 function findLastTransportDateMs_(podmiot, adres) {
@@ -5771,7 +5993,12 @@ function detachRoute_(body) {
   var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
   var schedule = tryb === 'harmonogram' || tryb === 'schedule';
   var trasaCol = schedule ? SCHEDULE_COL.trasa : COL.trasa;
+  var previousName = cellStr_(target.sheet.getRange(target.row, trasaCol).getValue());
   target.sheet.getRange(target.row, trasaCol, 1, 2).setValues([['', '']]);
+  if (!schedule) {
+    forgetRouteRate_(previousName);
+    clearRouteNamesCache_();
+  }
   return { ok: true };
 }
 
@@ -5802,6 +6029,7 @@ function attachRoute_(body) {
     applyRouteRateToScheduleUnsettled_(name, value);
   } else {
     applyRouteRateToUnsettled_(target.sheet, name, value);
+    rememberRouteName_(name);
   }
   return { ok: true };
 }
@@ -5986,6 +6214,7 @@ function approve_(body) {
   var c = schedule ? SCHEDULE_COL : COL;
   var saved = [];
   var skipped = [];
+  var clearPickup = false;
   var i;
   for (i = 0; i < rows.length; i++) {
     var item = rows[i] || {};
@@ -6013,6 +6242,9 @@ function approve_(body) {
     if (markedNie) {
       sheet.getRange(target.row, c.transportOdbył).setValue('nie');
       saved.push(approveSaved_(sheet, target.row, schedule));
+      if (!schedule) {
+        clearPickup = true;
+      }
       continue;
     }
     var cost = approveCostGrosze_(item && item.koszt);
@@ -6027,6 +6259,9 @@ function approve_(body) {
       ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(perBag)],
     ]);
     saved.push(approveSaved_(sheet, target.row, schedule));
+  }
+  if (clearPickup) {
+    clearLastPickupCache_();
   }
   return { ok: true, zapisane: saved, pominiete: skipped };
 }

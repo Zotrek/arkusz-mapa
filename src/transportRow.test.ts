@@ -884,9 +884,49 @@ describe('listOccupiedRouteNames_', () => {
 
     expect(loadGas(sheet).listOccupiedRouteNames_()).toEqual(['Papirus-21.09.26-01']);
   });
+
+  it('test_listOccupiedRouteNames_when_cache_was_filled_should_ignore_a_later_sheet_name', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a');
+    const gas = loadGas(sheet);
+
+    expect(gas.listOccupiedRouteNames_()).toEqual(['trasa-a']);
+    seedRouteRow(sheet, 3, 'trasa-b');
+    expect(gas.listOccupiedRouteNames_()).toEqual(['trasa-a']);
+  });
+
+  it('test_appendTransportRow_when_route_names_are_cached_should_keep_the_new_name', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a');
+    const gas = loadGas(sheet);
+
+    expect(gas.listOccupiedRouteNames_()).toEqual(['trasa-a']);
+    gas.appendTransportRow_('1', protocolBody({ trasa: 'trasa-b', stawkaTrasy: '5' }));
+    expect(gas.listOccupiedRouteNames_()).toEqual(['trasa-a', 'trasa-b']);
+  });
 });
 
 describe('routeRateByName_', () => {
+  it('test_routeRateByName_when_cached_should_ignore_a_later_sheet_rate', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', '');
+    const gas = loadGas(sheet);
+
+    expect(gas.routeRateByName_('trasa-a')).toBe('10');
+    sheet.put(2, 12, '99');
+    expect(gas.routeRateByName_('trasa-a')).toBe('10');
+  });
+
+  it('test_appendTransportRow_when_route_rate_is_cached_should_keep_the_new_rate', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '10', '');
+    const gas = loadGas(sheet);
+
+    expect(gas.routeRateByName_('trasa-a')).toBe('10');
+    gas.appendTransportRow_('1', protocolBody({ trasa: 'trasa-a', stawkaTrasy: '25' }));
+    expect(gas.routeRateByName_('trasa-a')).toBe('25');
+  });
+
   it('test_routeRateByName_when_name_blank_or_sheet_empty_should_return_empty', () => {
     const sheet = new FakeSheet();
     sheet.put(1, 11, 'Trasa');

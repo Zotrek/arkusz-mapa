@@ -212,7 +212,7 @@ export function errorsApiBrowserScript(): string {
         return Promise.resolve();
       }
       setTransportDatesLoading(true);
-      return fetchTransportGet({ action: 'bulkLastTransportDates' }).then(function (resp) {
+      return fetchTransportGetRetry_({ action: 'bulkLastTransportDates' }).then(function (resp) {
         var byKey = {};
         var ktoByKey = {};
         if (resp && resp.ok && resp.shops) {

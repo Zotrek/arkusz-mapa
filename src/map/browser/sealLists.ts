@@ -78,6 +78,16 @@ export function sealListsBrowserScript(): string {
     function fetchTransportGet(params) {
       return fetch(transportApiUrl(params)).then(function (res) { return readMapJson_(res); });
     }
+    /** HTML 5xx (DEADLINE_EXCEEDED, Cloudflare 524) bywa chwilowe. Odczyt, więc jedna powtórka. */
+    function fetchTransportGetRetry_(params) {
+      function once() {
+        return fetchTransportGet(params);
+      }
+      return once().then(function (resp) {
+        if (!resp || !resp.notJson || !(resp.status >= 500)) return resp;
+        return delayMs(1500).then(once);
+      });
+    }
     function appendTransportRow(payload) {
       return fetch(TRANSPORT_WEBAPP_URL, {
         method: 'POST',

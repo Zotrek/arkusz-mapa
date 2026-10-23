@@ -1338,6 +1338,7 @@ showMapErrorCard({
       expect(body).toContain("String(resp && resp.error ? resp.error : 'ok: false')");
       expect(body).toContain('String(err && err.message || err)');
       expect(body).toContain('window.__transportDatesLoaded = true');
+      expect(body).toContain("fetchTransportGetRetry_({ action: 'bulkLastTransportDates' })");
       expect(body).toContain("'MAP-E-MARKER-REFRESH'");
       expect(body).toContain('pinezki się nie odświeżyły');
     });
@@ -1361,6 +1362,8 @@ showMapErrorCard({
       expect(bulk).toContain('Nie udało się podejrzeć numeru protokołów zbiorczych.');
       expect(bulk).toContain("place: 'map/browser/docModal.ts loadBulkDocModalData'");
       expect(bulk).toContain("finishBulkLoading('')");
+      expect(bulk).toContain("fetchTransportGetRetry_({ action: 'previewNumber' })");
+      expect(single).toContain("fetchTransportGetRetry_({ action: 'modalData'");
     });
 
     it('test_route_name_and_rate_when_lookup_fails_should_show_dismissible_error_card', () => {
@@ -1997,7 +2000,7 @@ __api = {
       expect(refresh).toContain('routeNameMissingDepsHint');
       expect(html).toContain('Najpierw wybierz kto odbiera');
       expect(html).toContain('Uzupełnij datę załadunku');
-      expect(refresh).toContain("action: 'routeNameProposal'");
+      expect(refresh).toContain("fetchTransportGetRetry_({ action: 'routeNameProposal' })");
       expect(refresh).toContain('setRouteNameFieldLoading(true)');
       expect(refresh).toContain('routeNameProposeTicket');
       expect(refresh).toContain('setRouteNameFieldLoading(false)');
@@ -2325,6 +2328,7 @@ __api = {
         },
         __api: null,
       };
+      sandbox.fetchTransportGetRetry_ = sandbox.fetchTransportGet;
 
       const script = `
 ${routeNameBrowserScript()}
@@ -2818,6 +2822,7 @@ __api = {
         },
         __api: null,
       };
+      sandbox.fetchTransportGetRetry_ = sandbox.fetchTransportGet;
 
       const script = `
 ${routeNameBrowserScript()}
@@ -3106,6 +3111,70 @@ __api = {
       await flushMicrotasks();
 
       expect(api.pendingFetches).toHaveLength(1);
+    });
+
+    it('test_fetchTransportGetRetry_when_html_500_then_ok_should_retry_once', async () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const src = html.slice(
+        html.indexOf('function fetchTransportGetRetry_('),
+        html.indexOf('function appendTransportRow('),
+      );
+      const pending: Array<(resp: { ok?: boolean; notJson?: boolean; status?: number; numer?: string }) => void> = [];
+      const sandbox = {
+        Promise,
+        fetchTransportGet() {
+          return new Promise((resolve) => {
+            pending.push(resolve);
+          });
+        },
+        delayMs() {
+          return Promise.resolve();
+        },
+      };
+      const retry = runInNewContext(`${src}\nfetchTransportGetRetry_;`, sandbox) as (params: {
+        action: string;
+      }) => Promise<{ ok?: boolean; numer?: string }>;
+      const result = retry({ action: 'previewNumber' });
+      pending[0]({ ok: false, notJson: true, status: 524 });
+      await flushMicrotasks();
+      expect(pending).toHaveLength(2);
+      pending[1]({ ok: true, numer: '8' });
+      await flushMicrotasks();
+      expect(await result).toEqual({ ok: true, numer: '8' });
+    });
+
+    it('test_fetchTransportGetRetry_when_json_ok_false_should_not_retry', async () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const src = html.slice(
+        html.indexOf('function fetchTransportGetRetry_('),
+        html.indexOf('function appendTransportRow('),
+      );
+      const pending: Array<(resp: { ok: boolean; error: string }) => void> = [];
+      const sandbox = {
+        Promise,
+        fetchTransportGet() {
+          return new Promise((resolve) => {
+            pending.push(resolve);
+          });
+        },
+        delayMs() {
+          return Promise.resolve();
+        },
+      };
+      const retry = runInNewContext(`${src}\nfetchTransportGetRetry_;`, sandbox) as (params: {
+        action: string;
+      }) => Promise<{ ok: boolean; error: string }>;
+      const result = retry({ action: 'modalData' });
+      pending[0]({ ok: false, error: 'busy' });
+      await flushMicrotasks();
+      expect(pending).toHaveLength(1);
+      expect(await result).toEqual({ ok: false, error: 'busy' });
     });
 
     it('test_lookupRouteRateNow_when_stale_before_retry_should_not_fetch_again', async () => {

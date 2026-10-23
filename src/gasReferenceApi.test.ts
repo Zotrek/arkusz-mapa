@@ -532,6 +532,9 @@ describe('doGet reference and list actions', () => {
     props.set('transportLastRow', '2');
 
     expect(get('previewNumber')).toEqual({ ok: true, numer: '4' });
+
+    seedRegisterRow(3, { 1: 99 });
+    expect(get('previewNumber')).toEqual({ ok: true, numer: '4' });
     const last = get('lastTransportDate', { podmiot: 'PH', adres: 'Ul. X 1' });
     expect(last.ok).toBe(true);
     expect(last.lastKtoOdbiera).toBe('abc');
@@ -552,6 +555,35 @@ describe('doGet reference and list actions', () => {
     expect(shops.length).toBeGreaterThanOrEqual(1);
     expect(shops[0].lastKtoOdbiera).toBe('gpw');
     expect(shops[0].lastTransportDateYmd).toBe('2026-06-01');
+  });
+
+  it('test_bulkLastTransportDates_when_cache_is_set_should_ignore_sheet', () => {
+    reset();
+    seedRegisterRow(2, {
+      2: 'Adres 1',
+      3: 'Firma',
+      5: '01.06.2026',
+      6: 'arkusz',
+    });
+    props.set('transportLastPickupReady', '1');
+    props.set('transportLastPickupCount', '1');
+    props.set(
+      'transportLastPickup.0',
+      JSON.stringify({
+        'firma\0adres 1': { ms: Date.UTC(2026, 0, 2), ktoOdbiera: 'z-cache' },
+      }),
+    );
+
+    const result = get('bulkLastTransportDates');
+    const shops = result.shops as { lastKtoOdbiera: string; lastTransportDateYmd: string }[];
+    expect(shops).toEqual([
+      {
+        key: 'firma\0adres 1',
+        lastTransportDateMs: Date.UTC(2026, 0, 2),
+        lastTransportDateYmd: '2026-01-02',
+        lastKtoOdbiera: 'z-cache',
+      },
+    ]);
   });
 
   it('test_routeRateByName_via_doGet', () => {

@@ -309,7 +309,7 @@ export function routeFormBrowserScript(): string {
       routeNameProposeTicket += 1;
       var ticket = routeNameProposeTicket;
       setRouteNameFieldLoading(true);
-      fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
+      fetchTransportGetRetry_({ action: 'routeNameProposal' }).then(function (resp) {
         if (resp && resp.status === 401) return { failed: true, status: 401, technical: 'HTTP 401' };
         if (!resp || !Array.isArray(resp.names)) {
           return {
@@ -516,7 +516,7 @@ export function routeFormBrowserScript(): string {
         }
       }
       if (!transportApiEnabled) return Promise.resolve(fromNames([]));
-      return fetchTransportGet({ action: 'routeNameProposal' }).then(function (resp) {
+      return fetchTransportGetRetry_({ action: 'routeNameProposal' }).then(function (resp) {
         if (resp && resp.status === 401) return null;
         if (!resp || !Array.isArray(resp.names)) {
           return failFresh(resp && resp.notJson ? resp.technical : (resp && resp.error), resp);

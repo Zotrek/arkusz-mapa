@@ -159,6 +159,7 @@ const gs = readFileSync(gsPath, "utf8");
 let lockDepth = 0;
 let maxLock = 0;
 let lastBody = "";
+const scriptProps = new Map<string, string>();
 
 const holder: {
   register: FakeSheet;
@@ -271,10 +272,18 @@ beforeAll(() => {
       getScriptProperties() {
         return {
           getProperty(key: string) {
-            return key === "GAS_SHARED_SECRET" ? "test-gas-secret" : null;
+            if (key === "GAS_SHARED_SECRET") return "test-gas-secret";
+            if (key.indexOf("transportLastPickup") === 0) {
+              return scriptProps.has(key) ? scriptProps.get(key)! : null;
+            }
+            return null;
           },
-          setProperty() {},
-          deleteProperty() {},
+          setProperty(key: string, value: string) {
+            if (key.indexOf("transportLastPickup") === 0) scriptProps.set(key, String(value));
+          },
+          deleteProperty(key: string) {
+            scriptProps.delete(key);
+          },
         };
       },
     },
@@ -898,6 +907,25 @@ describe("approve", () => {
       { row: 2, col: 10, numRows: 1, numCols: 1 },
       { row: 3, col: 10, numRows: 1, numCols: 1 },
     ]);
+  });
+
+  it("test_approve_did_not_happen_should_drop_last_pickup_cache", () => {
+    const { register } = fresh();
+    seedRegister(register, 2);
+    scriptProps.clear();
+    scriptProps.set("transportLastPickupReady", "1");
+    scriptProps.set("transportLastPickupCount", "1");
+    scriptProps.set("transportLastPickup.0", "{}");
+
+    postToSheet({
+      action: "approve",
+      numerFaktury: "FV/1",
+      wiersze: [{ sheetRow: 2, transportNumber: "15", nieOdbył: true, koszt: 3000 }],
+    });
+
+    expect(scriptProps.has("transportLastPickupReady")).toBe(false);
+    expect(scriptProps.has("transportLastPickupCount")).toBe(false);
+    expect(scriptProps.has("transportLastPickup.0")).toBe(false);
   });
 
   it("test_approve_route_writes_each_selected_shop_and_leaves_the_rest", () => {

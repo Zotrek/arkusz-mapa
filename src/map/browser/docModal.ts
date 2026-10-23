@@ -99,7 +99,7 @@ export function docModalBrowserScript(): string {
         setTransportDatesLoading(false);
       }
       if (transportApiEnabled) {
-        return fetchTransportGet({ action: 'previewNumber' }).then(function (resp) {
+        return fetchTransportGetRetry_({ action: 'previewNumber' }).then(function (resp) {
           if (!resp || resp.ok === false) {
             mapApiErrorCard_({
               code: 'MAP-E-BULK-DOC-NUMBER',
@@ -150,7 +150,7 @@ export function docModalBrowserScript(): string {
       }
       var podmiot = p.podmiotHandlowy || (p.podmiotyHandlowe && p.podmiotyHandlowe[0]) || '';
       var cachedCutoff = window.__transportDatesLoaded ? getPointTransportCutoff(p) : null;
-      return fetchTransportGet({ action: 'modalData', podmiot: podmiot, adres: p.adres }).then(function (resp) {
+      return fetchTransportGetRetry_({ action: 'modalData', podmiot: podmiot, adres: p.adres }).then(function (resp) {
         if (!resp || resp.ok === false) {
           mapApiErrorCard_({
             code: 'MAP-E-DOC-NUMBER',

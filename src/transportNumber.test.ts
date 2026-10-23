@@ -158,6 +158,16 @@ describe('transport number allocation', () => {
     expect(gas.computeNextNumber()).toBe(1);
   });
 
+  it('test_computeNextNumber_when_cache_is_set_should_ignore_a_later_sheet_edit', () => {
+    const sheet = new FakeSheet();
+    sheet.put(2, 1, 10);
+    const gas = loadGas(sheet);
+
+    expect(gas.computeNextNumber()).toBe(11);
+    sheet.put(3, 1, 80);
+    expect(gas.computeNextNumber()).toBe(11);
+  });
+
   it('test_allocateNextNumber_when_committed_should_return_1_then_2', () => {
     const sheet = new FakeSheet();
     const gas = loadGas(sheet);
