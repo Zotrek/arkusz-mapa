@@ -1615,4 +1615,61 @@ describe("patchInvoiceComment", () => {
     expect(schedule.cell(2, 15)).toBe("FV/H");
     expect(schedule.cell(2, 16)).toBe(80);
   });
+
+  it("test_patchInvoiceComment_wrong_transport_number_writes_nothing", () => {
+    const { register } = fresh();
+    seedRegister(register, 2, { 21: "zostaje" });
+
+    const result = postToSheet({
+      action: "patchInvoiceComment",
+      wiersze: [
+        {
+          sheetRow: 2,
+          transportNumber: "99",
+          komentarzFaktury: "folia",
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("key");
+    expect(register.cell(2, 21)).toBe("zostaje");
+    expect(register.cell(1, 21)).toBe("");
+  });
+
+  it("test_patchInvoiceComment_empty_selection_writes_nothing", () => {
+    const { register } = fresh();
+    seedRegister(register, 2, { 21: "zostaje" });
+
+    const result = postToSheet({
+      action: "patchInvoiceComment",
+      wiersze: [],
+    });
+
+    expect(result).toEqual({ ok: false, error: "selection" });
+    expect(register.cell(2, 21)).toBe("zostaje");
+    expect(register.cell(1, 21)).toBe("");
+  });
+
+  it("test_patchInvoiceComment_saves_the_matching_row_and_skips_a_bad_key", () => {
+    const { register } = fresh();
+    seedRegister(register, 2, { 21: "stary" });
+    seedRegister(register, 3, { 1: 16, 21: "zostaje" });
+
+    const result = postToSheet({
+      action: "patchInvoiceComment",
+      wiersze: [
+        { sheetRow: 2, transportNumber: "15", komentarzFaktury: "folia" },
+        { sheetRow: 3, transportNumber: "99", komentarzFaktury: "pet" },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.pominiete).toEqual([
+      { sheetName: "Arkusz1", sheetRow: 3, transportNumber: "99", reason: "key" },
+    ]);
+    expect(register.cell(2, 21)).toBe("folia");
+    expect(register.cell(3, 21)).toBe("zostaje");
+    expect(register.cell(3, 1)).toBe(16);
+  });
 });
