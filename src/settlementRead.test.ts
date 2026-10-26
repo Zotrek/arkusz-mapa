@@ -666,13 +666,18 @@ describe('settlementInvoices_', () => {
       costPerBag: 5000,
       shopName: 'Sklep A',
       pickupDate: '15.09.2026',
+      routeRate: 10000,
+      pickupRate: 5000,
+      bagRate: 2000,
     });
     expect(result.rows[1]).toMatchObject({
       transportNumber: '14',
       invoice: '',
       receptionCost: 500,
+      routeRate: 10000,
+      pickupRate: 5000,
+      bagRate: 2000,
     });
-    expect(result.rows[0]).not.toHaveProperty('routeRate');
   });
 
   it('test_settlementInvoices_harmonogram_reads_invoice_and_does_not_write_rates', () => {
