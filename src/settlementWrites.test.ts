@@ -1512,6 +1512,7 @@ describe("zapis w transport-log.gs", () => {
       "attachRoute",
       "resolveRateTie",
       "approve",
+      "patchInvoiceComment",
     ]) {
       expect(gate).toContain(action);
       expect(run).toContain(action);
@@ -1531,5 +1532,87 @@ describe("zapis w transport-log.gs", () => {
     expect(approve).not.toContain("ensureTransportRegisterColumns_");
     expect(approve).not.toContain("getOrCreateRateSheet_");
     expect(approve).not.toContain("REGISTER_HEADERS");
+  });
+});
+
+describe("patchInvoiceComment", () => {
+  it("test_patchInvoiceComment_writes_column_21_on_a_settled_row_and_fills_an_empty_header", () => {
+    const { register } = fresh();
+    seedRegister(register, 2, { 15: "tak", 16: "FV/1", 19: "protokół", 20: "drugi" });
+
+    const result = postToSheet({
+      action: "patchInvoiceComment",
+      sheetName: "Arkusz1",
+      wiersze: [
+        {
+          sheetName: "Arkusz1",
+          sheetRow: 2,
+          transportNumber: "15",
+          komentarzFaktury: "  folia  ",
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(register.cell(1, 21)).toBe("Komentarz do faktury");
+    expect(register.cell(1, 19)).toBe("");
+    expect(register.cell(2, 19)).toBe("protokół");
+    expect(register.cell(2, 20)).toBe("drugi");
+    expect(register.cell(2, 21)).toBe("folia");
+    expect(register.cell(2, 15)).toBe("tak");
+    expect(register.cell(2, 16)).toBe("FV/1");
+    expect(register.cell(2, 17)).toBe("999");
+    expect(register.cell(2, 18)).toBe("111");
+  });
+
+  it("test_patchInvoiceComment_empty_text_clears_the_cell_and_keeps_a_filled_header", () => {
+    const { register } = fresh();
+    seedRegister(register, 2, { 21: "stary" });
+    register.put(1, 21, "Komentarz do faktury");
+
+    const result = postToSheet({
+      action: "patchInvoiceComment",
+      sheetRow: 2,
+      transportNumber: "15",
+      komentarzFaktury: "   ",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(register.cell(1, 21)).toBe("Komentarz do faktury");
+    expect(register.cell(2, 21)).toBe("");
+    expect(register.cell(2, 15)).toBe("");
+  });
+
+  it("test_patchInvoiceComment_schedule_writes_column_20_on_a_settled_row", () => {
+    const { schedule } = fresh();
+    schedule.put(2, 1, "Adres");
+    schedule.put(2, 14, "tak");
+    schedule.put(2, 15, "FV/H");
+    schedule.put(2, 16, 80);
+    schedule.put(2, 18, "protokół");
+    schedule.put(2, 19, "drugi");
+
+    const result = postToSheet({
+      action: "patchInvoiceComment",
+      tryb: "harmonogram",
+      sheetName: "Harmonogram Październik 2026",
+      wiersze: [
+        {
+          sheetName: "zestawienie z harmonogramu",
+          sheetRow: 2,
+          transportNumber: "",
+          komentarzFaktury: "pet",
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(schedule.cell(1, 20)).toBe("Komentarz do faktury");
+    expect(schedule.cell(2, 18)).toBe("protokół");
+    expect(schedule.cell(2, 19)).toBe("drugi");
+    expect(schedule.cell(2, 20)).toBe("pet");
+    expect(schedule.cell(2, 14)).toBe("tak");
+    expect(schedule.cell(2, 15)).toBe("FV/H");
+    expect(schedule.cell(2, 16)).toBe(80);
   });
 });

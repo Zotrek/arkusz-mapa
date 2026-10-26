@@ -523,6 +523,7 @@ const HEADERS_10_20 = [
   'Koszt odbioru per worek',
   'Komentarz 1',
   'Komentarz 2',
+  'Komentarz do faktury',
 ];
 
 function protocolBody(extra: Record<string, unknown> = {}): Record<string, unknown> {
@@ -619,6 +620,8 @@ describe('appendTransportRow_', () => {
     expect(sheet.cell(2, 14)).toBe('');
     expect(sheet.cell(2, 14)).toBe('');
     expect(sheet.cell(2, 20)).toBe('k2');
+    expect(sheet.cell(1, 21)).toBe('Komentarz do faktury');
+    expect(sheet.cell(2, 21)).toBe('');
   });
 
   it('test_appendTransportRow_when_body_with_route_should_append_name_and_rate', () => {
@@ -724,7 +727,7 @@ describe('appendTransportRow_', () => {
     expect(rule.formula).toBe('=$J2="nie"');
     expect(rule.strikethrough).toBe(true);
     expect(rule.ranges[0]?.col).toBe(1);
-    expect(rule.ranges[0]?.numCols).toBe(20);
+    expect(rule.ranges[0]?.numCols).toBe(21);
     expect(rule.ranges[0]?.row).toBe(2);
   });
 

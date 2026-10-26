@@ -501,6 +501,41 @@ describe('settlementSearch_', () => {
     expect(result.rows).toHaveLength(1);
   });
 
+  it('test_settlementSearch_reads_invoice_comment_and_treats_a_missing_cell_as_empty', () => {
+    const { register } = fresh(false);
+    seedRegister(register, 2, { 21: '  folia  ' });
+    seedRegister(register, 3, { 1: 11, 5: '16.09.2026' });
+
+    const result = gas.settlementSearch_({
+      podwykonawca: 'gpw',
+      dataDo: '20.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows.map((row) => row.invoiceComment)).toEqual(['folia', '']);
+  });
+
+  it('test_settlementInvoices_harmonogram_reads_invoice_comment', () => {
+    fresh();
+    const schedule = holder.schedule!;
+    seedScheduleRow(schedule, 2, { 14: 'tak', 15: 'FV/H', 16: 80, 20: 'pet' });
+
+    const result = gas.settlementInvoices_({
+      tryb: 'harmonogram',
+      podwykonawca: 'thor',
+      dataDo: '20.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows[0]).toMatchObject({ invoice: 'FV/H', invoiceComment: 'pet' });
+  });
+
   it('test_settlementSearch_dataOd_after_dataDo_returns_error', () => {
     fresh();
     expect(

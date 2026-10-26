@@ -31,7 +31,7 @@
  *   Oba krańce dat wymagane. podwykonawca opcjonalny (pusty = wszyscy). Nic nie zapisuje.
  *   Wiersze: rejestr (mode=report) + grupy worków z „odebrane z harmonogramu” (mode=schedule).
  *   Pola: P/Q/I, status, snapshoty L/M, adres, data, podwykonawca, mode; rates do remisów.
- * POST { action: patchBags | patchRouteRate | patchPickupDate | detachRoute | attachRoute | resolveRateTie | approve }
+ * POST { action: patchBags | patchRouteRate | patchPickupDate | detachRoute | attachRoute | resolveRateTie | approve | patchInvoiceComment }
  *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
  *   patchPickupDate — Data odbioru (dd.mm.yyyy) na wierszach z body.wiersze.
  *   Inny miesiąc przenosi wiersz na zakładkę tego miesiąca i kasuje stary. Kolumn 17–18 nie przelicza.
@@ -56,6 +56,7 @@
  *   Późniejszy wpis w Bazie stawek (także ręcznie w Excelu) sam nie wraca do wiersza.
  *   Puste komórki na nierozliczonych Na zgłoszenie uzupełnia pipeline Pages + odebrane.
  *   Kolumna 10 = transport się odbył. Komentarze 1–2 na kolumnach 19–20.
+ *   Kolumna 21 = Komentarz do faktury (rozliczenia). Harmonogram: ta sama kolumna jako 20.
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate | saveRateHarmonogram
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
  *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
@@ -144,9 +145,13 @@ var COL = {
   kosztPerWorek: 18,
   komentarz1: 19,
   komentarz2: 20,
+  komentarzFaktury: 21,
 };
 
-/** Tekst nagłówka, nie pusta komórka. Kolumn 1–9 to nie rusza. Aplikacja rozliczeń tego nie wpisuje. */
+/** Nagłówek kolumny komentarza do faktury. Ten sam tekst na Na zgłoszenie i Harmonogramie. */
+var INVOICE_COMMENT_HEADER = 'Komentarz do faktury';
+
+/** Tekst nagłówka, nie pusta komórka. Kolumn 1–9 to nie rusza. Kolumny 10–20 wpisuje protokół, gdy puste. Komentarz do faktury dopisuje też zapis rozliczeń, gdy nagłówek jest pusty. */
 var REGISTER_HEADERS_10_20 = [
   'transport się odbył',
   'Trasa',
@@ -159,6 +164,7 @@ var REGISTER_HEADERS_10_20 = [
   'Koszt odbioru per worek',
   'Komentarz 1',
   'Komentarz 2',
+  INVOICE_COMMENT_HEADER,
 ];
 
 /** Pełne nagłówki rejestru Na zgłoszenie (nowe zakładki miesięczne). */
@@ -263,6 +269,7 @@ var SCHEDULE_REGISTER_HEADERS = [
   'Koszt odbioru per worek',
   'Komentarz 1',
   'Komentarz 2',
+  INVOICE_COMMENT_HEADER,
 ];
 
 /** Kolumny zestawienia (1-based) — bez nr zlecenia. */
@@ -286,6 +293,7 @@ var SCHEDULE_COL = {
   kosztPerWorek: 17,
   komentarz1: 18,
   komentarz2: 19,
+  komentarzFaktury: 20,
 };
 var REF_PODWYKO_HEADER = ['Nazwa', 'Dane do Worda'];
 var REF_PRZ_HEADER = [
@@ -713,7 +721,7 @@ function ensureScheduleTransportHappenedRules_(sheet) {
     var strike = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied(formula)
       .setStrikethrough(true)
-      .setRanges([sheet.getRange(2, 1, gridRows, SCHEDULE_COL.komentarz2)])
+      .setRanges([sheet.getRange(2, 1, gridRows, SCHEDULE_COL.komentarzFaktury)])
       .build();
     rules.push(strike);
     sheet.setConditionalFormatRules(rules);
@@ -1271,7 +1279,7 @@ function cellIsEmpty_(value) {
 
 /**
  * Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy.
- * Puste komórki 10–20 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
+ * Puste komórki 10–21 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
  * Na układzie V1/V2 nie dopisuje nagłówków V3 — to psuje arkusz.
  * W tym samym kroku, raz: lista `tak` / `nie` na kolumnie 10 i przekreślenie wiersza z `nie`.
  */
@@ -1396,7 +1404,7 @@ function ensureTransportHappenedRules_(sheet) {
     var rule = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied(TRANSPORT_HAPPENED_STRIKE_FORMULA)
       .setStrikethrough(true)
-      .setRanges([sheet.getRange(2, 1, gridRows, COL.komentarz2)])
+      .setRanges([sheet.getRange(2, 1, gridRows, COL.komentarzFaktury)])
       .build();
     var rules = sheet.getConditionalFormatRules();
     rules.push(rule);
@@ -1562,6 +1570,7 @@ function appendTransportRow_(numer, body) {
     '',
     body.komentarz1 || '',
     body.komentarz2 || '',
+    '',
   ];
   sheet.appendRow(row);
   expandSheetTablesQuiet_(sheet);
@@ -3711,7 +3720,7 @@ function settlementSearch_(query) {
   var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
   return buildSettlementRead_(
     query,
-    readAllRegisterSettlementCells_('report', COL.kosztPerWorek),
+    readAllRegisterSettlementCells_('report', COL.komentarzFaktury),
     readSettlementCells_(rateSheet, 5),
   );
 }
@@ -3724,7 +3733,7 @@ function settlementSearchHarmonogram_(query) {
   var baza = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
   var result = buildSettlementHarmonogramRead_(
     query,
-    readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.kosztPerWorek),
+    readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.komentarzFaktury),
     readSettlementCells_(baza, 8),
   );
   if (result.ok) {
@@ -3743,13 +3752,13 @@ function settlementInvoices_(query) {
   if (schedule) {
     return buildSettlementInvoices_(
       query,
-      readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.kosztPerWorek),
+      readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.komentarzFaktury),
       true,
     );
   }
   return buildSettlementInvoices_(
     query,
-    readAllRegisterSettlementCells_('report', COL.kosztPerWorek),
+    readAllRegisterSettlementCells_('report', COL.komentarzFaktury),
     false,
   );
 }
@@ -3975,7 +3984,7 @@ function settlementStats_(query) {
   var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
   return buildSettlementStats_(
     query,
-    readAllRegisterSettlementCells_('report', COL.kosztPerWorek),
+    readAllRegisterSettlementCells_('report', COL.komentarzFaktury),
     readSettlementCells_(rateSheet, 5),
     readSettlementStatsOdebraneRows_(odebrane),
   );
@@ -4277,6 +4286,7 @@ function mapSettlementRegisterRow_(sheetRow, cells, sheetName) {
     invoice: settlementText_(settlementCell_(cells, 15)),
     receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 16)),
     costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 17)),
+    invoiceComment: settlementText_(settlementCell_(cells, 20)),
   };
 }
 
@@ -4304,6 +4314,7 @@ function mapSettlementScheduleRegisterRow_(sheetRow, cells, sheetName) {
     invoice: settlementText_(settlementCell_(cells, 14)),
     receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 15)),
     costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 16)),
+    invoiceComment: settlementText_(settlementCell_(cells, 19)),
   };
 }
 
@@ -4341,6 +4352,7 @@ function settlementPublicRow_(mapped) {
     routeRate: mapped.routeRate,
     pickupRate: mapped.pickupRate,
     bagRate: mapped.bagRate,
+    invoiceComment: mapped.invoiceComment || '',
   };
 }
 
@@ -4359,6 +4371,7 @@ function settlementInvoicePublicRow_(mapped) {
     invoice: mapped.invoice || '',
     receptionCost: mapped.receptionCost,
     costPerBag: mapped.costPerBag,
+    invoiceComment: mapped.invoiceComment || '',
   };
 }
 
@@ -4381,6 +4394,7 @@ function settlementStatsPublicRow_(mapped) {
     receptionCost: mapped.receptionCost,
     costPerBag: mapped.costPerBag,
     invoice: mapped.invoice || '',
+    invoiceComment: mapped.invoiceComment || '',
     mode: mapped.mode === 'schedule' ? 'schedule' : 'report',
   };
 }
@@ -6316,7 +6330,8 @@ function isSettlementWriteAction_(action) {
     action === 'detachRoute' ||
     action === 'attachRoute' ||
     action === 'resolveRateTie' ||
-    action === 'approve'
+    action === 'approve' ||
+    action === 'patchInvoiceComment'
   );
 }
 
@@ -6828,7 +6843,7 @@ function pickupDateItems_(body) {
 
 function writePickupDate_(target, dateText, schedule) {
   var dateCol = schedule ? SCHEDULE_COL.dataOdbioru : COL.dataOdbioru;
-  var width = schedule ? SCHEDULE_COL.komentarz2 : COL.komentarz2;
+  var width = schedule ? SCHEDULE_COL.komentarzFaktury : COL.komentarzFaktury;
   var kind = schedule ? 'schedule' : 'report';
   var destName = schedule ? scheduleMonthSheetName_(dateText) : reportMonthSheetName_(dateText);
   var sourceName = target.sheet.getName();
@@ -6928,7 +6943,100 @@ function runSettlementWrite_(action, body) {
   if (action === 'approve') {
     return approve_(body);
   }
+  if (action === 'patchInvoiceComment') {
+    return patchInvoiceComment_(body);
+  }
   return { ok: false, error: 'unknown action' };
+}
+
+/**
+ * Komentarz do faktury. Pusty tekst czyści komórkę.
+ * Rozliczony `tak` zostaje — lista faktur edytuje zamknięte wiersze.
+ * Nie rusza Rozliczony, numeru faktury ani kosztów.
+ * Jedno body albo lista body.wiersze[].
+ */
+function invoiceCommentItems_(body) {
+  var rows = body && body.wiersze;
+  if (rows && typeof rows.length === 'number' && rows.length > 0) {
+    return rows;
+  }
+  if (body && body.sheetRow != null) {
+    return [body];
+  }
+  return null;
+}
+
+function invoiceCommentText_(item, body) {
+  if (item && item.komentarzFaktury != null) {
+    return settlementText_(item.komentarzFaktury);
+  }
+  if (item && item.invoiceComment != null) {
+    return settlementText_(item.invoiceComment);
+  }
+  if (body && body.komentarzFaktury != null) {
+    return settlementText_(body.komentarzFaktury);
+  }
+  if (body && body.invoiceComment != null) {
+    return settlementText_(body.invoiceComment);
+  }
+  return '';
+}
+
+function ensureInvoiceCommentHeader_(sheet, col) {
+  var cell = sheet.getRange(1, col);
+  if (cellIsEmpty_(cell.getValue())) {
+    cell.setValue(INVOICE_COMMENT_HEADER);
+  }
+}
+
+function patchInvoiceComment_(body) {
+  var items = invoiceCommentItems_(body);
+  if (!items) {
+    return { ok: false, error: 'selection' };
+  }
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var saved = [];
+  var skipped = [];
+  var i;
+  for (i = 0; i < items.length; i++) {
+    var item = items[i] || {};
+    var itemTryb = settlementText_(item.tryb || item.mode || (schedule ? 'harmonogram' : '')).toLowerCase();
+    var itemSchedule = itemTryb === 'harmonogram' || itemTryb === 'schedule';
+    var target = registerWriteTarget_(
+      null,
+      {
+        sheetName: item.sheetName != null ? item.sheetName : body.sheetName,
+        sheetRow: item.sheetRow,
+        transportNumber: item.transportNumber != null ? item.transportNumber : body.transportNumber,
+        tryb: itemSchedule ? 'harmonogram' : '',
+      },
+      true,
+    );
+    if (target.error) {
+      skipped.push({
+        sheetName: item.sheetName != null ? String(item.sheetName) : '',
+        sheetRow: item.sheetRow,
+        transportNumber: item.transportNumber != null ? String(item.transportNumber) : '',
+        reason: target.error,
+      });
+      continue;
+    }
+    var col = itemSchedule ? SCHEDULE_COL.komentarzFaktury : COL.komentarzFaktury;
+    ensureInvoiceCommentHeader_(target.sheet, col);
+    target.sheet.getRange(target.row, col).setValue(invoiceCommentText_(item, body));
+    saved.push({
+      sheetName: target.sheet.getName(),
+      sheetRow: target.row,
+      transportNumber: itemSchedule
+        ? ''
+        : settlementTransportNumber_(target.sheet.getRange(target.row, COL.numer).getValue()),
+    });
+  }
+  if (!saved.length) {
+    return { ok: false, error: skipped.length ? skipped[0].reason : 'selection', pominiete: skipped };
+  }
+  return { ok: true, zapisane: saved, pominiete: skipped };
 }
 
 /**

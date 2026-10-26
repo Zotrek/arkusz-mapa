@@ -1152,7 +1152,7 @@ describe('syncZestawienieHarmonogram', () => {
     );
     expect(moves).toHaveLength(1);
     const values = sheets.get(monthSheet)!;
-    expect(values[0]!.slice(0, 19)).toEqual([...ZESTAWIENIE_HARMONOGRAM_HEADERS]);
+    expect(values[0]).toEqual([...ZESTAWIENIE_HARMONOGRAM_HEADERS]);
     const ix = (name: string) => ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf(name as never);
     expect(values[1]![ix('transport się odbył')]).toBe('nie');
     expect(values[1]![ix('Stawka za podjazd')]).toBe(175);

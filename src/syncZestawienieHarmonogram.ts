@@ -47,13 +47,17 @@ export const ZESTAWIENIE_HARMONOGRAM_HEADERS = [
   'Koszt odbioru per worek',
   'Komentarz 1',
   'Komentarz 2',
+  'Komentarz do faktury',
 ] as const;
 
 /** 1-based index of „transport się odbył” in {@link ZESTAWIENIE_HARMONOGRAM_HEADERS}. */
 export const SCHEDULE_COL_TRANSPORT_ODBYL = 9;
 
-/** 1-based last data column (Komentarz 2) — zakres przekreślenia wiersza. */
+/** 1-based. Komentarz 2 zostaje kolumną protokołu. */
 export const SCHEDULE_COL_KOMENTARZ2 = 19;
+
+/** 1-based last data column — zakres przekreślenia wiersza. */
+export const SCHEDULE_COL_KOMENTARZ_FAKTURY = 20;
 
 /** V2: kolumna 9 = Trasa (przed przesunięciem „transport się odbył”). */
 export function isScheduleHeadersV2(headers: string[]): boolean {
@@ -1345,7 +1349,7 @@ async function ensureTransportOdbyłValidation(
               startRowIndex: 1,
               endRowIndex: rowCount,
               startColumnIndex: 0,
-              endColumnIndex: SCHEDULE_COL_KOMENTARZ2,
+              endColumnIndex: SCHEDULE_COL_KOMENTARZ_FAKTURY,
             },
           ],
           booleanRule: {
