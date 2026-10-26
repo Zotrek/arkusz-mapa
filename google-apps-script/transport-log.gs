@@ -46,6 +46,9 @@
  *   Zwykłe rozliczenie (bez tej flagi) dopisuje też `tak` w „transport się odbył” obok Rozliczony.
  *   Wiersza spoza zaznaczenia nie rusza.
  *   Na żywy arkusz approve wchodzi w W1, nie w M6. Nagłówków rejestru nie wpisuje.
+ *   Pusty Koszt odbioru przy Rozliczony=tak uzupełnia onEdit i fillEmptyReceptionCosts.
+ *   Już wpisanej kwoty ta ścieżka nie nadpisuje. Udział trasy: stawka tego wiersza
+ *   przez liczbę odbytych sklepów tej trasy, tego „Kto odbiera” i tego numeru faktury.
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
  *   Opcjonalnie `trasa` i `stawkaTrasy` (kolumny 11–12). Bez klucza `trasa` te kolumny zostają puste.
@@ -7787,5 +7790,258 @@ function migrateScheduleTransportOdbyłColumn_() {
     rows: newRows.length,
     h9: settlementText_(sheet.getRange(1, 9).getValue()),
     h10: settlementText_(sheet.getRange(1, 10).getValue()),
+  };
+}
+
+/**
+ * Pusty Koszt odbioru na wierszu Rozliczony=tak.
+ * Edycja stawki, worków, trasy, faktury albo „kto odbiera” w arkuszu uzupełnia od razu.
+ * Kwota już wpisana zostaje. Nierozliczonego wiersza nie rusza.
+ */
+function onEdit(e) {
+  fillEmptyReceptionCostOnEdit_(e);
+}
+
+/** Ręcznie z listy Uruchom: puste koszty na rozliczonych wierszach wszystkich zakładek rejestru. */
+function fillEmptyReceptionCosts() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var filled = 0;
+  var names = [];
+  var s;
+  for (s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    var layout = receptionCostLayout_(sheet);
+    if (!layout) {
+      continue;
+    }
+    var count = fillEmptyReceptionCostsOnSheet_(sheet, layout, 2, sheet.getLastRow());
+    if (count > 0) {
+      filled += count;
+      names.push(sheet.getName() + ': ' + String(count));
+    }
+  }
+  return { ok: true, filled: filled, sheets: names };
+}
+
+function fillEmptyReceptionCostOnEdit_(e) {
+  if (!e || !e.range) {
+    return;
+  }
+  var sheet = e.range.getSheet();
+  var layout = receptionCostLayout_(sheet);
+  if (!layout) {
+    return;
+  }
+  var startCol = e.range.getColumn();
+  var endCol = startCol + e.range.getNumColumns() - 1;
+  if (!receptionCostEditTouches_(layout, startCol, endCol)) {
+    return;
+  }
+  var from = Math.max(2, e.range.getRow());
+  var to = e.range.getRow() + e.range.getNumRows() - 1;
+  if (to < from) {
+    return;
+  }
+  var row;
+  var open = false;
+  for (row = from; row <= to; row++) {
+    if (receptionCostRowOpen_(sheet, layout, row)) {
+      open = true;
+      break;
+    }
+  }
+  if (!open) {
+    return;
+  }
+  fillEmptyReceptionCostsOnSheet_(sheet, layout, from, to);
+}
+
+function receptionCostEditTouches_(layout, startCol, endCol) {
+  var cols = [
+    layout.kto,
+    layout.worki,
+    layout.transport,
+    layout.trasa,
+    layout.stawkaTrasy,
+    layout.stawkaPodjazdu,
+    layout.stawkaWorka,
+    layout.rozliczony,
+    layout.faktura,
+  ];
+  var i;
+  for (i = 0; i < cols.length; i++) {
+    if (cols[i] >= startCol && cols[i] <= endCol) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function receptionCostRowOpen_(sheet, layout, row) {
+  if (row < 2) {
+    return false;
+  }
+  if (settlementFlag_(sheet.getRange(row, layout.rozliczony).getValue()) !== 'tak') {
+    return false;
+  }
+  return receptionCostCellEmpty_(sheet.getRange(row, layout.koszt).getValue());
+}
+
+function receptionCostLayout_(sheet) {
+  if (!sheet || sheet.getLastColumn() < 1) {
+    return null;
+  }
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var want = {
+    kto: 'Kto odbiera',
+    worki: 'Ilość worków',
+    transport: 'transport się odbył',
+    trasa: 'Trasa',
+    stawkaTrasy: 'Stawka za trasę',
+    stawkaPodjazdu: 'Stawka za podjazd',
+    stawkaWorka: 'Stawka za worek',
+    rozliczony: 'Rozliczony',
+    faktura: 'Numer faktury',
+    koszt: 'Koszt odbioru',
+    perWorek: 'Koszt odbioru per worek',
+  };
+  var layout = {};
+  var key;
+  for (key in want) {
+    if (!Object.prototype.hasOwnProperty.call(want, key)) {
+      continue;
+    }
+    var found = 0;
+    var c;
+    for (c = 0; c < headers.length; c++) {
+      if (settlementText_(headers[c]) === want[key]) {
+        found = c + 1;
+        break;
+      }
+    }
+    if (!found) {
+      return null;
+    }
+    layout[key] = found;
+  }
+  return layout;
+}
+
+function fillEmptyReceptionCostsOnSheet_(sheet, layout, fromRow, toRow) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2 || toRow < 2) {
+    return 0;
+  }
+  var width = Math.max(sheet.getLastColumn(), layout.perWorek, layout.koszt);
+  var values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
+  var pending = [];
+  var r;
+  for (r = 0; r < values.length; r++) {
+    var sheetRow = r + 2;
+    if (sheetRow < fromRow || sheetRow > toRow) {
+      continue;
+    }
+    var cost = emptyReceptionCostForRow_(values, r, layout);
+    if (!cost) {
+      continue;
+    }
+    pending.push({ row: sheetRow, koszt: cost.zloty, per: cost.perZloty });
+  }
+  var i;
+  for (i = 0; i < pending.length; i++) {
+    var item = pending[i];
+    if (layout.perWorek === layout.koszt + 1) {
+      sheet.getRange(item.row, layout.koszt, 1, 2).setValues([[item.koszt, item.per]]);
+    } else {
+      sheet.getRange(item.row, layout.koszt).setValue(item.koszt);
+      sheet.getRange(item.row, layout.perWorek).setValue(item.per);
+    }
+  }
+  return pending.length;
+}
+
+function receptionCostCellEmpty_(value) {
+  return settlementAmountToGrosze_(value) == null && settlementText_(value) === '';
+}
+
+function receptionCostCell_(cells, col) {
+  if (!cells || !col || col < 1 || col > cells.length) {
+    return '';
+  }
+  return cells[col - 1];
+}
+
+/** Odbyte sklepy: ta sama trasa, ten sam odbiór, ten sam numer faktury. „nie” odpada. */
+function receptionRouteHeadcount_(values, layout, index) {
+  var cells = values[index];
+  var route = settlementText_(receptionCostCell_(cells, layout.trasa));
+  var who = settlementText_(receptionCostCell_(cells, layout.kto));
+  var invoice = settlementText_(receptionCostCell_(cells, layout.faktura));
+  var count = 0;
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var other = values[i];
+    if (settlementText_(receptionCostCell_(other, layout.trasa)) !== route) {
+      continue;
+    }
+    if (settlementText_(receptionCostCell_(other, layout.kto)) !== who) {
+      continue;
+    }
+    if (settlementText_(receptionCostCell_(other, layout.faktura)) !== invoice) {
+      continue;
+    }
+    if (settlementFlag_(receptionCostCell_(other, layout.transport)) === 'nie') {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+/**
+ * null: nie uzupełniać (nierozliczony albo koszt już jest).
+ * Trasa: udział ze stawki tego wiersza. Podjazd: stawka podjazdu plus worki.
+ * Pusta stawka worka daje opłatę za worki 0. Transport „nie” daje koszt 0.
+ */
+function emptyReceptionCostForRow_(values, index, layout) {
+  var cells = values[index];
+  if (!cells) {
+    return null;
+  }
+  if (settlementFlag_(receptionCostCell_(cells, layout.rozliczony)) !== 'tak') {
+    return null;
+  }
+  if (!receptionCostCellEmpty_(receptionCostCell_(cells, layout.koszt))) {
+    return null;
+  }
+  var happened = settlementFlag_(receptionCostCell_(cells, layout.transport)) !== 'nie';
+  var bags = settlementBagCount_(receptionCostCell_(cells, layout.worki));
+  var bagRate = settlementAmountToGrosze_(receptionCostCell_(cells, layout.stawkaWorka));
+  var bagFee = 0;
+  if (happened && bagRate != null && bagRate !== 0 && bags != null && bags !== 0) {
+    bagFee = harmonogramBagFeeGrosze_(bags, bagRate);
+  }
+  var leg = 0;
+  if (happened) {
+    var route = settlementText_(receptionCostCell_(cells, layout.trasa));
+    if (route) {
+      var rate = settlementAmountToGrosze_(receptionCostCell_(cells, layout.stawkaTrasy));
+      var count = receptionRouteHeadcount_(values, layout, index);
+      if (rate != null && rate !== 0 && count > 0) {
+        leg = approveRoundInteger_(Math.abs(rate), count);
+        if (rate < 0) {
+          leg = -leg;
+        }
+      }
+    } else {
+      var pickup = settlementAmountToGrosze_(receptionCostCell_(cells, layout.stawkaPodjazdu));
+      leg = pickup == null ? 0 : pickup;
+    }
+  }
+  var cost = leg + bagFee;
+  return {
+    zloty: approveZlotyFromGrosze_(cost),
+    perZloty: approveZlotyFromGrosze_(approvePerBagGrosze_(cost, bags)),
   };
 }
