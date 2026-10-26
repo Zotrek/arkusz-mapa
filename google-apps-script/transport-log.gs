@@ -4368,6 +4368,9 @@ function settlementInvoicePublicRow_(mapped) {
     contractor: mapped.contractor,
     bagCount: mapped.bagCount,
     routeName: mapped.routeName,
+    routeRate: mapped.routeRate,
+    pickupRate: mapped.pickupRate,
+    bagRate: mapped.bagRate,
     invoice: mapped.invoice || '',
     receptionCost: mapped.receptionCost,
     costPerBag: mapped.costPerBag,
@@ -6331,7 +6334,8 @@ function isSettlementWriteAction_(action) {
     action === 'attachRoute' ||
     action === 'resolveRateTie' ||
     action === 'approve' ||
-    action === 'patchInvoiceComment'
+    action === 'patchInvoiceComment' ||
+    action === 'patchInvoiceEdit'
   );
 }
 
@@ -6946,7 +6950,94 @@ function runSettlementWrite_(action, body) {
   if (action === 'patchInvoiceComment') {
     return patchInvoiceComment_(body);
   }
+  if (action === 'patchInvoiceEdit') {
+    return patchInvoiceEdit_(body);
+  }
   return { ok: false, error: 'unknown action' };
+}
+
+/**
+ * Edycja pozycji już na fakturze. Zapis po przycisku, nie po każdym polu.
+ * Wiersz musi być Rozliczony tak i mieć ten sam numer faktury.
+ * odepnij czyści rozliczenie: sklep wraca do nierozliczonych, worki i stawki zostają.
+ * Inaczej wpisuje worki, stawki i koszt policzony na ekranie. Bazy stawek nie rusza.
+ * Stawka trasy idzie tylko na wiersze z tej faktury, które są w body.
+ */
+function patchInvoiceEdit_(body) {
+  var rows = body && body.wiersze;
+  if (!rows || typeof rows.length !== 'number' || rows.length === 0) {
+    return { ok: false, error: 'selection' };
+  }
+  var invoice = cellStr_(body && body.numerFaktury);
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var c = schedule ? SCHEDULE_COL : COL;
+  var saved = [];
+  var skipped = [];
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    var item = rows[i] || {};
+    if (schedule) {
+      item.tryb = 'harmonogram';
+    }
+    var target = registerWriteTarget_(null, item, true);
+    if (target.error) {
+      skipped.push(approveSkip_(item, target.error));
+      continue;
+    }
+    var sheet = target.sheet;
+    if (settlementFlag_(sheet.getRange(target.row, c.rozliczony).getValue()) !== 'tak') {
+      skipped.push(approveSkip_(item, 'open'));
+      continue;
+    }
+    if (settlementText_(sheet.getRange(target.row, c.numerFaktury).getValue()) !== invoice) {
+      skipped.push(approveSkip_(item, 'invoice'));
+      continue;
+    }
+    if (item.odepnij === true || settlementFlag_(item.odepnij) === 'tak') {
+      sheet.getRange(target.row, c.rozliczony, 1, 4).setValues([['', '', '', '']]);
+      saved.push(approveSaved_(sheet, target.row, schedule));
+      continue;
+    }
+    var bags = parseBagWrite_(item.iloscWorkow);
+    var pickup = parseRateAmount_(item.stawkaPodjazdu);
+    var bagRate = parseRateAmount_(item.stawkaWorka);
+    if (!bags) {
+      skipped.push(approveSkip_(item, 'bags'));
+      continue;
+    }
+    if (!pickup || !bagRate) {
+      skipped.push(approveSkip_(item, 'rate'));
+      continue;
+    }
+    var routeName = settlementText_(sheet.getRange(target.row, c.trasa).getValue());
+    var routeRate = null;
+    if (routeName) {
+      routeRate = parseRateAmount_(item.stawkaTrasy);
+      if (!routeRate) {
+        skipped.push(approveSkip_(item, 'rate'));
+        continue;
+      }
+    }
+    var cost = approveCostGrosze_(item.koszt);
+    if (cost == null) {
+      skipped.push(approveSkip_(item, 'cost'));
+      continue;
+    }
+    var count = bags.empty ? null : bags.value;
+    sheet.getRange(target.row, c.iloscWorkow).setValue(bags.empty ? '' : bags.value);
+    sheet.getRange(target.row, c.stawkaPodjazdu).setValue(routeRateWriteValue_(pickup));
+    sheet.getRange(target.row, c.stawkaWorka).setValue(routeRateWriteValue_(bagRate));
+    if (routeName && routeRate) {
+      sheet.getRange(target.row, c.stawkaTrasy).setValue(routeRateWriteValue_(routeRate));
+    }
+    sheet.getRange(target.row, c.kosztOdbioru).setValue(approveZlotyFromGrosze_(cost));
+    sheet
+      .getRange(target.row, c.kosztPerWorek)
+      .setValue(approveZlotyFromGrosze_(approvePerBagGrosze_(cost, count)));
+    saved.push(approveSaved_(sheet, target.row, schedule));
+  }
+  return { ok: true, zapisane: saved, pominiete: skipped };
 }
 
 /**
