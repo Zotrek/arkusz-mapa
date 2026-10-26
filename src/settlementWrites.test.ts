@@ -1166,7 +1166,9 @@ describe("approve", () => {
       action: "approve",
       tryb: "harmonogram",
       numerFaktury: "FV/H1",
-      wiersze: [{ sheetRow: 2, transportNumber: "", koszt: 3000 }],
+      wiersze: [
+        { sheetRow: 2, transportNumber: "", koszt: 3000, stawkaPodjazdu: "10.00", stawkaWorka: "5.00" },
+      ],
     });
 
     expect(result).toEqual({
@@ -1180,6 +1182,140 @@ describe("approve", () => {
     expect(schedule.cell(2, 16)).toBe(30);
     expect(register.cell(2, 10)).toBe("");
     expect(register.cell(2, 15)).toBe("");
+    expect(schedule.cell(2, 12)).toBe(10);
+    expect(schedule.cell(2, 13)).toBe(5);
+  });
+
+  function seedScheduleApprove(sheet: FakeSheet, row: number, over: Partial<Record<number, Cell>> = {}): void {
+    sheet.put(row, 1, "Sklepowa 1");
+    sheet.put(row, 4, "20.09.2026");
+    sheet.put(row, 5, "gpw");
+    sheet.put(row, 8, 4);
+    sheet.put(row, 10, "");
+    sheet.put(row, 11, 80);
+    sheet.put(row, 12, 11);
+    sheet.put(row, 13, 4);
+    for (const [key, value] of Object.entries(over)) {
+      sheet.put(row, Number(key), value as Cell);
+    }
+  }
+
+  it("test_approve_schedule_plain_writes_both_rates_and_leaves_price_base", () => {
+    const { schedule } = fresh();
+    seedScheduleApprove(schedule, 2);
+    const baza = new FakeSheet("Baza cen harmonogram");
+    baza.put(2, 1, "Sklepowa 1");
+    baza.put(2, 4, 99);
+    holder.extra.push(baza);
+
+    const result = postToSheet({
+      action: "approve",
+      tryb: "harmonogram",
+      numerFaktury: "FV/H2",
+      wiersze: [{ sheetRow: 2, koszt: 4800, stawkaPodjazdu: "20.00", stawkaWorka: "7.00" }],
+    });
+
+    expect(result.pominiete).toEqual([]);
+    expect(schedule.cell(2, 9)).toBe("tak");
+    expect(schedule.cell(2, 12)).toBe(20);
+    expect(schedule.cell(2, 13)).toBe(7);
+    expect(schedule.cell(2, 14)).toBe("tak");
+    expect(schedule.cell(2, 15)).toBe("FV/H2");
+    expect(schedule.cell(2, 16)).toBe(48);
+    expect(schedule.cell(2, 17)).toBe(12);
+    expect(schedule.cell(2, 10)).toBe("");
+    expect(schedule.cell(2, 11)).toBe(80);
+    expect(baza.writes).toEqual([]);
+    expect(baza.cell(2, 4)).toBe(99);
+  });
+
+  it("test_approve_schedule_route_writes_only_bag_rate", () => {
+    const { schedule } = fresh();
+    seedScheduleApprove(schedule, 2, { 10: "trasa-a", 12: 11 });
+
+    const result = postToSheet({
+      action: "approve",
+      tryb: "harmonogram",
+      numerFaktury: "FV/H3",
+      wiersze: [
+        { sheetRow: 2, koszt: 4800, stawkaPodjazdu: "75.00", stawkaWorka: "7.00" },
+      ],
+    });
+
+    expect(result.pominiete).toEqual([]);
+    expect(schedule.cell(2, 9)).toBe("tak");
+    expect(schedule.cell(2, 12)).toBe(11);
+    expect(schedule.cell(2, 13)).toBe(7);
+    expect(schedule.cell(2, 14)).toBe("tak");
+    expect(schedule.cell(2, 16)).toBe(48);
+  });
+
+  it("test_approve_schedule_missing_rate_key_writes_nothing", () => {
+    const { schedule } = fresh();
+    seedScheduleApprove(schedule, 2);
+    seedScheduleApprove(schedule, 3, { 1: "Drugi", 10: "trasa-a" });
+
+    const result = postToSheet({
+      action: "approve",
+      tryb: "harmonogram",
+      numerFaktury: "FV/H4",
+      wiersze: [
+        { sheetRow: 2, koszt: 4800, stawkaWorka: "7.00" },
+        { sheetRow: 3, koszt: 4800, stawkaPodjazdu: "75.00" },
+      ],
+    });
+
+    expect(result.zapisane).toEqual([]);
+    expect(result.pominiete).toEqual([
+      { sheetName: "zestawienie z harmonogramu", sheetRow: 2, transportNumber: "", reason: "rate" },
+      { sheetName: "zestawienie z harmonogramu", sheetRow: 3, transportNumber: "", reason: "rate" },
+    ]);
+    expect(schedule.writes).toEqual([]);
+    expect(schedule.cell(2, 12)).toBe(11);
+    expect(schedule.cell(2, 13)).toBe(4);
+    expect(schedule.cell(2, 14)).toBe("");
+    expect(schedule.cell(3, 12)).toBe(11);
+    expect(schedule.cell(3, 14)).toBe("");
+  });
+
+  it("test_approve_schedule_empty_rate_clears_column_and_still_settles", () => {
+    const { schedule } = fresh();
+    seedScheduleApprove(schedule, 2);
+
+    const result = postToSheet({
+      action: "approve",
+      tryb: "harmonogram",
+      numerFaktury: "FV/H5",
+      wiersze: [{ sheetRow: 2, koszt: 2800, stawkaPodjazdu: "", stawkaWorka: "7.00" }],
+    });
+
+    expect(result.pominiete).toEqual([]);
+    expect(schedule.cell(2, 12)).toBe("");
+    expect(schedule.cell(2, 13)).toBe(7);
+    expect(schedule.cell(2, 9)).toBe("tak");
+    expect(schedule.cell(2, 14)).toBe("tak");
+    expect(schedule.cell(2, 15)).toBe("FV/H5");
+    expect(schedule.cell(2, 16)).toBe(28);
+  });
+
+  it("test_approve_schedule_nie_writes_only_transport_column", () => {
+    const { schedule } = fresh();
+    seedScheduleApprove(schedule, 2, { 12: 11, 13: 4, 16: "" });
+
+    const result = postToSheet({
+      action: "approve",
+      tryb: "harmonogram",
+      numerFaktury: "FV/H6",
+      wiersze: [{ sheetRow: 2, nieOdbył: true }],
+    });
+
+    expect(result.pominiete).toEqual([]);
+    expect(schedule.cell(2, 9)).toBe("nie");
+    expect(schedule.cell(2, 12)).toBe(11);
+    expect(schedule.cell(2, 13)).toBe(4);
+    expect(schedule.cell(2, 14)).toBe("");
+    expect(schedule.cell(2, 15)).toBe("");
+    expect(schedule.cell(2, 16)).toBe("");
   });
 
   it("test_patchBags_schedule_tryb_writes_zestawienie", () => {
@@ -1202,6 +1338,145 @@ describe("approve", () => {
     expect(schedule.cell(2, 8)).toBe(7);
     expect(register.cell(2, 9)).toBe(2);
   });
+
+  function seedSettledSchedule(sheet: FakeSheet, row: number, over: Partial<Record<number, Cell>> = {}): void {
+    sheet.put(row, 1, "Sklepowa 1");
+    sheet.put(row, 4, "20.09.2026");
+    sheet.put(row, 5, "gpw");
+    sheet.put(row, 8, 2);
+    sheet.put(row, 12, 50);
+    sheet.put(row, 13, 10);
+    sheet.put(row, 14, "tak");
+    sheet.put(row, 15, "FV/9");
+    sheet.put(row, 16, 70);
+    sheet.put(row, 17, 35);
+    for (const [key, value] of Object.entries(over)) {
+      sheet.put(row, Number(key), value as Cell);
+    }
+  }
+
+  it("test_patchBags_settled_schedule_recalculates_cost_from_row_bag_rate", () => {
+    const { schedule } = fresh();
+    seedSettledSchedule(schedule, 2);
+
+    const result = postToSheet({
+      action: "patchBags",
+      tryb: "harmonogram",
+      sheetRow: 2,
+      transportNumber: "",
+      iloscWorkow: 5,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(schedule.cell(2, 8)).toBe(5);
+    expect(schedule.cell(2, 16)).toBe(100);
+    expect(schedule.cell(2, 17)).toBe(20);
+    expect(schedule.cell(2, 12)).toBe(50);
+    expect(schedule.cell(2, 13)).toBe(10);
+    expect(schedule.cell(2, 14)).toBe("tak");
+    expect(schedule.cell(2, 15)).toBe("FV/9");
+  });
+
+  it("test_patchBags_settled_schedule_empty_or_zero_bag_rate_keeps_cost", () => {
+    const { schedule } = fresh();
+    seedSettledSchedule(schedule, 2, { 13: "" });
+    seedSettledSchedule(schedule, 3, { 1: "Zero", 13: 0 });
+
+    expect(
+      postToSheet({
+        action: "patchBags",
+        tryb: "harmonogram",
+        sheetRow: 2,
+        transportNumber: "",
+        iloscWorkow: 5,
+      }),
+    ).toEqual({ ok: true });
+    expect(schedule.cell(2, 8)).toBe(5);
+    expect(schedule.cell(2, 16)).toBe(70);
+    expect(schedule.cell(2, 17)).toBe(14);
+    expect(schedule.cell(2, 13)).toBe("");
+
+    expect(
+      postToSheet({
+        action: "patchBags",
+        tryb: "harmonogram",
+        sheetRow: 3,
+        transportNumber: "",
+        iloscWorkow: 5,
+      }),
+    ).toEqual({ ok: true });
+    expect(schedule.cell(3, 16)).toBe(70);
+    expect(schedule.cell(3, 17)).toBe(14);
+    expect(schedule.cell(3, 12)).toBe(50);
+    expect(schedule.cell(3, 14)).toBe("tak");
+    expect(schedule.cell(3, 15)).toBe("FV/9");
+  });
+
+  it("test_patchBags_settled_schedule_empty_or_zero_count_divides_by_one", () => {
+    const { schedule } = fresh();
+    seedSettledSchedule(schedule, 2);
+    seedSettledSchedule(schedule, 3, { 1: "Zero workow" });
+
+    expect(
+      postToSheet({
+        action: "patchBags",
+        tryb: "harmonogram",
+        sheetRow: 2,
+        transportNumber: "",
+        iloscWorkow: "",
+      }),
+    ).toEqual({ ok: true });
+    expect(schedule.cell(2, 8)).toBe("");
+    expect(schedule.cell(2, 16)).toBe(50);
+    expect(schedule.cell(2, 17)).toBe(50);
+
+    expect(
+      postToSheet({
+        action: "patchBags",
+        tryb: "harmonogram",
+        sheetRow: 3,
+        transportNumber: "",
+        iloscWorkow: 0,
+      }),
+    ).toEqual({ ok: true });
+    expect(schedule.cell(3, 8)).toBe(0);
+    expect(schedule.cell(3, 16)).toBe(50);
+    expect(schedule.cell(3, 17)).toBe(50);
+    expect(schedule.cell(3, 13)).toBe(10);
+    expect(schedule.cell(3, 15)).toBe("FV/9");
+  });
+
+  it("test_patchBags_open_schedule_and_report_write_only_the_count", () => {
+    const { register, schedule } = fresh();
+    seedRegister(register, 2);
+    seedSettledSchedule(schedule, 2, { 14: "", 15: "", 16: 999, 17: 111 });
+
+    expect(
+      postToSheet({
+        action: "patchBags",
+        sheetRow: 2,
+        transportNumber: "15",
+        iloscWorkow: 6,
+      }),
+    ).toEqual({ ok: true });
+    expect(register.cell(2, 9)).toBe(6);
+    expectCostsUntouched(register, [2]);
+
+    expect(
+      postToSheet({
+        action: "patchBags",
+        tryb: "harmonogram",
+        sheetRow: 2,
+        transportNumber: "",
+        iloscWorkow: 6,
+      }),
+    ).toEqual({ ok: true });
+    expect(schedule.cell(2, 8)).toBe(6);
+    expect(schedule.cell(2, 16)).toBe(999);
+    expect(schedule.cell(2, 17)).toBe(111);
+    expect(schedule.cell(2, 12)).toBe(50);
+    expect(schedule.cell(2, 13)).toBe(10);
+  });
 });
 
 describe("zapis w transport-log.gs", () => {
@@ -1210,6 +1485,15 @@ describe("zapis w transport-log.gs", () => {
     const lockAt = postFn.indexOf("waitLock");
     expect(postFn.indexOf("isSettlementWriteAction_")).toBeGreaterThan(lockAt);
     expect(postFn.indexOf("settlementSearch")).toBeLessThan(lockAt);
+    const rateWrite = functionSource("writeHarmonogramSearchRates_");
+    const rateLock = rateWrite.indexOf("waitLock");
+    expect(rateWrite.indexOf("harmonogramSearchRowStillOpen_")).toBeGreaterThan(rateLock);
+    expect(rateWrite.indexOf("setValues")).toBeGreaterThan(rateLock);
+    expect(rateWrite.indexOf("releaseLock")).toBeGreaterThan(rateWrite.indexOf("setValues"));
+    const guard = functionSource("harmonogramSearchRowStillOpen_");
+    expect(guard).toContain("SCHEDULE_COL.rozliczony");
+    expect(guard).toContain("SCHEDULE_COL.transportOdbył");
+    expect(guard).toContain("SCHEDULE_COL.adres");
     expect(postFn).not.toContain("settlementStats");
     expect(functionSource("doGet")).toContain("action === 'settlementStats'");
     expect(functionSource("settlementStats_")).not.toMatch(
@@ -1232,12 +1516,13 @@ describe("zapis w transport-log.gs", () => {
     expect(run).not.toContain("saveRate");
     expect(functionSource("resolveRateTie_")).not.toContain("getDataSheet_");
     expect(functionSource("resolveRateTie_")).not.toContain("getOrCreateRateSheet_");
-    for (const name of ["patchBags_", "patchRouteRate_", "detachRoute_", "attachRoute_"]) {
+    for (const name of ["patchRouteRate_", "detachRoute_", "attachRoute_"]) {
       const src = functionSource(name);
       expect(src).not.toContain("kosztOdbioru");
       expect(src).not.toContain("kosztPerWorek");
       expect(src).not.toContain("ensureTransportRegisterColumns_");
     }
+    expect(functionSource("patchBags_")).not.toContain("ensureTransportRegisterColumns_");
     const approve = functionSource("approve_");
     expect(approve).not.toContain("ensureTransportRegisterColumns_");
     expect(approve).not.toContain("getOrCreateRateSheet_");

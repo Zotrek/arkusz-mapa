@@ -60,7 +60,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
   20. Komentarz 2
 
-- **Nagłówki `Harmonogram …` / `zestawienie z harmonogramu`:** jak Na zgłoszenie, **bez** „Numer transportowy” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” (po Ilość worków) ma listę tak/nie. Sync nigdy nie czyści zakładek. Przy 0 workach **Nazwa kontrahenta** i **Nazwa punktu** biorą się z dowolnego wiersza `odebrane` tego adresu. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (legacy + miesięczne). Sync dopisuje wiersz **dzień po** teoretycznej dacie odbioru (odbiór 01.10 → zestawienie od 02.10; kolumna Data odbioru zostaje 01.10).
+- **Nagłówki `Harmonogram …` / `zestawienie z harmonogramu`:** jak Na zgłoszenie, **bez** „Numer transportowy” (kolumny przesunięte o −1). Rodzaj zbiórki = agregacja z kolumny Tryb zbiórki w `odebrane z harmonogramu`. Kolumna „transport się odbył” (po Ilość worków) ma listę tak/nie. Sync nigdy nie czyści zakładek. Przy 0 workach **Nazwa kontrahenta** i **Nazwa punktu** biorą się z dowolnego wiersza `odebrane` tego adresu. Zapis `saveRateHarmonogram` od razu uzupełnia stawki/trasę na nierozliczonych wierszach tej pary sklep+podwykonawca (legacy + miesięczne). Sync dopisuje wiersz **dzień po** teoretycznej dacie odbioru (odbiór 01.10 → zestawienie od 02.10; kolumna Data odbioru zostaje 01.10). Szukaj w rozliczeniach (`tryb=harmonogram`) przepisuje stawki tylko na wierszach tego zestawienia: brak pary czyści kolumny 12 i 13, ta sama data zostawia pierwszy wiersz, transport `nie` i rozliczone są pomijane, trasa zostaje. Sync nadal przepisuje trasę. Zatwierdź zapisuje na zatwierdzanych wierszach stawkę, z której policzył się koszt (podjazd i worek; przy trasie sam worek). Bazy cen ten zapis nie rusza. Edycja **Ilość worków** na rozliczonym wierszu przelicza **Koszt odbioru** i **Koszt odbioru per worek** od razu: zostaje część za podjazd albo udział w trasie, opłata za worki to nowa liczba × **Stawka za worek**. Pusta albo zerowa stawka worka zostawia koszt. Sync mapki tego nie robi. Reguły: `rozliczenia/docs/SPECIFICATION.md`, sekcja „Harmonogram — stawki i liczba worków”.
 
 
 
@@ -103,7 +103,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 | GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 10 = `nie` nie wchodzi |
 
-| GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia (legacy + `Harmonogram …`); każdy wiersz ma `sheetName` |
+| GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia (legacy + `Harmonogram …`); każdy wiersz ma `sheetName`. Zapis stawek tylko na wierszach tego zestawienia. Brak pary czyści kolumny 12 i 13. Ta sama data zostawia pierwszy wiersz. Transport `nie` i rozliczone są pomijane. Trasa zostaje. Reszta: specyfikacja, sekcja „Harmonogram — stawki i liczba worków” |
 
 | POST | `action=syncZestawienieHarmonogram` | Agregacja odebrane + dni Bazy cen → zakładki `Harmonogram {miesiąc} {rok}` (domyślnie bieżący miesiąc → dziś) |
 | GET | `action=listHarmonogramy` | Wspólne harmonogramy + kubełki „do zgrupowania” (te same dni + ten sam podwykonawca) |

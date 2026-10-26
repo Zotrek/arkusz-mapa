@@ -15,8 +15,11 @@
  * GET ?action=listStoreAddresses → { ok, data: [ { adres, sklep }, … ] }
  *   Unikalny adres (po normalizacji al./pl./Św.) z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
- *   dataOd opcjonalna. tryb=harmonogram → zakładka „zestawienie z harmonogramu” (+ rates z Bazy cen).
- *   To samo POST { action: settlementSearch, … }. Nic nie zapisuje.
+ *   dataOd opcjonalna. tryb=harmonogram → zakładki Harmonogram (+ rates z Bazy cen)
+ *   i zapis kolumn 12–13 na wierszach tego zestawienia, pod lockiem skryptu.
+ *   Tuż przed zapisem pomija wiersz już rozliczony, z transportem „nie” albo ze zmienionym kluczem.
+ *   Inaczej nic nie zapisuje.
+ *   To samo POST { action: settlementSearch, … }.
  * POST { action: syncZestawienieHarmonogram, dataOd?, dataDo? }
  *   Agreguje odebrane + dni podjazdu z Bazy cen → „zestawienie z harmonogramu”.
  *   Domyślne okno: 1. bieżącego miesiąca → dziś. Rozliczony=tak nie nadpisuje.
@@ -3681,9 +3684,10 @@ function uniqueStoreAddresses_(rows) {
 }
 
 /**
- * Odczyt zestawienia. Nie bierze locka i nic nie zapisuje.
- * tryb=harmonogram: legacy + miesięczne Harmonogram + rates z Bazy cen.
- * Inaczej: legacy Arkusz1 + miesięczne Na zgłoszenie + Baza stawek.
+ * Odczyt zestawienia.
+ * tryb=harmonogram: legacy + miesięczne Harmonogram + rates z Bazy cen,
+ * i zapis Stawka za podjazd / Stawka za worek na wierszach tego zestawienia.
+ * Ten zapis bierze lock skryptu. Inaczej: Arkusz1 + Na zgłoszenie + Baza stawek, bez zapisu i bez locka.
  */
 function settlementSearch_(query) {
   var tryb = settlementText_(query && query.tryb).toLowerCase();
@@ -3700,14 +3704,108 @@ function settlementSearch_(query) {
 
 /**
  * Harmonogram: wiersze z legacy + miesięcznych; rates z Bazy cen.
+ * Przed odpowiedzią zapisuje kolumny 12 i 13 na wierszach tego zestawienia.
  */
 function settlementSearchHarmonogram_(query) {
   var baza = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
-  return buildSettlementHarmonogramRead_(
+  var result = buildSettlementHarmonogramRead_(
     query,
     readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.kosztPerWorek),
     readSettlementCells_(baza, 8),
   );
+  if (result.ok) {
+    writeHarmonogramSearchRates_(result.rows);
+  }
+  return result;
+}
+
+/**
+ * Wiersz nadal jest tym odczytanym podjazdem.
+ * Rozliczony tak, transport nie albo inny adres, data lub podwykonawca — bez zapisu.
+ */
+function harmonogramSearchRowStillOpen_(sheet, row) {
+  var sheetRow = row && row.sheetRow;
+  if (!sheet || !sheetRow || sheetRow < 2) {
+    return false;
+  }
+  var cells = sheet.getRange(sheetRow, 1, 1, SCHEDULE_COL.rozliczony).getValues()[0];
+  if (settlementFoldPl_(cells[SCHEDULE_COL.adres - 1]) !== settlementFoldPl_(row.address)) {
+    return false;
+  }
+  if (settlementDateText_(cells[SCHEDULE_COL.dataOdbioru - 1]) !== settlementDateText_(row.pickupDate)) {
+    return false;
+  }
+  if (
+    settlementFoldPl_(cells[SCHEDULE_COL.ktoOdbiera - 1]) !== settlementFoldPl_(row.contractor)
+  ) {
+    return false;
+  }
+  if (settlementFlag_(cells[SCHEDULE_COL.rozliczony - 1]) === 'tak') {
+    return false;
+  }
+  if (settlementFlag_(cells[SCHEDULE_COL.transportOdbył - 1]) === 'nie') {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Kolumny 12–13 z kwot, które odczyt właśnie policzył. Trasy nie rusza.
+ * Lock obejmuje ponowny odczyt i zapis, ten sam co Zatwierdź.
+ */
+function writeHarmonogramSearchRates_(rows) {
+  if (!rows || !rows.length) {
+    return;
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var sheet = row.sheetName ? ss.getSheetByName(row.sheetName) : null;
+      if (!harmonogramSearchRowStillOpen_(sheet, row)) {
+        continue;
+      }
+      sheet.getRange(row.sheetRow, SCHEDULE_COL.stawkaPodjazdu, 1, 2).setValues([
+        [
+          row.pickupRate == null ? '' : approveZlotyFromGrosze_(row.pickupRate),
+          row.bagRate == null ? '' : approveZlotyFromGrosze_(row.bagRate),
+        ],
+      ]);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Stawka Bazy cen na dzień odbioru, tak jak sync zestawienia.
+ * Pusta data jest najstarsza. Remis zostawia pierwszy wiersz. Późniejsze daty odpadają.
+ * Pustej daty nie pomija — to robi tylko resolveHarmonogramSnapshot_.
+ */
+function harmonogramRateOnDate_(rates, shop, contractor, pickupDate) {
+  var shopFold = settlementFoldPl_(shop);
+  var whoFold = settlementFoldPl_(contractor);
+  var best = null;
+  var i;
+  for (i = 0; i < (rates || []).length; i++) {
+    var rate = rates[i];
+    if (settlementFoldPl_(rate.shop) !== shopFold || settlementFoldPl_(rate.contractor) !== whoFold) {
+      continue;
+    }
+    if (rate.validFrom && settlementCompareDate_(rate.validFrom, pickupDate) > 0) {
+      continue;
+    }
+    if (
+      !best ||
+      settlementCompareDate_(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
+    ) {
+      best = rate;
+    }
+  }
+  return best;
 }
 
 /**
@@ -4598,8 +4696,10 @@ function settlementBuildAddressParts_(kod, miasto, ulica, numer) {
 
 /**
  * Odczyt Harmonogram z rejestru „zestawienie z harmonogramu”.
- * register = cells jak Arkusz1 (do kolumny kosztu / transport się odbył).
- * bazaCen = cells Bazy cen (8 kolumn) — tylko do rates w odpowiedzi.
+ * register = cells zestawienia (do kolumny kosztu na worek).
+ * bazaCen = cells Bazy cen (8 kolumn).
+ * Wiersz zestawienia dostaje stawkę podjazdu i worka z bazy. Brak pary czyści obie.
+ * Rozliczony i transport `nie` są pomijane wcześniej i stawek nie dostają.
  */
 function buildSettlementHarmonogramRead_(query, register, bazaCen) {
   var error = settlementQueryError_(query);
@@ -4610,6 +4710,44 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
   var dataOd = q.dataOd ? settlementDateText_(q.dataOd) : '';
   var dataDo = settlementDateText_(q.dataDo);
   var who = settlementFoldPl_(q.podwykonawca);
+  var publicRates = [];
+  var searchRates = [];
+  var sourceBaza = bazaCen || [];
+  var bi;
+  for (bi = 0; bi < sourceBaza.length; bi++) {
+    var rateItem = sourceBaza[bi];
+    var rateCells = rateItem.cells || [];
+    var shop = settlementText_(rateCells[0]);
+    var contractor = settlementText_(rateCells[1]);
+    if (!shop || settlementFoldPl_(contractor) !== who) {
+      continue;
+    }
+    var rawFrom = rateCells[6];
+    var validFrom = '';
+    var hasFrom = rawFrom instanceof Date || settlementText_(rawFrom) !== '';
+    if (hasFrom) {
+      validFrom = settlementDateText_(rawFrom);
+      if (!validFrom) {
+        continue;
+      }
+    }
+    publicRates.push({
+      sheetRow: rateItem.sheetRow,
+      shop: shop,
+      contractor: contractor,
+      pickupAmount: settlementAmountToGrosze_(rateCells[3]),
+      bagAmount: settlementAmountToGrosze_(rateCells[4]),
+      validFrom: validFrom,
+    });
+    searchRates.push({
+      shop: shop,
+      contractor: contractor,
+      validFrom: validFrom,
+      pickup: rateCells[3],
+      bag: rateCells[4],
+    });
+  }
+
   var rows = [];
   var sourceRows = register || [];
   var i;
@@ -4625,6 +4763,19 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
     if (!settlementDateInRange_(mapped.pickupDate, dataOd, dataDo)) {
       continue;
     }
+    var best = harmonogramRateOnDate_(
+      searchRates,
+      mapped.address,
+      mapped.contractor,
+      mapped.pickupDate,
+    );
+    if (!best) {
+      mapped.pickupRate = null;
+      mapped.bagRate = null;
+    } else {
+      mapped.pickupRate = settlementAmountToGrosze_(best.pickup);
+      mapped.bagRate = settlementAmountToGrosze_(best.bag);
+    }
     rows.push(settlementPublicRow_(mapped));
   }
   rows.sort(function (a, b) {
@@ -4634,36 +4785,6 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
     }
     return a.address.localeCompare(b.address, 'pl');
   });
-
-  var publicRates = [];
-  var sourceBaza = bazaCen || [];
-  var bi;
-  for (bi = 0; bi < sourceBaza.length; bi++) {
-    var rateItem = sourceBaza[bi];
-    var cells = rateItem.cells || [];
-    var shop = settlementText_(cells[0]);
-    var contractor = settlementText_(cells[1]);
-    if (!shop || settlementFoldPl_(contractor) !== who) {
-      continue;
-    }
-    var rawFrom = cells[6];
-    var validFrom = '';
-    var hasFrom = rawFrom instanceof Date || settlementText_(rawFrom) !== '';
-    if (hasFrom) {
-      validFrom = settlementDateText_(rawFrom);
-      if (!validFrom) {
-        continue;
-      }
-    }
-    publicRates.push({
-      sheetRow: rateItem.sheetRow,
-      shop: shop,
-      contractor: contractor,
-      pickupAmount: settlementAmountToGrosze_(cells[3]),
-      bagAmount: settlementAmountToGrosze_(cells[4]),
-      validFrom: validFrom,
-    });
-  }
   return { ok: true, rows: rows, rates: publicRates };
 }
 
@@ -5862,7 +5983,7 @@ function isSettlementWriteAction_(action) {
  * Rozliczony `tak` też odpada — wiersz nie jest już w zestawieniu.
  * Zwraca { sheet, row } albo { error }.
  */
-function registerWriteTarget_(sheet, body) {
+function registerWriteTarget_(sheet, body, allowSettled) {
   if (!body || body.sheetRow == null) {
     return { error: 'key' };
   }
@@ -5888,11 +6009,11 @@ function registerWriteTarget_(sheet, body) {
     if (actual !== expected) {
       return { error: 'key' };
     }
-    if (settlementFlag_(targetSheet.getRange(row, COL.rozliczony).getValue()) === 'tak') {
+    if (!allowSettled && settlementFlag_(targetSheet.getRange(row, COL.rozliczony).getValue()) === 'tak') {
       return { error: 'settled' };
     }
   } else {
-    if (settlementFlag_(targetSheet.getRange(row, SCHEDULE_COL.rozliczony).getValue()) === 'tak') {
+    if (!allowSettled && settlementFlag_(targetSheet.getRange(row, SCHEDULE_COL.rozliczony).getValue()) === 'tak') {
       return { error: 'settled' };
     }
   }
@@ -5939,8 +6060,21 @@ function routeRateWriteValue_(parsed) {
   return sheetRateWriteValue_(parsed.value);
 }
 
+/** Opłata za worki w groszach. Pusta albo zerowa stawka albo liczba daje 0. */
+function harmonogramBagFeeGrosze_(count, rateGrosze) {
+  if (rateGrosze == null || rateGrosze === 0 || count == null || count === 0) {
+    return 0;
+  }
+  if (Math.floor(count) === count) {
+    return count * rateGrosze;
+  }
+  return approveRoundReal_(Math.abs(count) * Math.abs(rateGrosze));
+}
+
 function patchBags_(body) {
-  var target = registerWriteTarget_(null, body);
+  var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  var target = registerWriteTarget_(null, body, schedule);
   if (target.error) {
     return { ok: false, error: target.error };
   }
@@ -5948,11 +6082,35 @@ function patchBags_(body) {
   if (!bags) {
     return { ok: false, error: 'bags' };
   }
-  var col =
-    settlementText_(body && (body.tryb || body.mode)).toLowerCase() === 'harmonogram' ||
-    settlementText_(body && (body.tryb || body.mode)).toLowerCase() === 'schedule'
-      ? SCHEDULE_COL.iloscWorkow
-      : COL.iloscWorkow;
+  var col = schedule ? SCHEDULE_COL.iloscWorkow : COL.iloscWorkow;
+  if (
+    schedule &&
+    settlementFlag_(target.sheet.getRange(target.row, SCHEDULE_COL.rozliczony).getValue()) === 'tak'
+  ) {
+    var oldBags = settlementBagCount_(
+      target.sheet.getRange(target.row, SCHEDULE_COL.iloscWorkow).getValue(),
+    );
+    var oldCost = settlementAmountToGrosze_(
+      target.sheet.getRange(target.row, SCHEDULE_COL.kosztOdbioru).getValue(),
+    );
+    var bagRate = settlementAmountToGrosze_(
+      target.sheet.getRange(target.row, SCHEDULE_COL.stawkaWorka).getValue(),
+    );
+    var newCount = bags.empty ? null : bags.value;
+    var base = oldCost == null ? 0 : oldCost;
+    var nextCost =
+      bagRate == null || bagRate === 0
+        ? base
+        : base - harmonogramBagFeeGrosze_(oldBags, bagRate) + harmonogramBagFeeGrosze_(newCount, bagRate);
+    target.sheet.getRange(target.row, col).setValue(bags.empty ? '' : bags.value);
+    target.sheet
+      .getRange(target.row, SCHEDULE_COL.kosztOdbioru)
+      .setValue(approveZlotyFromGrosze_(nextCost));
+    target.sheet
+      .getRange(target.row, SCHEDULE_COL.kosztPerWorek)
+      .setValue(approveZlotyFromGrosze_(approvePerBagGrosze_(nextCost, newCount)));
+    return { ok: true };
+  }
   target.sheet.getRange(target.row, col).setValue(bags.empty ? '' : bags.value);
   return { ok: true };
 }
@@ -6180,6 +6338,33 @@ function approveSkip_(item, reason) {
   return id;
 }
 
+function approveBodyHas_(item, key) {
+  return !!item && Object.prototype.hasOwnProperty.call(item, key);
+}
+
+/**
+ * Stawki z body zatwierdzenia Harmonogramu.
+ * Brak wymaganego klucza → null, wiersz bez zapisu.
+ * Pusta wartość czyści kolumnę. Przy trasie podjazd nie jest wymagany i nie wraca.
+ */
+function approveScheduleRates_(item, route) {
+  if (!approveBodyHas_(item, 'stawkaWorka')) {
+    return null;
+  }
+  var pickup = '';
+  if (!route) {
+    if (!approveBodyHas_(item, 'stawkaPodjazdu')) {
+      return null;
+    }
+    pickup = sheetRateWriteValue_(item.stawkaPodjazdu);
+  }
+  return {
+    route: route,
+    pickup: pickup,
+    bag: sheetRateWriteValue_(item.stawkaWorka),
+  };
+}
+
 function approveSaved_(sheet, row, schedule) {
   var base = {
     sheetName: sheet ? sheet.getName() : '',
@@ -6198,6 +6383,7 @@ function approveSaved_(sheet, row, schedule) {
  * tryb=harmonogram → kolumny SCHEDULE_COL; inaczej Na zgłoszenie COL.
  * Każdy wiersz z body.wiersze[].sheetName — zakładka po nazwie.
  * Bez flagi nieOdbył: transport się odbył = tak + Rozliczony = tak (i koszty).
+ * Harmonogram dopisuje wtedy stawki z body. Brak wymaganego klucza pomija wiersz.
  * Z flagą nieOdbył: tylko transport się odbył = nie (bez kolumn rozliczenia).
  */
 function approve_(body) {
@@ -6254,10 +6440,25 @@ function approve_(body) {
     }
     var bags = settlementBagCount_(sheet.getRange(target.row, c.iloscWorkow).getValue());
     var perBag = approvePerBagGrosze_(cost, bags);
+    var scheduleRates = null;
+    if (schedule) {
+      var onRoute = settlementText_(sheet.getRange(target.row, SCHEDULE_COL.trasa).getValue()) !== '';
+      scheduleRates = approveScheduleRates_(item, onRoute);
+      if (!scheduleRates) {
+        skipped.push(approveSkip_(item, 'rate'));
+        continue;
+      }
+    }
     sheet.getRange(target.row, c.transportOdbył).setValue('tak');
     sheet.getRange(target.row, c.rozliczony, 1, 4).setValues([
       ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(perBag)],
     ]);
+    if (scheduleRates) {
+      if (!scheduleRates.route) {
+        sheet.getRange(target.row, SCHEDULE_COL.stawkaPodjazdu).setValue(scheduleRates.pickup);
+      }
+      sheet.getRange(target.row, SCHEDULE_COL.stawkaWorka).setValue(scheduleRates.bag);
+    }
     saved.push(approveSaved_(sheet, target.row, schedule));
   }
   if (clearPickup) {
