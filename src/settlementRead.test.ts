@@ -109,6 +109,7 @@ type SettlementResult = SettlementOk | SettlementErr;
 
 type GasFns = {
   settlementSearch_: (query: Record<string, unknown>) => SettlementResult;
+  settlementInvoices_: (query: Record<string, unknown>) => SettlementResult;
   settlementStats_: (query: Record<string, unknown>) => SettlementResult;
   doGet: (e: { parameter: Record<string, string> }) => unknown;
   buildSettlementRead_: (
@@ -150,6 +151,14 @@ type GasFns = {
     pickupDate: string,
   ) => { routeName: string; route: unknown; pickup: unknown; bag: unknown };
   writeHarmonogramSearchRates_: (rows: Record<string, unknown>[]) => void;
+  approveZlotyFromGrosze_: (grosze: number) => number;
+  harmonogramSearchRateWrites_: (
+    rows: Record<string, unknown>[],
+    fresh: Array<{ sheetName: string; startRow: number; values: Cell[][] }>,
+  ) => Array<{ sheetName: string; sheetRow: number; values: Array<number | string> }>;
+  harmonogramSearchRateRanges_: (
+    writes: Array<{ sheetName: string; sheetRow: number; values: Array<number | string> }>,
+  ) => Array<{ range: string; values: Array<Array<number | string>> }>;
 };
 
 const gsPath = join(
@@ -165,6 +174,16 @@ const holder: {
   schedule: FakeSheet | null;
   bazaCen: FakeSheet | null;
   extra: FakeSheet[];
+  batchCode: number;
+  batchThrow: boolean;
+  lastBatch: {
+    url: string;
+    headers: Record<string, string>;
+    body: {
+      valueInputOption?: string;
+      data?: Array<{ range: string; values: Cell[][] }>;
+    };
+  } | null;
 } = {
   register: new FakeSheet('Arkusz1'),
   rates: null,
@@ -172,7 +191,57 @@ const holder: {
   schedule: null,
   bazaCen: null,
   extra: [],
+  batchCode: 200,
+  batchThrow: false,
+  lastBatch: null,
 };
+
+function findHolderSheet(name: string): FakeSheet | null {
+  if (name === holder.register.name) {
+    return holder.register;
+  }
+  if (name === 'Baza stawek') {
+    return holder.rates;
+  }
+  if (name === 'Baza cen harmonogram') {
+    return holder.bazaCen;
+  }
+  if (name === 'odebrane z harmonogramu') {
+    return holder.odebrane;
+  }
+  if (holder.schedule && name === holder.schedule.name) {
+    return holder.schedule;
+  }
+  return holder.extra.find((sheet) => sheet.name === name) ?? null;
+}
+
+function columnNumber(letters: string): number {
+  let n = 0;
+  for (const ch of letters) {
+    n = n * 26 + (ch.charCodeAt(0) - 64);
+  }
+  return n;
+}
+
+function applyHarmonogramBatch(data: Array<{ range: string; values: Cell[][] }> | undefined): void {
+  for (const item of data ?? []) {
+    const match = /^'((?:[^']|'')*)'!([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(item.range);
+    if (!match) {
+      return;
+    }
+    const sheet = findHolderSheet(match[1].replace(/''/g, "'"));
+    if (!sheet) {
+      return;
+    }
+    const row = Number(match[3]);
+    const col = columnNumber(match[2]);
+    for (let r = 0; r < item.values.length; r += 1) {
+      for (let c = 0; c < item.values[r].length; c += 1) {
+        sheet.put(row + r, col + c, item.values[r][c]);
+      }
+    }
+  }
+}
 
 let lastBody = '';
 let gas: GasFns;
@@ -184,6 +253,9 @@ beforeAll(() => {
     SpreadsheetApp: {
       getActiveSpreadsheet() {
         return {
+          getId() {
+            return 'ss-test';
+          },
           getSheets() {
             const out: FakeSheet[] = [holder.register];
             if (holder.schedule) {
@@ -195,22 +267,7 @@ beforeAll(() => {
             return out;
           },
           getSheetByName(name: string) {
-            if (name === holder.register.name) {
-              return holder.register;
-            }
-            if (name === 'Baza stawek') {
-              return holder.rates;
-            }
-            if (name === 'Baza cen harmonogram') {
-              return holder.bazaCen;
-            }
-            if (name === 'odebrane z harmonogramu') {
-              return holder.odebrane;
-            }
-            if (holder.schedule && name === holder.schedule.name) {
-              return holder.schedule;
-            }
-            return holder.extra.find((sheet) => sheet.name === name) ?? null;
+            return findHolderSheet(name);
           },
         };
       },
@@ -249,9 +306,43 @@ beforeAll(() => {
         };
       },
     },
+    ScriptApp: {
+      getOAuthToken() {
+        return 'oauth-test';
+      },
+    },
+    UrlFetchApp: {
+      fetch(url: string, options: { payload?: string; headers?: Record<string, string> }) {
+        if (holder.batchThrow) {
+          throw new Error('batch-down');
+        }
+        const body = JSON.parse(String(options.payload ?? '{}')) as {
+          valueInputOption?: string;
+          data?: Array<{ range: string; values: Cell[][] }>;
+        };
+        holder.lastBatch = {
+          url: String(url),
+          headers: options.headers ?? {},
+          body,
+        };
+        const code = holder.batchCode;
+        if (code >= 200 && code < 300) {
+          applyHarmonogramBatch(body.data);
+        }
+        return {
+          getResponseCode() {
+            return code;
+          },
+          getContentText() {
+            return '';
+          },
+        };
+      },
+    },
   };
   runInNewContext(gs, context);
   const search = context.settlementSearch_;
+  const invoices = context.settlementInvoices_;
   const stats = context.settlementStats_;
   const doGet = context.doGet;
   const buildRead = context.buildSettlementRead_;
@@ -261,8 +352,12 @@ beforeAll(() => {
   const planCleanup = context.planOffScheduleCleanup_;
   const resolveSnap = context.resolveHarmonogramSnapshot_;
   const writeRates = context.writeHarmonogramSearchRates_;
+  const zloty = context.approveZlotyFromGrosze_;
+  const rateWrites = context.harmonogramSearchRateWrites_;
+  const rateRanges = context.harmonogramSearchRateRanges_;
   if (
     typeof search !== 'function' ||
+    typeof invoices !== 'function' ||
     typeof stats !== 'function' ||
     typeof doGet !== 'function' ||
     typeof buildRead !== 'function' ||
@@ -271,12 +366,16 @@ beforeAll(() => {
     typeof buildSync !== 'function' ||
     typeof planCleanup !== 'function' ||
     typeof resolveSnap !== 'function' ||
-    typeof writeRates !== 'function'
+    typeof writeRates !== 'function' ||
+    typeof zloty !== 'function' ||
+    typeof rateWrites !== 'function' ||
+    typeof rateRanges !== 'function'
   ) {
     throw new Error('transport-log.gs nie wystawił settlementSearch/settlementStats');
   }
   gas = {
     settlementSearch_: search as GasFns['settlementSearch_'],
+    settlementInvoices_: invoices as GasFns['settlementInvoices_'],
     settlementStats_: stats as GasFns['settlementStats_'],
     doGet: doGet as GasFns['doGet'],
     buildSettlementRead_: buildRead as GasFns['buildSettlementRead_'],
@@ -286,6 +385,9 @@ beforeAll(() => {
     planOffScheduleCleanup_: planCleanup as GasFns['planOffScheduleCleanup_'],
     resolveHarmonogramSnapshot_: resolveSnap as GasFns['resolveHarmonogramSnapshot_'],
     writeHarmonogramSearchRates_: writeRates as GasFns['writeHarmonogramSearchRates_'],
+    approveZlotyFromGrosze_: zloty as GasFns['approveZlotyFromGrosze_'],
+    harmonogramSearchRateWrites_: rateWrites as GasFns['harmonogramSearchRateWrites_'],
+    harmonogramSearchRateRanges_: rateRanges as GasFns['harmonogramSearchRateRanges_'],
   };
 });
 
@@ -299,6 +401,9 @@ function fresh(withRates = true): { register: FakeSheet; rates: FakeSheet | null
   holder.schedule = new FakeSheet('zestawienie z harmonogramu');
   holder.bazaCen = null;
   holder.extra = [];
+  holder.batchCode = 200;
+  holder.batchThrow = false;
+  holder.lastBatch = null;
   return { register, rates, odebrane };
 }
 
@@ -495,6 +600,101 @@ describe('settlementSearch_', () => {
   });
 });
 
+describe('settlementInvoices_', () => {
+  it('test_settlementInvoices_returns_settled_rows_with_invoice_and_sheet_cost', () => {
+    const { register } = fresh(false);
+    seedRegister(register, 2, { 1: 10, 15: 'tak', 16: ' FV/1 ', 17: 150, 18: 50 });
+    seedRegister(register, 3, { 1: 11, 5: '10.09.2026', 15: 'tak', 16: 'FV/9', 17: 20 });
+    seedRegister(register, 4, { 1: 12 });
+    seedRegister(register, 5, { 1: 13, 6: 'inny', 15: 'tak', 16: 'FV/2', 17: 10 });
+    seedRegister(register, 6, { 1: 14, 10: 'nie', 15: 'tak', 16: '', 17: 5, 18: 5 });
+
+    expect(gas.settlementInvoices_({ dataDo: '20.09.2026' })).toEqual({
+      ok: false,
+      error: 'podwykonawca required',
+    });
+
+    const result = gas.settlementInvoices_({
+      podwykonawca: 'gpw',
+      dataOd: '12.09.2026',
+      dataDo: '20.09.2026',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows.map((row) => row.transportNumber)).toEqual(['10', '14']);
+    expect(result.rows[0]).toMatchObject({
+      sheetRow: 2,
+      invoice: 'FV/1',
+      receptionCost: 15000,
+      costPerBag: 5000,
+      shopName: 'Sklep A',
+      pickupDate: '15.09.2026',
+    });
+    expect(result.rows[1]).toMatchObject({
+      transportNumber: '14',
+      invoice: '',
+      receptionCost: 500,
+    });
+    expect(result.rows[0]).not.toHaveProperty('routeRate');
+  });
+
+  it('test_settlementInvoices_harmonogram_reads_invoice_and_does_not_write_rates', () => {
+    fresh();
+    const schedule = holder.schedule!;
+    seedScheduleRow(schedule, 2, { 14: 'tak', 15: 'FV/H', 16: 80, 17: 40 });
+    seedScheduleRow(schedule, 3, { 4: '16.09.2026' });
+    const pickupBefore = schedule.cell(3, 12);
+    const bagBefore = schedule.cell(3, 13);
+
+    const result = gas.settlementInvoices_({
+      tryb: 'harmonogram',
+      podwykonawca: 'thor',
+      dataDo: '20.09.2026',
+    });
+
+    expect(schedule.cell(3, 12)).toBe(pickupBefore);
+    expect(schedule.cell(3, 13)).toBe(bagBefore);
+    expect(schedule.cell(2, 12)).toBe(11);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        sheetRow: 2,
+        transportNumber: '',
+        contractor: 'THOR',
+        invoice: 'FV/H',
+        receptionCost: 8000,
+        costPerBag: 4000,
+        routeName: 'trasa-z-arkusza',
+      }),
+    ]);
+  });
+
+  it('test_settlementInvoices_via_doGet_returns_same_payload', () => {
+    const { register } = fresh(false);
+    seedRegister(register, 2, { 15: 'tak', 16: 'FV/1', 17: 10 });
+    gas.doGet({
+      parameter: {
+        action: 'settlementInvoices',
+        podwykonawca: 'gpw',
+        dataDo: '20.09.2026',
+        secret: TEST_GAS_SECRET,
+      },
+    });
+    const body = getJson();
+    expect(body.ok).toBe(true);
+    if (!body.ok) {
+      return;
+    }
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0]).toMatchObject({ invoice: 'FV/1', receptionCost: 1000 });
+  });
+});
+
 describe('settlementStats_', () => {
   it('test_settlementStats_requires_both_date_ends', () => {
     fresh();
@@ -510,7 +710,7 @@ describe('settlementStats_', () => {
 
   it('test_settlementStats_includes_settled_in_range_and_open_backlog', () => {
     const { register, rates } = fresh();
-    seedRegister(register, 2, { 1: 20, 5: '15.09.2026', 15: 'tak', 17: 200, 18: 50 });
+    seedRegister(register, 2, { 1: 20, 5: '15.09.2026', 15: 'tak', 16: 'FV/1', 17: 200, 18: 50 });
     seedRegister(register, 3, { 1: 21, 5: '01.08.2026' });
     seedRegister(register, 4, { 1: 22, 5: '10.09.2026', 15: 'tak' });
     seedRegister(register, 5, { 1: 23, 5: '15.09.2026', 10: 'nie' });
@@ -532,6 +732,7 @@ describe('settlementStats_', () => {
     expect(settled).toMatchObject({
       settled: true,
       happened: true,
+      invoice: 'FV/1',
       receptionCost: 20000,
       costPerBag: 5000,
     });
@@ -614,8 +815,90 @@ describe('settlementStats_', () => {
       pickupDate: '16.09.2026',
       happened: true,
       settled: false,
+      invoice: '',
     });
     expect(result.rows.some((r) => r.mode === 'report' && r.transportNumber === '40')).toBe(true);
+  });
+
+  it('test_settlementStats_odebrane_width_stops_after_close_date', () => {
+    const { odebrane } = fresh(false);
+    const headers = [
+      'NIP',
+      'Podmiot',
+      'Sklep',
+      'Wg',
+      'Dni',
+      'Firma transportowa',
+      'Kod pocztowy',
+      'Miasto',
+      'Ulica',
+      'Numer budynku',
+      'Gmina',
+      'Woj',
+      'Plomba',
+      'Stan',
+      'TMS',
+      'Data zamknięcia worka',
+      'Waga',
+    ];
+    headers.forEach((h, i) => odebrane.put(1, i + 1, h));
+    odebrane.put(2, 3, 'Sklep H');
+    odebrane.put(2, 6, 'gpw');
+    odebrane.put(2, 7, '30-001');
+    odebrane.put(2, 8, 'Kraków');
+    odebrane.put(2, 9, 'Testowa');
+    odebrane.put(2, 10, '1');
+    odebrane.put(2, 16, '16.09.2026');
+    odebrane.put(2, 17, '12');
+    const dataWidths: number[] = [];
+    const original = odebrane.getRange.bind(odebrane);
+    odebrane.getRange = (row, col, numRows, numCols) => {
+      if (row >= 2) {
+        dataWidths.push(numCols ?? 1);
+      }
+      return original(row, col, numRows, numCols);
+    };
+
+    const result = gas.settlementStats_({
+      podwykonawca: 'gpw',
+      dataOd: '01.09.2026',
+      dataDo: '30.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(dataWidths).toEqual([headers.indexOf('Data zamknięcia worka') + 1]);
+    expect(result.rows.filter((row) => row.mode === 'schedule')).toHaveLength(1);
+  });
+
+  it('test_settlementStats_missing_firma_returns_empty_works', () => {
+    const { odebrane } = fresh(false);
+    const headers = [
+      'NIP',
+      'Sklep',
+      'Kod pocztowy',
+      'Miasto',
+      'Ulica',
+      'Numer budynku',
+      'Data zamknięcia worka',
+    ];
+    headers.forEach((h, i) => odebrane.put(1, i + 1, h));
+    odebrane.put(2, 2, 'Sklep H');
+    odebrane.put(2, 7, '16.09.2026');
+
+    const result = gas.settlementStats_({
+      podwykonawca: 'gpw',
+      dataOd: '01.09.2026',
+      dataDo: '30.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows.filter((row) => row.mode === 'schedule')).toEqual([]);
   });
 
   it('test_settlementStats_via_doGet_returns_json', () => {
@@ -929,6 +1212,19 @@ describe('settlementSearch_ harmonogram stawki', () => {
     expect(schedule.cell(4, 13)).toBe(4);
     expect(month.cell(2, 12)).toBe(15);
     expect(month.cell(2, 13)).toBe(1);
+    expect(holder.lastBatch?.url).toBe(
+      'https://sheets.googleapis.com/v4/spreadsheets/ss-test/values:batchUpdate',
+    );
+    expect(holder.lastBatch?.headers.Authorization).toBe('Bearer oauth-test');
+    expect(holder.lastBatch?.body.valueInputOption).toBe('RAW');
+    expect(holder.lastBatch?.body.data?.map((item) => item.range)).toEqual([
+      "'zestawienie z harmonogramu'!L2:M2",
+      "'Harmonogram Wrzesień 2026'!L2:M2",
+    ]);
+    expect(holder.lastBatch?.body.data?.map((item) => item.values)).toEqual([
+      [[30, 3]],
+      [[15, 1]],
+    ]);
   });
 
   it('test_settlementSearchHarmonogram_clears_rates_when_pair_missing_or_only_later', () => {
@@ -1050,6 +1346,219 @@ describe('settlementSearch_ harmonogram stawki', () => {
     expect(schedule.cell(3, 14)).toBe('tak');
     expect(schedule.cell(4, 12)).toBe(11);
     expect(schedule.cell(4, 13)).toBe(4);
+  });
+
+  it('test_settlementSearchHarmonogram_returns_row_when_rates_already_match', () => {
+    const { schedule, baza } = openSearch();
+    seedScheduleRow(schedule, 2, { 12: 30, 13: 3 });
+    seedBazaCen(baza, 2, 'Adres A', 'THOR', 30, 3, '01.01.2026');
+
+    const result = gas.settlementSearch_({
+      tryb: 'harmonogram',
+      podwykonawca: 'THOR',
+      dataOd: '01.09.2026',
+      dataDo: '30.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ address: 'Adres A', pickupRate: 3000, bagRate: 300 });
+    expect(schedule.cell(2, 12)).toBe(30);
+    expect(schedule.cell(2, 13)).toBe(3);
+    expect(holder.lastBatch).toBeNull();
+  });
+
+  it('test_settlementSearchHarmonogram_setValues_when_batch_is_not_2xx', () => {
+    const { schedule, baza } = openSearch();
+    seedScheduleRow(schedule, 2);
+    seedBazaCen(baza, 2, 'Adres A', 'THOR', 30, 3, '01.01.2026');
+    holder.batchCode = 500;
+
+    const result = gas.settlementSearch_({
+      tryb: 'harmonogram',
+      podwykonawca: 'THOR',
+      dataOd: '01.09.2026',
+      dataDo: '30.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rows[0]).toMatchObject({ pickupRate: 3000, bagRate: 300 });
+    expect(schedule.cell(2, 12)).toBe(30);
+    expect(schedule.cell(2, 13)).toBe(3);
+    expect(schedule.cell(2, 10)).toBe('trasa-z-arkusza');
+    expect(holder.lastBatch?.body.valueInputOption).toBe('RAW');
+  });
+
+  it('test_settlementSearchHarmonogram_setValues_when_batch_throws', () => {
+    const { schedule, baza } = openSearch();
+    seedScheduleRow(schedule, 2);
+    seedBazaCen(baza, 2, 'Adres A', 'THOR', 30, 3, '01.01.2026');
+    holder.batchThrow = true;
+
+    const result = gas.settlementSearch_({
+      tryb: 'harmonogram',
+      podwykonawca: 'THOR',
+      dataOd: '01.09.2026',
+      dataDo: '30.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(schedule.cell(2, 12)).toBe(30);
+    expect(schedule.cell(2, 13)).toBe(3);
+  });
+});
+
+function freshScheduleCells(over: Partial<Record<number, Cell>> = {}): Cell[] {
+  const cells: Cell[] = [
+    'Adres A',
+    'Firma',
+    'Sklep',
+    '15.09.2026',
+    'THOR',
+    '',
+    '',
+    2,
+    '',
+    'trasa-z-arkusza',
+    80,
+    11,
+    4,
+    '',
+  ];
+  for (const [key, value] of Object.entries(over)) {
+    cells[Number(key) - 1] = value as Cell;
+  }
+  return cells;
+}
+
+function harmonogramResultRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    sheetName: 'zestawienie z harmonogramu',
+    sheetRow: 2,
+    address: 'Adres A',
+    pickupDate: '15.09.2026',
+    contractor: 'THOR',
+    pickupRate: 1250,
+    bagRate: 300,
+    ...over,
+  };
+}
+
+describe('harmonogramSearchRateWrites_', () => {
+  function freshBlock(
+    sheetName: string,
+    startRow: number,
+    values: Cell[][],
+  ): { sheetName: string; startRow: number; values: Cell[][] } {
+    return { sheetName, startRow, values };
+  }
+
+  it('test_harmonogramSearchRateWrites_skips_same_number_and_rewrites_text', () => {
+    const pickup = gas.approveZlotyFromGrosze_(1250);
+    const bag = gas.approveZlotyFromGrosze_(300);
+    expect(pickup).toBe(12.5);
+    expect(bag).toBe(3);
+    const sheetName = 'zestawienie z harmonogramu';
+    const open = harmonogramResultRow();
+    const changed = gas.harmonogramSearchRateWrites_(
+      [open],
+      [freshBlock(sheetName, 2, [freshScheduleCells({ 12: 11, 13: bag })])],
+    );
+    expect(changed).toEqual([{ sheetName, sheetRow: 2, values: [pickup, bag] }]);
+
+    const held = gas.harmonogramSearchRateWrites_(
+      [open],
+      [freshBlock(sheetName, 2, [freshScheduleCells({ 12: pickup, 13: bag })])],
+    );
+    expect(held).toEqual([]);
+
+    const text = gas.harmonogramSearchRateWrites_(
+      [open],
+      [freshBlock(sheetName, 2, [freshScheduleCells({ 12: '12.5', 13: bag })])],
+    );
+    expect(text).toEqual([{ sheetName, sheetRow: 2, values: [pickup, bag] }]);
+  });
+
+  it('test_harmonogramSearchRateWrites_null_skips_empty_and_clears_old_number', () => {
+    const sheetName = 'zestawienie z harmonogramu';
+    const row = harmonogramResultRow({ pickupRate: null, bagRate: null });
+    const empty = gas.harmonogramSearchRateWrites_(
+      [row],
+      [freshBlock(sheetName, 2, [freshScheduleCells({ 12: '', 13: '' })])],
+    );
+    expect(empty).toEqual([]);
+
+    const stale = gas.harmonogramSearchRateWrites_(
+      [row],
+      [freshBlock(sheetName, 2, [freshScheduleCells({ 12: 11, 13: 4 })])],
+    );
+    expect(stale).toEqual([{ sheetName, sheetRow: 2, values: ['', ''] }]);
+  });
+
+  it('test_harmonogramSearchRateWrites_skips_closed_moved_or_other_transport', () => {
+    const sheetName = 'zestawienie z harmonogramu';
+    const row = harmonogramResultRow();
+    const cases: Cell[][] = [
+      freshScheduleCells({ 14: 'tak' }),
+      freshScheduleCells({ 9: 'nie' }),
+      freshScheduleCells({ 1: 'Inny adres' }),
+      freshScheduleCells({ 4: '16.09.2026' }),
+      freshScheduleCells({ 5: 'INNY' }),
+    ];
+    for (const cells of cases) {
+      expect(gas.harmonogramSearchRateWrites_([row], [freshBlock(sheetName, 2, [cells])])).toEqual([]);
+    }
+  });
+
+  it('test_harmonogramSearchRateRanges_two_sheets_do_not_cover_the_row_between', () => {
+    const september = 'Harmonogram Wrzesień 2026';
+    const october = 'Harmonogram Październik 2026';
+    const writes = gas.harmonogramSearchRateWrites_(
+      [
+        harmonogramResultRow({ sheetName: september, sheetRow: 2 }),
+        harmonogramResultRow({
+          sheetName: october,
+          sheetRow: 4,
+          pickupRate: 1500,
+          bagRate: 100,
+        }),
+      ],
+      [
+        freshBlock(september, 2, [
+          freshScheduleCells(),
+          freshScheduleCells({ 1: 'Pomiędzy' }),
+          freshScheduleCells(),
+        ]),
+        freshBlock(october, 2, [
+          freshScheduleCells(),
+          freshScheduleCells({ 1: 'Pomiędzy' }),
+          freshScheduleCells(),
+        ]),
+      ],
+    );
+    const ranges = gas.harmonogramSearchRateRanges_(writes);
+    expect(ranges.map((item) => item.range)).toEqual([
+      `'${september}'!L2:M2`,
+      `'${october}'!L4:M4`,
+    ]);
+    expect(ranges.map((item) => item.values)).toEqual([
+      [[gas.approveZlotyFromGrosze_(1250), gas.approveZlotyFromGrosze_(300)]],
+      [[gas.approveZlotyFromGrosze_(1500), gas.approveZlotyFromGrosze_(100)]],
+    ]);
+    for (const item of ranges) {
+      const match = /!([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(item.range);
+      expect(match).not.toBeNull();
+      const from = Number(match?.[2]);
+      const to = Number(match?.[4]);
+      expect(from).toBe(to);
+      expect(from < 3 && to > 3).toBe(false);
+    }
   });
 });
 

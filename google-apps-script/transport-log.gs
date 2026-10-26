@@ -20,6 +20,10 @@
  *   Tuż przed zapisem pomija wiersz już rozliczony, z transportem „nie” albo ze zmienionym kluczem.
  *   Inaczej nic nie zapisuje.
  *   To samo POST { action: settlementSearch, … }.
+ * GET ?action=settlementInvoices&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
+ *   Ten sam zakres co Szukaj. Tylko wiersze Rozliczony=tak, z numerem faktury i kosztem z arkusza.
+ *   tryb=harmonogram czyta rejestr Harmonogramu. Nic nie zapisuje, bez locka.
+ *   To samo POST { action: settlementInvoices, … }.
  * POST { action: syncZestawienieHarmonogram, dataOd?, dataDo? }
  *   Agreguje odebrane + dni podjazdu z Bazy cen → „zestawienie z harmonogramu”.
  *   Domyślne okno: 1. bieżącego miesiąca → dziś. Rozliczony=tak nie nadpisuje.
@@ -357,6 +361,9 @@ function doGet(e) {
     if (action === 'settlementSearch') {
       return jsonResponse(settlementSearch_(e.parameter));
     }
+    if (action === 'settlementInvoices') {
+      return jsonResponse(settlementInvoices_(e.parameter));
+    }
     if (action === 'settlementStats') {
       return jsonResponse(settlementStats_(e.parameter));
     }
@@ -382,6 +389,13 @@ function doPost(e) {
   if (body && String(body.action || '') === 'settlementSearch') {
     try {
       return jsonResponse(settlementSearch_(body));
+    } catch (err) {
+      return jsonResponse({ ok: false, error: String(err) }, 500);
+    }
+  }
+  if (body && String(body.action || '') === 'settlementInvoices') {
+    try {
+      return jsonResponse(settlementInvoices_(body));
     } catch (err) {
       return jsonResponse({ ok: false, error: String(err) }, 500);
     }
@@ -3720,38 +3734,31 @@ function settlementSearchHarmonogram_(query) {
 }
 
 /**
- * Wiersz nadal jest tym odczytanym podjazdem.
- * Rozliczony tak, transport nie albo inny adres, data lub podwykonawca — bez zapisu.
+ * Podgląd faktur. Ten sam filtr zakresu co Szukaj, tylko Rozliczony=tak.
+ * Harmonogram czyta rejestr zestawienia i nic nie zapisuje.
  */
-function harmonogramSearchRowStillOpen_(sheet, row) {
-  var sheetRow = row && row.sheetRow;
-  if (!sheet || !sheetRow || sheetRow < 2) {
-    return false;
+function settlementInvoices_(query) {
+  var tryb = settlementText_(query && query.tryb).toLowerCase();
+  var schedule = tryb === 'harmonogram' || tryb === 'schedule';
+  if (schedule) {
+    return buildSettlementInvoices_(
+      query,
+      readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.kosztPerWorek),
+      true,
+    );
   }
-  var cells = sheet.getRange(sheetRow, 1, 1, SCHEDULE_COL.rozliczony).getValues()[0];
-  if (settlementFoldPl_(cells[SCHEDULE_COL.adres - 1]) !== settlementFoldPl_(row.address)) {
-    return false;
-  }
-  if (settlementDateText_(cells[SCHEDULE_COL.dataOdbioru - 1]) !== settlementDateText_(row.pickupDate)) {
-    return false;
-  }
-  if (
-    settlementFoldPl_(cells[SCHEDULE_COL.ktoOdbiera - 1]) !== settlementFoldPl_(row.contractor)
-  ) {
-    return false;
-  }
-  if (settlementFlag_(cells[SCHEDULE_COL.rozliczony - 1]) === 'tak') {
-    return false;
-  }
-  if (settlementFlag_(cells[SCHEDULE_COL.transportOdbył - 1]) === 'nie') {
-    return false;
-  }
-  return true;
+  return buildSettlementInvoices_(
+    query,
+    readAllRegisterSettlementCells_('report', COL.kosztPerWorek),
+    false,
+  );
 }
 
 /**
  * Kolumny 12–13 z kwot, które odczyt właśnie policzył. Trasy nie rusza.
  * Lock obejmuje ponowny odczyt i zapis, ten sam co Zatwierdź.
+ * Jeden values.batchUpdate na listę. Gdy nie wróci 2xx, ta sama lista idzie pętlą setValues.
+ * Ręczna edycja tych dwóch komórek w trakcie blokady może zostać nadpisana całym zapisem.
  */
 function writeHarmonogramSearchRates_(rows) {
   if (!rows || !rows.length) {
@@ -3761,23 +3768,88 @@ function writeHarmonogramSearchRates_(rows) {
   lock.waitLock(30000);
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var byName = {};
+    var names = [];
     var i;
     for (i = 0; i < rows.length; i++) {
       var row = rows[i];
-      var sheet = row.sheetName ? ss.getSheetByName(row.sheetName) : null;
-      if (!harmonogramSearchRowStillOpen_(sheet, row)) {
+      if (!row || !row.sheetName || !row.sheetRow || row.sheetRow < 2) {
         continue;
       }
-      sheet.getRange(row.sheetRow, SCHEDULE_COL.stawkaPodjazdu, 1, 2).setValues([
-        [
-          row.pickupRate == null ? '' : approveZlotyFromGrosze_(row.pickupRate),
-          row.bagRate == null ? '' : approveZlotyFromGrosze_(row.bagRate),
-        ],
-      ]);
+      var name = String(row.sheetName);
+      if (!byName[name]) {
+        byName[name] = { min: row.sheetRow, max: row.sheetRow };
+        names.push(name);
+      } else {
+        if (row.sheetRow < byName[name].min) {
+          byName[name].min = row.sheetRow;
+        }
+        if (row.sheetRow > byName[name].max) {
+          byName[name].max = row.sheetRow;
+        }
+      }
+    }
+    var fresh = [];
+    for (i = 0; i < names.length; i++) {
+      var sheetName = names[i];
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) {
+        continue;
+      }
+      var span = byName[sheetName];
+      fresh.push({
+        sheetName: sheetName,
+        startRow: span.min,
+        values: sheet
+          .getRange(span.min, 1, span.max - span.min + 1, SCHEDULE_COL.rozliczony)
+          .getValues(),
+      });
+    }
+    var writes = harmonogramSearchRateWrites_(rows, fresh);
+    if (!writes.length) {
+      return;
+    }
+    var posted = false;
+    try {
+      posted = postHarmonogramSearchRates_(ss.getId(), harmonogramSearchRateRanges_(writes));
+    } catch (batchErr) {
+      posted = false;
+    }
+    if (!posted) {
+      for (i = 0; i < writes.length; i++) {
+        var write = writes[i];
+        var target = ss.getSheetByName(write.sheetName);
+        if (!target) {
+          continue;
+        }
+        target.getRange(write.sheetRow, SCHEDULE_COL.stawkaPodjazdu, 1, 2).setValues([write.values]);
+      }
     }
   } finally {
     lock.releaseLock();
   }
+}
+
+/** values.batchUpdate, ten sam token co postTableExpand_. false, gdy status nie jest 2xx. */
+function postHarmonogramSearchRates_(spreadsheetId, data) {
+  if (!data || !data.length) {
+    return true;
+  }
+  var token = ScriptApp.getOAuthToken();
+  var res = UrlFetchApp.fetch(
+    'https://sheets.googleapis.com/v4/spreadsheets/' +
+      encodeURIComponent(spreadsheetId) +
+      '/values:batchUpdate',
+    {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ valueInputOption: 'RAW', data: data }),
+      muteHttpExceptions: true,
+    },
+  );
+  var code = res.getResponseCode();
+  return code >= 200 && code < 300;
 }
 
 /**
@@ -3845,6 +3917,54 @@ function readOdebraneSheetRows_(sheet) {
 }
 
 /**
+ * Odczyt worków tylko dla Statystyk. Sync zostaje przy readOdebraneSheetRows_.
+ * Nagłówek w pełnej szerokości, wiersze od A do ostatniej nazwy używanej przez grupowanie.
+ * Brak wymaganego nagłówka = pusta lista, bez wyjątku.
+ */
+function readSettlementStatsOdebraneRows_(sheet) {
+  if (!sheet) {
+    return { headers: [], rows: [] };
+  }
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) {
+    return { headers: [], rows: [] };
+  }
+  var headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headers = [];
+  var h;
+  for (h = 0; h < headerValues.length; h++) {
+    headers.push(settlementText_(headerValues[h]));
+  }
+  var width = settlementStatsOdebraneReadWidth_(headers);
+  if (width < 1) {
+    return { headers: [], rows: [] };
+  }
+  if (width > lastCol) {
+    width = lastCol;
+  }
+  var trimmed = [];
+  for (h = 0; h < width; h++) {
+    trimmed.push(headers[h]);
+  }
+  if (lastRow < 2) {
+    return { headers: trimmed, rows: [] };
+  }
+  var values = sheet.getRange(2, 1, lastRow - 1, width).getValues();
+  var rows = [];
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var cells = [];
+    var c;
+    for (c = 0; c < width; c++) {
+      cells.push(values[i][c] != null ? values[i][c] : '');
+    }
+    rows.push(cells);
+  }
+  return { headers: trimmed, rows: rows };
+}
+
+/**
  * Odczyt Statystyk. Nie bierze locka i nic nie zapisuje.
  * Brak zakładki Baza stawek to pusta lista stawek, nie nowa zakładka.
  * Worki Harmonogram: zakładka „odebrane z harmonogramu” (1 wiersz = 1 worek).
@@ -3857,7 +3977,7 @@ function settlementStats_(query) {
     query,
     readAllRegisterSettlementCells_('report', COL.kosztPerWorek),
     readSettlementCells_(rateSheet, 5),
-    readOdebraneSheetRows_(odebrane),
+    readSettlementStatsOdebraneRows_(odebrane),
   );
 }
 
@@ -4154,6 +4274,7 @@ function mapSettlementRegisterRow_(sheetRow, cells, sheetName) {
     pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
     bagRate: settlementAmountToGrosze_(settlementCell_(cells, 13)),
     settled: settlementFlag_(settlementCell_(cells, 14)) === 'tak',
+    invoice: settlementText_(settlementCell_(cells, 15)),
     receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 16)),
     costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 17)),
   };
@@ -4180,6 +4301,7 @@ function mapSettlementScheduleRegisterRow_(sheetRow, cells, sheetName) {
     pickupRate: settlementAmountToGrosze_(settlementCell_(cells, 11)),
     bagRate: settlementAmountToGrosze_(settlementCell_(cells, 12)),
     settled: settlementFlag_(settlementCell_(cells, 13)) === 'tak',
+    invoice: settlementText_(settlementCell_(cells, 14)),
     receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 15)),
     costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 16)),
   };
@@ -4222,6 +4344,24 @@ function settlementPublicRow_(mapped) {
   };
 }
 
+/** Koszt z arkusza, bez przeliczania. Pusty numer faktury zostaje pusty. */
+function settlementInvoicePublicRow_(mapped) {
+  return {
+    sheetName: mapped.sheetName || '',
+    sheetRow: mapped.sheetRow,
+    transportNumber: mapped.transportNumber,
+    address: mapped.address,
+    shopName: mapped.shopName,
+    pickupDate: mapped.pickupDate,
+    contractor: mapped.contractor,
+    bagCount: mapped.bagCount,
+    routeName: mapped.routeName,
+    invoice: mapped.invoice || '',
+    receptionCost: mapped.receptionCost,
+    costPerBag: mapped.costPerBag,
+  };
+}
+
 function settlementStatsPublicRow_(mapped) {
   return {
     sheetName: mapped.sheetName || '',
@@ -4240,6 +4380,7 @@ function settlementStatsPublicRow_(mapped) {
     happened: !mapped.didNotHappen,
     receptionCost: mapped.receptionCost,
     costPerBag: mapped.costPerBag,
+    invoice: mapped.invoice || '',
     mode: mapped.mode === 'schedule' ? 'schedule' : 'report',
   };
 }
@@ -4361,6 +4502,41 @@ function buildSettlementRead_(query, register, rates) {
     rateRows.push(rate);
   }
   return { ok: true, rows: rows, rates: rateRows };
+}
+
+/** Rozliczony=tak w zakresie. Nierozliczone i inny podwykonawca odpadają. Bez zapisu. */
+function buildSettlementInvoices_(query, register, schedule) {
+  var error = settlementQueryError_(query);
+  if (error) {
+    return { ok: false, error: error };
+  }
+  var q = settlementNormalizeQuery_(query);
+  var dataOd = q.dataOd ? settlementDateText_(q.dataOd) : '';
+  var dataDo = settlementDateText_(q.dataDo);
+  var who = schedule ? settlementFoldPl_(q.podwykonawca) : q.podwykonawca;
+  var rows = [];
+  var sourceRows = register || [];
+  var i;
+  for (i = 0; i < sourceRows.length; i++) {
+    var item = sourceRows[i];
+    var mapped = schedule
+      ? mapSettlementScheduleRegisterRow_(item.sheetRow, item.cells, item.sheetName)
+      : mapSettlementRegisterRow_(item.sheetRow, item.cells, item.sheetName);
+    if (!mapped || !mapped.settled) {
+      continue;
+    }
+    var contractorOk = schedule
+      ? settlementFoldPl_(mapped.contractor) === who
+      : mapped.contractor === who;
+    if (!contractorOk) {
+      continue;
+    }
+    if (!settlementDateInRange_(mapped.pickupDate, dataOd, dataDo)) {
+      continue;
+    }
+    rows.push(settlementInvoicePublicRow_(mapped));
+  }
+  return { ok: true, rows: rows };
 }
 
 function settlementStatsNormalizeQuery_(query) {
@@ -5244,6 +5420,173 @@ function scheduleSyncDefaultWindow_() {
     dataOd: settlementFormatDate_(od.getUTCFullYear(), od.getUTCMonth() + 1, od.getUTCDate()),
     dataDo: settlementFormatDate_(y, m, d),
   };
+}
+
+/**
+ * Wiersz nadal jest tym odczytanym podjazdem.
+ * Komórki to kolumny 1–14. Rozliczony tak, transport nie albo inny adres, data lub podwykonawca — bez zapisu.
+ */
+function harmonogramSearchRowStillOpen_(cells, row) {
+  if (!row || !row.sheetRow || row.sheetRow < 2 || !cells) {
+    return false;
+  }
+  if (settlementFoldPl_(cells[SCHEDULE_COL.adres - 1]) !== settlementFoldPl_(row.address)) {
+    return false;
+  }
+  if (settlementDateText_(cells[SCHEDULE_COL.dataOdbioru - 1]) !== settlementDateText_(row.pickupDate)) {
+    return false;
+  }
+  if (settlementFoldPl_(cells[SCHEDULE_COL.ktoOdbiera - 1]) !== settlementFoldPl_(row.contractor)) {
+    return false;
+  }
+  if (settlementFlag_(cells[SCHEDULE_COL.rozliczony - 1]) === 'tak') {
+    return false;
+  }
+  if (settlementFlag_(cells[SCHEDULE_COL.transportOdbył - 1]) === 'nie') {
+    return false;
+  }
+  return true;
+}
+
+/** Liczba już leżąca w komórce albo pusta komórka przy braku stawki. Tekst nie jest tą liczbą. */
+function harmonogramSearchRateCellHeld_(current, next) {
+  if (next === '') {
+    return current == null || current === '';
+  }
+  return typeof current === 'number' && current === next;
+}
+
+function harmonogramSearchRateValue_(grosze) {
+  return grosze == null ? '' : approveZlotyFromGrosze_(grosze);
+}
+
+/**
+ * Lista zapisów Szukaj Harmonogramu: nazwa zakładki, numer wiersza i dwie wartości.
+ * fresh: [{ sheetName, startRow, values }] — values[i] to kolumny 1–14 wiersza startRow+i.
+ */
+function harmonogramSearchRateWrites_(rows, fresh) {
+  var blocks = {};
+  var list = fresh || [];
+  var i;
+  for (i = 0; i < list.length; i++) {
+    var block = list[i];
+    if (block && block.sheetName) {
+      blocks[block.sheetName] = block;
+    }
+  }
+  var out = [];
+  var source = rows || [];
+  for (i = 0; i < source.length; i++) {
+    var row = source[i];
+    if (!row || !row.sheetName || !row.sheetRow || row.sheetRow < 2) {
+      continue;
+    }
+    var found = blocks[row.sheetName];
+    if (!found || !found.values || found.startRow == null) {
+      continue;
+    }
+    var offset = row.sheetRow - found.startRow;
+    if (offset < 0 || offset >= found.values.length) {
+      continue;
+    }
+    var cells = found.values[offset];
+    if (!harmonogramSearchRowStillOpen_(cells, row)) {
+      continue;
+    }
+    var pickup = harmonogramSearchRateValue_(row.pickupRate);
+    var bag = harmonogramSearchRateValue_(row.bagRate);
+    if (
+      harmonogramSearchRateCellHeld_(cells[SCHEDULE_COL.stawkaPodjazdu - 1], pickup) &&
+      harmonogramSearchRateCellHeld_(cells[SCHEDULE_COL.stawkaWorka - 1], bag)
+    ) {
+      continue;
+    }
+    out.push({
+      sheetName: String(row.sheetName),
+      sheetRow: row.sheetRow,
+      values: [pickup, bag],
+    });
+  }
+  return out;
+}
+
+function harmonogramColumnLetter_(col) {
+  var n = col;
+  var letters = '';
+  while (n > 0) {
+    var rem = (n - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
+}
+
+function harmonogramQuoteSheet_(name) {
+  return "'" + String(name == null ? '' : name).replace(/'/g, "''") + "'";
+}
+
+/** Jedna para stawek na wiersz. Bez prostokąta zasłaniającego obce wiersze. */
+function harmonogramSearchRateRanges_(writes) {
+  var out = [];
+  var list = writes || [];
+  var start = harmonogramColumnLetter_(SCHEDULE_COL.stawkaPodjazdu);
+  var end = harmonogramColumnLetter_(SCHEDULE_COL.stawkaWorka);
+  var i;
+  for (i = 0; i < list.length; i++) {
+    var write = list[i];
+    out.push({
+      range:
+        harmonogramQuoteSheet_(write.sheetName) +
+        '!' +
+        start +
+        write.sheetRow +
+        ':' +
+        end +
+        write.sheetRow,
+      values: [write.values],
+    });
+  }
+  return out;
+}
+
+/**
+ * Ile kolumn Statystyki czytają z „odebrane z harmonogramu”.
+ * 0, gdy brakuje nagłówka wymaganego przez grupowanie worków.
+ * Szerokość sięga ostatniej z nazw (włącznie ze Sklepem, gdy jest).
+ */
+function settlementStatsOdebraneReadWidth_(headers) {
+  var list = headers || [];
+  var required = [
+    'Kod pocztowy',
+    'Miasto',
+    'Ulica',
+    'Numer budynku',
+    'Firma transportowa',
+    'Data zamknięcia worka',
+  ];
+  var i;
+  for (i = 0; i < required.length; i++) {
+    if (settlementHeaderIndex_(list, required[i]) < 0) {
+      return 0;
+    }
+  }
+  var names = [
+    'Kod pocztowy',
+    'Miasto',
+    'Ulica',
+    'Numer budynku',
+    'Firma transportowa',
+    'Data zamknięcia worka',
+    'Sklep',
+  ];
+  var last = -1;
+  for (i = 0; i < names.length; i++) {
+    var ix = settlementHeaderIndex_(list, names[i]);
+    if (ix > last) {
+      last = ix;
+    }
+  }
+  return last + 1;
 }
 /* settlement-read-pure:end */
 

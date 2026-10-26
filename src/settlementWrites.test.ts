@@ -1487,9 +1487,13 @@ describe("zapis w transport-log.gs", () => {
     expect(postFn.indexOf("settlementSearch")).toBeLessThan(lockAt);
     const rateWrite = functionSource("writeHarmonogramSearchRates_");
     const rateLock = rateWrite.indexOf("waitLock");
-    expect(rateWrite.indexOf("harmonogramSearchRowStillOpen_")).toBeGreaterThan(rateLock);
+    expect(rateWrite.indexOf("harmonogramSearchRateWrites_")).toBeGreaterThan(rateLock);
     expect(rateWrite.indexOf("setValues")).toBeGreaterThan(rateLock);
     expect(rateWrite.indexOf("releaseLock")).toBeGreaterThan(rateWrite.indexOf("setValues"));
+    const harmonogramSearch = functionSource("settlementSearchHarmonogram_");
+    const writeCall = harmonogramSearch.indexOf("writeHarmonogramSearchRates_");
+    expect(writeCall).toBeGreaterThan(-1);
+    expect(writeCall).toBeLessThan(harmonogramSearch.indexOf("return result"));
     const guard = functionSource("harmonogramSearchRowStillOpen_");
     expect(guard).toContain("SCHEDULE_COL.rozliczony");
     expect(guard).toContain("SCHEDULE_COL.transportOdbył");
