@@ -163,6 +163,25 @@ describe('emptyReceptionCostForRow_', () => {
     expect(gas.emptyReceptionCostForRow_(values, 0, layout)).toEqual({ zloty: 0, perZloty: 0 });
   });
 
+  it('test_emptyReceptionCost_zero_on_settled_route_is_recalculated', () => {
+    const values = [
+      row({
+        worki: 5,
+        trasa: 'RPM-05.10.26-01_2',
+        stawkaTrasy: 1200,
+        faktura: '37/10/2026/FVA',
+        koszt: 0,
+        per: 0,
+      }),
+    ];
+    expect(gas.emptyReceptionCostForRow_(values, 0, layout)).toEqual({ zloty: 1200, perZloty: 240 });
+  });
+
+  it('test_emptyReceptionCost_zero_already_matching_stays', () => {
+    const values = [row({ transport: 'nie', trasa: 'Trasa', stawkaTrasy: 1200, koszt: 0, per: 0 })];
+    expect(gas.emptyReceptionCostForRow_(values, 0, layout)).toBeNull();
+  });
+
   it('test_receptionCostEditTouches_rate_column_only', () => {
     expect(gas.receptionCostEditTouches_(layout, layout.stawkaTrasy, layout.stawkaTrasy)).toBe(true);
     expect(gas.receptionCostEditTouches_(layout, layout.koszt, layout.perWorek)).toBe(false);

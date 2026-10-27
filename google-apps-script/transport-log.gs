@@ -47,7 +47,7 @@
  *   Wiersza spoza zaznaczenia nie rusza.
  *   Na żywy arkusz approve wchodzi w W1, nie w M6. Nagłówków rejestru nie wpisuje.
  *   Pusty Koszt odbioru przy Rozliczony=tak uzupełnia onEdit i fillEmptyReceptionCosts.
- *   Już wpisanej kwoty ta ścieżka nie nadpisuje. Udział trasy: stawka tego wiersza
+ *   Zero w tej kolumnie liczy się od nowa. Kwota inna niż zero zostaje. Udział trasy: stawka tego wiersza
  *   przez liczbę odbytych sklepów tej trasy, tego „Kto odbiera” i tego numeru faktury.
  * POST (body JSON, Content-Type: text/plain):
  *   (brak mode) — append wiersza transportu + atomowa numeracja
@@ -7794,15 +7794,15 @@ function migrateScheduleTransportOdbyłColumn_() {
 }
 
 /**
- * Pusty Koszt odbioru na wierszu Rozliczony=tak.
+ * Pusty albo zerowy Koszt odbioru na wierszu Rozliczony=tak.
  * Edycja stawki, worków, trasy, faktury albo „kto odbiera” w arkuszu uzupełnia od razu.
- * Kwota już wpisana zostaje. Nierozliczonego wiersza nie rusza.
+ * Kwota inna niż zero zostaje. Nierozliczonego wiersza nie rusza.
  */
 function onEdit(e) {
   fillEmptyReceptionCostOnEdit_(e);
 }
 
-/** Ręcznie z listy Uruchom: puste koszty na rozliczonych wierszach wszystkich zakładek rejestru. */
+/** Ręcznie z listy Uruchom: puste i zerowe koszty na rozliczonych wierszach wszystkich zakładek rejestru. */
 function fillEmptyReceptionCosts() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheets = ss.getSheets();
@@ -7821,7 +7821,9 @@ function fillEmptyReceptionCosts() {
       names.push(sheet.getName() + ': ' + String(count));
     }
   }
-  return { ok: true, filled: filled, sheets: names };
+  var out = { ok: true, filled: filled, sheets: names };
+  Logger.log(JSON.stringify(out));
+  return out;
 }
 
 function fillEmptyReceptionCostOnEdit_(e) {
@@ -7962,7 +7964,11 @@ function fillEmptyReceptionCostsOnSheet_(sheet, layout, fromRow, toRow) {
 }
 
 function receptionCostCellEmpty_(value) {
-  return settlementAmountToGrosze_(value) == null && settlementText_(value) === '';
+  var grosze = settlementAmountToGrosze_(value);
+  if (grosze === 0) {
+    return true;
+  }
+  return grosze == null && settlementText_(value) === '';
 }
 
 function receptionCostCell_(cells, col) {
@@ -8000,7 +8006,7 @@ function receptionRouteHeadcount_(values, layout, index) {
 }
 
 /**
- * null: nie uzupełniać (nierozliczony albo koszt już jest).
+ * null: nie uzupełniać (nierozliczony, kwota inna niż zero, albo zero już zgodne z wyliczeniem).
  * Trasa: udział ze stawki tego wiersza. Podjazd: stawka podjazdu plus worki.
  * Pusta stawka worka daje opłatę za worki 0. Transport „nie” daje koszt 0.
  */
@@ -8040,6 +8046,9 @@ function emptyReceptionCostForRow_(values, index, layout) {
     }
   }
   var cost = leg + bagFee;
+  if (settlementAmountToGrosze_(receptionCostCell_(cells, layout.koszt)) === cost) {
+    return null;
+  }
   return {
     zloty: approveZlotyFromGrosze_(cost),
     perZloty: approveZlotyFromGrosze_(approvePerBagGrosze_(cost, bags)),
