@@ -1540,9 +1540,10 @@ showMapErrorCard({
       expect(setIcon).toHaveBeenLastCalledWith({ fill: '#97F0C7', highlighted: true });
     });
 
-    it('test_buildMapHtml_should_cluster_by_default_and_debounce_search_input', () => {
+    it('test_buildMapHtml_should_leave_clustering_off_by_default_and_debounce_search_input', () => {
       const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
-      expect(html).toContain('id="map-cluster-toggle" checked');
+      expect(html).toContain('id="map-cluster-toggle"');
+      expect(html).not.toContain('id="map-cluster-toggle" checked');
       expect(html).toContain(`searchInputTimer = setTimeout(applyAddressSearch, ${MAP_SEARCH_INPUT_DEBOUNCE_MS});`);
       expect(html).not.toContain("addEventListener('input', applyAddressSearch)");
     });

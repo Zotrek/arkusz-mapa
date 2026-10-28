@@ -174,7 +174,7 @@ export function bootstrapBrowserScript({
       : '';
     var clusterToggleHtml =
       '<div class="map-cluster-filter">' +
-      '<label for="map-cluster-toggle"><input type="checkbox" id="map-cluster-toggle" checked /> Grupuj nachodzące punkty</label>' +
+      '<label for="map-cluster-toggle"><input type="checkbox" id="map-cluster-toggle" /> Grupuj nachodzące punkty</label>' +
       '</div>';
     var bulkPanelHtml = wordDocEnabled
       ? '<div id="map-bulk-panel" class="map-bulk-panel" hidden>' +
