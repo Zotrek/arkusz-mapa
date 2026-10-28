@@ -1548,6 +1548,40 @@ showMapErrorCard({
       expect(html).not.toContain("addEventListener('input', applyAddressSearch)");
     });
 
+    it('test_isClusteringEnabled_when_map_first_opens_should_read_unchecked_toggle', () => {
+      const html = buildMapHtml(sampleGeocoded(), sampleUncertainGeocoded(), 'https://example.com/woj.json');
+      const tag = html.match(/<input\b[^>]*\bid="map-cluster-toggle"[^>]*>/);
+      expect(tag).not.toBeNull();
+      const checked = tag![0]
+        .replace(/^<input\b/i, '')
+        .replace(/\/?>$/, '')
+        .trim()
+        .split(/\s+/)
+        .some((attr) => attr === 'checked' || attr.startsWith('checked='));
+      const enabledSrc = html.slice(
+        html.indexOf('function isClusteringEnabled('),
+        html.indexOf('function setMarkerVisible('),
+      );
+      const modeSrc = html.slice(html.indexOf('function applyClusteringMode('), html.indexOf('var markerEntries'));
+      const addLayer = vi.fn();
+      const loaded = runInNewContext(
+        `${enabledSrc}\n${modeSrc}\n({ isClusteringEnabled: isClusteringEnabled, applyClusteringMode: applyClusteringMode });`,
+        {
+          document: {
+            getElementById: (id: string) => (id === 'map-cluster-toggle' ? { checked } : null),
+          },
+          map: { hasLayer: () => false, addLayer, removeLayer: vi.fn() },
+          markersCluster: {},
+          applyAddressSearch: vi.fn(),
+        },
+      ) as { isClusteringEnabled: () => boolean; applyClusteringMode: () => void };
+
+      expect(checked).toBe(false);
+      expect(loaded.isClusteringEnabled()).toBe(false);
+      loaded.applyClusteringMode();
+      expect(addLayer).not.toHaveBeenCalled();
+    });
+
     it('test_buildMapHtml_route_fields_then_should_be_caught_in_single_and_bulk_generate', () => {
       const html = protocolHtml();
       expect(html).toContain(".catch(function (err) { docGenerateCrashed_(err, 'map/browser/docGenerate.ts runDocGenerate'); });");

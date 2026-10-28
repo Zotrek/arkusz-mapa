@@ -65,5 +65,6 @@ npm test
 - Zakładka `Duplikaty plomb` jest nadpisywana przy każdym uruchomieniu.
 - Zakładka `Błędne adresy` zawiera rekordy, których nie udało się geokodować.
 - Mapa HTML jest generowana jako nowy plik w `OUTPUT_DIR`. Podkład mapy to **OpenStreetMap** (`tile.openstreetmap.org`).
+- Po otwarciu i po odświeżeniu mapy checkbox **Grupuj nachodzące punkty** jest odznaczony. Punkty są pokazywane osobno, dopóki użytkownik sam nie włączy grupowania. Stan checkboxa nie jest zapamiętywany.
 
 Szczegóły geokodowania (Nominatim, warianty zapytań, analiza adresów): `dev_docs/OSM_adresy_analiza.md`.
