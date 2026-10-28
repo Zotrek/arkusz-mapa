@@ -113,7 +113,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 | POST | `mode=saveHarmonogram` | Cena za trasę, miejsce zrzutu, a przy Bolęcinie okno awizacji, awizacja, rodzaj zbiórki, rodzaj transportu, spodziewane worki |
 | POST | `mode=ungroupHarmonogram` | Czyści id sklepu. Nagłówka harmonogramu nie usuwa |
 | POST | `mode=awizujBolecin` | Dopisuje daty bieżącego miesiąca (od 22. także następnego) do arkusza Bolęcin. Jeden wiersz na harmonogram + data. Ta sama trójka adres + data + kto nie wchodzi drugi raz. Puste worki zostają puste. Wymaga Script property `BOLECIN_SHEETS_ID` |
-| POST | protokół z `awizujBolecin: true` | Gdy miejsce zrzutu (etykieta albo `miejsceZrzutuDane`) to Bolęcin/Biosystem, **po** zapisie rejestru dopisuje **jeden** wiersz tego odbioru do arkusza Bolęcin. Nr rejestracyjny trafia do kolumny `awizacja`, plus okno awizacji i rodzaj transportu. Reszta (adres, nazwa, data, kto, miejsce, rodzaj zbiórki, worki z `iloscWorkow`) idzie z protokołu. Zbiorcza awizacja podaje `bolecinAdres`, `bolecinNazwa`, `bolecinRodzajZbiorki` i `bolecinWorki` (suma worków) — wtedy **jeden** wspólny wiersz, nie osobny na każdy protokół. Rejestr transportu zostaje osobnym wierszem na protokół, ze swoją liczbą worków. Ta sama trójka adres + data + kto **nadpisuje** istniejący wiersz. Błąd Bolęcina nie cofa wiersza rejestru: odpowiedź ma `numer` i `bolecinError`. |
+| POST | protokół z `awizujBolecin: true` | Gdy miejsce zrzutu (etykieta albo `miejsceZrzutuDane`) to Bolęcin/Biosystem, **po** zapisie rejestru dopisuje **jeden** wiersz tego odbioru do arkusza Bolęcin. Nr rejestracyjny trafia do kolumny `awizacja`, plus okno awizacji i rodzaj transportu. Data, kto, miejsce, rodzaj zbiórki i worki idą z protokołu (`iloscWorkow`; w zbiorczej `bolecinRodzajZbiorki` i `bolecinWorki` jako suma) — jeden wspólny wiersz, nie osobny na każdy protokół. Rejestr transportu zostaje osobnym wierszem na protokół, ze swoją liczbą worków. Ta sama trójka adres + data + kto **nadpisuje** istniejący wiersz. Błąd Bolęcina nie cofa wiersza rejestru: odpowiedź ma `numer` i `bolecinError`. Adres i nazwa kontrahenta: założenie z 2026-10-28 (sekcja „Założenie” niżej). |
 
 | POST | JSON w body (`Content-Type: text/plain`) | Atomowy zapis wiersza (`LockService`) + zwraca `numer`. Opcjonalne `numer` w body — jeśli użytkownik wpisał ręcznie, ten numer trafia do arkusza zamiast automatycznego |
 
@@ -239,7 +239,25 @@ Bez `TRANSPORT_WEBAPP_URL` mapa generuje protokoły **bez** zapisu do arkusza (n
 
 5. **Pobierz .docx** — zapis wiersza w arkuszu, potem pobranie Worda z numerem z serwera. Jeśli użytkownik **zmieni** numer w polu (względem podglądu), zapisany i w dokumencie będzie ten wpisany ręcznie; bez zmiany — atomowa numeracja po stronie serwera. Pola **Komentarz 1** / **Komentarz 2** w modalu trafiają tylko do arkusza (kolumny 19–20), nie do protokołu Word.
 
-6. **Bolęcin** — gdy miejsce dostawy to Bolęcin lub Biosystem, przed generowaniem otwiera się okno awizacji. **Ile worków** jest uzupełnione liczbą worków z protokołu; można ją poprawić. W zbiorczym jest **jedna suma** worków ze wszystkich protokołów awizowanych razem (nie osobna liczba przy każdym punkcie) i do arkusza Bolęcin wchodzi **jeden** wspólny wiersz: sklejone adresy i nazwy, zsumowane worki, wspólne okno, nr rejestracyjny i rodzaj transportu. Każdy protokół nadal ma własny wiersz w rejestrze transportu, ze swoją liczbą worków. **Generuj bez awizacji** robi same protokoły. Protokół i wiersz rejestru powstają także wtedy, gdy dopisanie do Bolęcina się nie uda — wtedy komunikat podaje `bolecinError`.
+6. **Bolęcin** — gdy miejsce dostawy to Bolęcin lub Biosystem, przed generowaniem otwiera się okno awizacji. **Ile worków** jest uzupełnione liczbą worków z protokołu; można ją poprawić. W zbiorczym jest **jedna suma** worków ze wszystkich protokołów awizowanych razem (nie osobna liczba przy każdym punkcie) i do arkusza Bolęcin wchodzi **jeden** wspólny wiersz: adres i nazwa z pól okna, zsumowane worki, wspólne okno, nr rejestracyjny i rodzaj transportu. Każdy protokół nadal ma własny wiersz w rejestrze transportu, ze swoją liczbą worków. **Generuj bez awizacji** robi same protokoły. Protokół i wiersz rejestru powstają także wtedy, gdy dopisanie do Bolęcina się nie uda — wtedy komunikat podaje `bolecinError`. Adres i nazwa w tym oknie: założenie poniżej.
+
+
+
+### Założenie (2026-10-28): adres i nazwa w oknie awizacji protokołu
+
+Przyjęte 2026-10-28.
+
+W oknie **Awizacja do Bolęcina** na dole są dwa puste pola do wpisania ręcznie: **Adres odbioru** (przy wielu protokołach podpis **Adresy odbioru**) oraz **Nazwa kontrahenta** (przy wielu: **Nazwy kontrahentów**). Z punktów mapy nic się do nich nie przepisuje.
+
+Wpis z tych pól trafia wyłącznie do arkusza Bolęcin, do kolumn **Adres odbioru** i **Nazwa kontrahenta / podmiot handlowy**. Puste pole zostawia pustą komórkę. Brak `bolecinAdres` albo `bolecinNazwa` w body też zostawia pustą komórkę — serwer nie podstawia `adresSklepu` ani `podmiotHandlowy`.
+
+Word oraz rejestr transportu i pozostałe arkusze dostają adres i nazwę z punktu, tak jak przy każdym innym miejscu dostawy.
+
+Poza tymi dwoma polami okno zostaje bez zmian: numer rejestracyjny, okno awizacji, rodzaj transportu, liczba worków, rodzaj zbiórki, data, kto odbiera, miejsce zrzutu.
+
+Awizacja z karty harmonogramu (`mode=awizujBolecin`) tego założenia nie obejmuje. Tam adresy i nazwy wchodzą z członków grupy.
+
+Klucz wiersza Bolęcin zostaje trójką adres + data + kto. Dwa wpisy z pustym adresem, tą samą datą i tym samym przewoźnikiem nadpisują jeden wiersz.
 
 
 

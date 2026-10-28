@@ -64,21 +64,15 @@ export function bolecinBrowserScript(): string {
       return unique.join('; ');
     }
     function collectBulkAwizacjaParts_() {
-      var adresyList = [];
-      var nazwyList = [];
       var rodzajeList = [];
       var worki = 0;
       (window.__docBulkPointJobs || []).forEach(function (job) {
         worki += (job.filteredSeals || []).length;
         var point = adresy[job.pointIdx];
         if (!point) return;
-        adresyList.push(point.adres || '');
-        nazwyList.push(point.podmiotHandlowy || (point.podmiotyHandlowe && point.podmiotyHandlowe[0]) || '');
         rodzajeList.push(aggregateRodzajZbiorkiFromSealRows(job.filteredSeals));
       });
       return {
-        adres: joinAwizacjaLabels_(adresyList),
-        nazwa: joinAwizacjaLabels_(nazwyList),
         rodzaj: joinAwizacjaLabels_(rodzajeList),
         worki: String(worki)
       };
@@ -91,14 +85,14 @@ export function bolecinBrowserScript(): string {
       payload.awizacja = choice.nr || '';
       payload.rodzajTransportu = choice.rodzaj || '';
       payload.miejsceZrzutuDane = (mdOpt && mdOpt.dane) || '';
+      payload.bolecinAdres = choice.adres || '';
+      payload.bolecinNazwa = choice.nazwa || '';
     }
     function assignBulkBolecinAwizacja_(payload, mdOpt) {
       var choice = window.__bolecinAwizacjaChoice;
       if (!choice || !choice.add || !miejsceIsBolecin_(mdOpt)) return;
       var parts = collectBulkAwizacjaParts_();
       assignBolecinAwizacja_(payload, mdOpt);
-      payload.bolecinAdres = parts.adres;
-      payload.bolecinNazwa = parts.nazwa;
       payload.bolecinRodzajZbiorki = parts.rodzaj;
       var edited = choice.worki == null ? '' : String(choice.worki).trim();
       payload.bolecinWorki = edited || parts.worki;
@@ -118,14 +112,20 @@ export function bolecinBrowserScript(): string {
       var workiInput = document.getElementById('bolecin-aw-worki');
       var hint = document.getElementById('bolecin-aw-hint');
       var workiHint = document.getElementById('bolecin-aw-worki-hint');
+      var adresInput = document.getElementById('bolecin-aw-adres');
+      var nazwaInput = document.getElementById('bolecin-aw-nazwa');
+      var adresLabel = document.getElementById('bolecin-aw-adres-label');
+      var nazwaLabel = document.getElementById('bolecin-aw-nazwa-label');
       var isBulk = window.__docModalMode === 'bulk';
+      if (adresInput) adresInput.value = '';
+      if (nazwaInput) nazwaInput.value = '';
+      if (adresLabel) adresLabel.textContent = isBulk ? 'Adresy odbioru' : 'Adres odbioru';
+      if (nazwaLabel) nazwaLabel.textContent = isBulk ? 'Nazwy kontrahentów' : 'Nazwa kontrahenta';
       if (isBulk) {
         var parts = collectBulkAwizacjaParts_();
         if (workiInput) workiInput.value = parts.worki;
         if (hint) hint.textContent = 'Te protokoły jadą do Bolęcina razem. Do arkusza wchodzi jeden wspólny wiersz, a worki są zsumowane.';
         if (workiHint) workiHint.textContent = 'Suma worków ze wszystkich protokołów. Można ją poprawić.';
-        bolecinSummaryLine_(box, 'Adresy odbioru', parts.adres);
-        bolecinSummaryLine_(box, 'Nazwy kontrahentów', parts.nazwa);
         bolecinSummaryLine_(box, 'Rodzaj zbiórki', parts.rodzaj);
         bolecinSummaryLine_(box, 'Protokoły', String((window.__docBulkPointJobs || []).length));
       } else {
@@ -134,9 +134,6 @@ export function bolecinBrowserScript(): string {
         var point = adresy[window.__currentDocPointIdx];
         var seals = window.__docFilteredSeals || (point && point.sealRows) || [];
         if (workiInput) workiInput.value = String(seals.length);
-        var podmiot = point ? (point.podmiotHandlowy || (point.podmiotyHandlowe && point.podmiotyHandlowe[0]) || '') : '';
-        bolecinSummaryLine_(box, 'Adres odbioru', point ? point.adres : '');
-        bolecinSummaryLine_(box, 'Nazwa kontrahenta', podmiot);
         bolecinSummaryLine_(box, 'Rodzaj zbiórki', aggregateRodzajZbiorkiFromSealRows(seals));
       }
       bolecinSummaryLine_(box, 'Data odbioru', form.dz);
@@ -168,7 +165,9 @@ export function bolecinBrowserScript(): string {
         nr: val('bolecin-aw-nr'),
         okno: val('bolecin-aw-okno'),
         rodzaj: val('bolecin-aw-transport'),
-        worki: val('bolecin-aw-worki')
+        worki: val('bolecin-aw-worki'),
+        adres: val('bolecin-aw-adres'),
+        nazwa: val('bolecin-aw-nazwa')
       };
     }
     function formForGenerate_() {

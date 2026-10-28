@@ -181,8 +181,8 @@ describe('harmonogramGroup gas parity', () => {
       }),
     ).toMatchObject({
       oknoAwizacji: '8:00–12:00',
-      adres: 'ul. Testowa 1',
-      nazwa: 'Firma',
+      adres: '',
+      nazwa: '',
       data: '10.10.2026',
       kto: 'Janex',
       miejsce: 'Bolęcin',
@@ -215,6 +215,56 @@ describe('harmonogramGroup gas parity', () => {
       worki: '7',
       kto: 'Janex',
       data: '10.10.2026',
+    });
+  });
+
+  it('test_protocolBolecinFields_when_manual_address_absent_should_leave_adres_and_nazwa_empty', () => {
+    expect(
+      gas.protocolBolecinFields_({
+        adresSklepu: 'ul. Testowa 1',
+        podmiotHandlowy: 'Firma',
+        dataOdbioru: '10.10.2026',
+        ktoOdbiera: 'Janex',
+        miejsceZrzutu: 'Bolęcin',
+        rodzajZbiorki: 'ręczna',
+        iloscWorkow: 4,
+      }),
+    ).toMatchObject({
+      adres: '',
+      nazwa: '',
+      data: '10.10.2026',
+      kto: 'Janex',
+      miejsce: 'Bolęcin',
+      rodzajZbiorki: 'ręczna',
+      worki: '4',
+    });
+  });
+
+  it('test_protocolBolecinFields_when_manual_fields_blank_should_not_fall_back_to_shop', () => {
+    expect(
+      gas.protocolBolecinFields_({
+        adresSklepu: 'ul. Testowa 1',
+        podmiotHandlowy: 'Firma',
+        bolecinAdres: '   ',
+        bolecinNazwa: ' \n ',
+      }),
+    ).toMatchObject({
+      adres: '',
+      nazwa: '',
+    });
+  });
+
+  it('test_protocolBolecinFields_when_manual_fields_typed_should_copy_them_to_bolecin_columns', () => {
+    expect(
+      gas.protocolBolecinFields_({
+        adresSklepu: 'ul. Testowa 1',
+        podmiotHandlowy: 'Firma',
+        bolecinAdres: '  Magazyn Bolęcin 1 ',
+        bolecinNazwa: '  Kontrahent Ręczny ',
+      }),
+    ).toMatchObject({
+      adres: 'Magazyn Bolęcin 1',
+      nazwa: 'Kontrahent Ręczny',
     });
   });
 

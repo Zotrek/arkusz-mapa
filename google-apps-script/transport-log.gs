@@ -86,9 +86,11 @@
  *   Wymaga Script property BOLECIN_SHEETS_ID (arkusz Bolęcin, edycja konta Web App).
  * POST protokołu z awizujBolecin: true (miejsce Bolęcin/Biosystem, także w miejsceZrzutuDane)
  *   dopisuje jeden wiersz tego odbioru do arkusza Bolęcin: okno awizacji, nr rejestracyjny
- *   w kolumnie awizacja, rodzaj transportu oraz adres, nazwa, data, kto, miejsce,
- *   rodzaj zbiórki i worki (iloscWorkow). Zbiorcza awizacja podaje bolecinAdres, bolecinNazwa,
- *   bolecinRodzajZbiorki i bolecinWorki (suma) — wtedy jeden wspólny wiersz, nie osobny na protokół.
+ *   w kolumnie awizacja, rodzaj transportu oraz data, kto, miejsce, rodzaj zbiórki i worki
+ *   (iloscWorkow). Kolumny Adres odbioru i Nazwa kontrahenta biorą wyłącznie bolecinAdres
+ *   i bolecinNazwa. Pusty string i brak klucza zostawiają pustą komórkę — bez podstawienia
+ *   adresSklepu ani podmiotHandlowy. Zbiorcza awizacja podaje bolecinRodzajZbiorki
+ *   i bolecinWorki (suma) — wtedy jeden wspólny wiersz, nie osobny na protokół.
  *   Ta sama trójka adres+data+kto nadpisuje istniejący wiersz.
  *   Błąd zapisu Bolęcina nie cofa wiersza rejestru: odpowiedź ma numer i bolecinError.
  * migrateRegisterLayoutRates_ — V1→V3 (wywołanie ręczne). V2→V3: migrateRegisterLayoutTransportOdbył.
@@ -3496,8 +3498,8 @@ function protocolBolecinFields_(body) {
   }
   return {
     oknoAwizacji: collapseText_(body.oknoAwizacji),
-    adres: prefer_(body.bolecinAdres, body.adresSklepu),
-    nazwa: prefer_(body.bolecinNazwa, body.podmiotHandlowy),
+    adres: collapseText_(body.bolecinAdres),
+    nazwa: collapseText_(body.bolecinNazwa),
     data: collapseText_(body.dataOdbioru),
     kto: collapseText_(body.ktoOdbiera),
     miejsce: collapseText_(body.miejsceZrzutu),

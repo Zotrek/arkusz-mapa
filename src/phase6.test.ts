@@ -1886,11 +1886,9 @@ __api = {
       );
       const api = sandbox.__api as {
         assignBulkBolecinAwizacja_: (payload: Record<string, unknown>, mdOpt: { dane: string }) => void;
-        collectBulkAwizacjaParts_: () => { adres: string; nazwa: string; rodzaj: string; worki: string };
+        collectBulkAwizacjaParts_: () => { rodzaj: string; worki: string };
       };
       expect(api.collectBulkAwizacjaParts_()).toEqual({
-        adres: 'ul. B 2; ul. A 1',
-        nazwa: 'Firma B; Firma A',
         rodzaj: 'ręczna; mechaniczna',
         worki: '6',
       });
@@ -1898,14 +1896,286 @@ __api = {
       api.assignBulkBolecinAwizacja_(payload, { dane: 'Biosystem Bolęcin' });
       expect(payload.awizujBolecin).toBe(true);
       expect(payload.iloscWorkow).toBe(2);
-      expect(payload.bolecinAdres).toBe('ul. B 2; ul. A 1');
-      expect(payload.bolecinNazwa).toBe('Firma B; Firma A');
+      expect(payload.bolecinAdres).toBe('');
+      expect(payload.bolecinNazwa).toBe('');
       expect(payload.bolecinWorki).toBe('9');
       expect(payload.awizacja).toBe('WX9');
       (sandbox.window as { __bolecinAwizacjaChoice: { worki: string } }).__bolecinAwizacjaChoice.worki = '';
       const fallback: Record<string, unknown> = {};
       api.assignBulkBolecinAwizacja_(fallback, { dane: 'Bolęcin' });
       expect(fallback.bolecinWorki).toBe('6');
+    });
+
+    function bolecinInputTag(html: string, id: string): string {
+      const match = html.match(new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`));
+      expect(match, id).toBeTruthy();
+      return match?.[0] ?? '';
+    }
+
+    it('test_buildMapHtml_when_bolecin_modal_rendered_should_include_empty_address_and_name_inputs', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const blockAt = html.indexOf('Z protokołu do arkusza Bolęcin');
+      expect(blockAt).toBeGreaterThan(-1);
+      for (const id of ['bolecin-aw-adres', 'bolecin-aw-nazwa']) {
+        const tag = bolecinInputTag(html, id);
+        expect(tag).toContain('maxlength="500"');
+        expect(tag).not.toMatch(/\bvalue=/);
+        expect(tag).not.toContain('Miłosław');
+        expect(tag).not.toContain('Surowieckiego');
+        expect(html.indexOf(`id="${id}"`)).toBeLessThan(blockAt);
+      }
+      expect(html).toMatch(/<label\b[^>]*\bfor="bolecin-aw-adres"[^>]*>\s*Adres odbioru\s*<\/label>/);
+      expect(html).toMatch(/<label\b[^>]*\bfor="bolecin-aw-nazwa"[^>]*>\s*Nazwa kontrahenta\s*<\/label>/);
+    });
+
+    type BolecinEl = {
+      value: string;
+      textContent: string;
+      children: BolecinEl[];
+      innerHTML: string;
+      appendChild: (child: BolecinEl) => BolecinEl;
+    };
+
+    function bolecinEl(value = ''): BolecinEl {
+      const el: BolecinEl = {
+        value,
+        textContent: '',
+        children: [],
+        get innerHTML() {
+          return '';
+        },
+        set innerHTML(next: string) {
+          if (next === '') el.children = [];
+        },
+        appendChild(child: BolecinEl) {
+          el.children.push(child);
+          return child;
+        },
+      };
+      return el;
+    }
+
+    function bolecinFlatText(node: BolecinEl): string {
+      return node.textContent + node.children.map((child) => bolecinFlatText(child)).join('');
+    }
+
+    function loadBolecinAwizacja() {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const start = html.indexOf('function joinAwizacjaLabels_(');
+      const end = html.indexOf('function formForGenerate_(');
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      const els: Record<string, BolecinEl> = {
+        'bolecin-aw-summary': bolecinEl(),
+        'bolecin-aw-worki': bolecinEl(),
+        'bolecin-aw-hint': bolecinEl(),
+        'bolecin-aw-worki-hint': bolecinEl(),
+        'bolecin-aw-adres': bolecinEl(),
+        'bolecin-aw-nazwa': bolecinEl(),
+        'bolecin-aw-adres-label': bolecinEl(),
+        'bolecin-aw-nazwa-label': bolecinEl(),
+        'bolecin-aw-nr': bolecinEl(),
+        'bolecin-aw-okno': bolecinEl(),
+        'bolecin-aw-transport': bolecinEl(),
+      };
+      const sandbox: Record<string, unknown> = {
+        adresy: [] as Array<{ adres?: string; podmiotHandlowy?: string }>,
+        document: {
+          getElementById(id: string) {
+            return els[id] ?? null;
+          },
+          createElement() {
+            return bolecinEl();
+          },
+          createTextNode(text: string) {
+            const node = bolecinEl();
+            node.textContent = String(text);
+            return node;
+          },
+        },
+        window: {
+          __docBulkPointJobs: [] as Array<{ pointIdx: number; filteredSeals: unknown[] }>,
+          __bolecinAwizacjaChoice: null as Record<string, unknown> | null,
+          __docModalMode: '',
+          __currentDocPointIdx: 0,
+          __docFilteredSeals: [] as unknown[],
+        },
+        aggregateRodzajZbiorkiFromSealRows(rows: unknown[]) {
+          return rows.length > 2 ? 'mechaniczna' : 'ręczna';
+        },
+        miejsceIsBolecin_() {
+          return true;
+        },
+      };
+      runInNewContext(
+        `${html.slice(start, end)}
+__api = {
+  assignBolecinAwizacja_: assignBolecinAwizacja_,
+  assignBulkBolecinAwizacja_: assignBulkBolecinAwizacja_,
+  collectBulkAwizacjaParts_: collectBulkAwizacjaParts_,
+  readBolecinAwizacjaInputs_: readBolecinAwizacjaInputs_,
+  fillBolecinAwizacjaSummary_: fillBolecinAwizacjaSummary_
+};`,
+        sandbox,
+      );
+      const api = sandbox.__api as {
+        assignBolecinAwizacja_: (payload: Record<string, unknown>, mdOpt: { dane: string }) => void;
+        assignBulkBolecinAwizacja_: (payload: Record<string, unknown>, mdOpt: { dane: string }) => void;
+        collectBulkAwizacjaParts_: () => { rodzaj: string; worki: string };
+        readBolecinAwizacjaInputs_: () => {
+          add: boolean;
+          nr: string;
+          okno: string;
+          rodzaj: string;
+          worki: string;
+          adres: string;
+          nazwa: string;
+        };
+        fillBolecinAwizacjaSummary_: (form: {
+          dz: string;
+          prOpt: { label: string };
+          mdOpt: { label: string };
+        }) => void;
+      };
+      return { api, sandbox, els };
+    }
+
+    it('test_readBolecinAwizacjaInputs_when_fields_empty_should_return_blank_address_and_name', () => {
+      const { api } = loadBolecinAwizacja();
+      expect(api.readBolecinAwizacjaInputs_()).toEqual({
+        add: true,
+        nr: '',
+        okno: '',
+        rodzaj: '',
+        worki: '',
+        adres: '',
+        nazwa: '',
+      });
+    });
+
+    it('test_assignBolecinAwizacja_when_fields_empty_should_send_blank_bolecin_address_and_keep_shop_fields', () => {
+      const { api, sandbox } = loadBolecinAwizacja();
+      const choice = api.readBolecinAwizacjaInputs_();
+      (sandbox.window as { __bolecinAwizacjaChoice: typeof choice }).__bolecinAwizacjaChoice = choice;
+      const payload: Record<string, unknown> = {
+        adresSklepu: 'ul. Sklep 1',
+        podmiotHandlowy: 'Sklep SA',
+        iloscWorkow: 4,
+      };
+      api.assignBolecinAwizacja_(payload, { dane: 'Bolęcin' });
+      expect(payload.bolecinAdres).toBe('');
+      expect(payload.bolecinNazwa).toBe('');
+      expect(payload.adresSklepu).toBe('ul. Sklep 1');
+      expect(payload.podmiotHandlowy).toBe('Sklep SA');
+      expect(payload.awizujBolecin).toBe(true);
+    });
+
+    it('test_assignBolecinAwizacja_when_fields_typed_should_send_typed_address_and_name', () => {
+      const { api, sandbox, els } = loadBolecinAwizacja();
+      els['bolecin-aw-adres'].value = 'Magazyn 9';
+      els['bolecin-aw-nazwa'].value = 'Firma Z';
+      els['bolecin-aw-nr'].value = 'WX1';
+      const choice = api.readBolecinAwizacjaInputs_();
+      (sandbox.window as { __bolecinAwizacjaChoice: typeof choice }).__bolecinAwizacjaChoice = choice;
+      const payload: Record<string, unknown> = {
+        adresSklepu: 'ul. Sklep 1',
+        podmiotHandlowy: 'Sklep SA',
+      };
+      api.assignBolecinAwizacja_(payload, { dane: 'Biosystem Bolęcin' });
+      expect(payload.bolecinAdres).toBe('Magazyn 9');
+      expect(payload.bolecinNazwa).toBe('Firma Z');
+      expect(payload.adresSklepu).toBe('ul. Sklep 1');
+      expect(payload.podmiotHandlowy).toBe('Sklep SA');
+      expect(payload.awizacja).toBe('WX1');
+    });
+
+    it('test_assignBulkBolecinAwizacja_when_manual_fields_empty_should_not_copy_joined_point_labels', () => {
+      const { api, sandbox } = loadBolecinAwizacja();
+      sandbox.adresy = [
+        { adres: 'ul. B 2', podmiotHandlowy: 'Firma B' },
+        { adres: 'ul. A 1', podmiotHandlowy: 'Firma A' },
+      ];
+      const win = sandbox.window as {
+        __docBulkPointJobs: Array<{ pointIdx: number; filteredSeals: unknown[] }>;
+        __bolecinAwizacjaChoice: Record<string, unknown> | null;
+      };
+      win.__docBulkPointJobs = [
+        { pointIdx: 0, filteredSeals: [{}, {}] },
+        { pointIdx: 1, filteredSeals: [{}, {}, {}] },
+        { pointIdx: 0, filteredSeals: [{}] },
+      ];
+      win.__bolecinAwizacjaChoice = api.readBolecinAwizacjaInputs_();
+      const payload: Record<string, unknown> = { adresSklepu: 'ul. B 2', podmiotHandlowy: 'Firma B' };
+      api.assignBulkBolecinAwizacja_(payload, { dane: 'Bolęcin' });
+      expect(payload.bolecinAdres).toBe('');
+      expect(payload.bolecinNazwa).toBe('');
+      expect(payload.bolecinRodzajZbiorki).toBe('ręczna; mechaniczna');
+      expect(payload.bolecinWorki).toBe('6');
+      expect(payload.adresSklepu).toBe('ul. B 2');
+      expect(payload.podmiotHandlowy).toBe('Firma B');
+    });
+
+    it('test_fillBolecinAwizacjaSummary_when_opened_should_leave_address_inputs_empty', () => {
+      const { api, sandbox, els } = loadBolecinAwizacja();
+      const form = {
+        dz: '10.10.2026',
+        prOpt: { label: 'Janex' },
+        mdOpt: { label: 'Bolęcin' },
+      };
+      const win = sandbox.window as {
+        __docModalMode: string;
+        __currentDocPointIdx: number;
+        __docFilteredSeals: unknown[];
+        __docBulkPointJobs: Array<{ pointIdx: number; filteredSeals: unknown[] }>;
+      };
+      sandbox.adresy = [
+        { adres: 'ul. Sklep 1', podmiotHandlowy: 'Sklep SA' },
+        { adres: 'ul. A 1', podmiotHandlowy: 'Firma A' },
+      ];
+      win.__docModalMode = 'single';
+      win.__currentDocPointIdx = 0;
+      win.__docFilteredSeals = [{}, {}];
+      els['bolecin-aw-adres'].value = 'zostawione z punktu';
+      els['bolecin-aw-nazwa'].value = 'zostawiona nazwa';
+      els['bolecin-aw-adres-label'].textContent = 'STARY';
+      els['bolecin-aw-nazwa-label'].textContent = 'STARY';
+      api.fillBolecinAwizacjaSummary_(form);
+      expect(els['bolecin-aw-adres'].value).toBe('');
+      expect(els['bolecin-aw-nazwa'].value).toBe('');
+      expect(els['bolecin-aw-adres-label'].textContent).toBe('Adres odbioru');
+      expect(els['bolecin-aw-nazwa-label'].textContent).toBe('Nazwa kontrahenta');
+      expect(els['bolecin-aw-summary'].children.map((line) => bolecinFlatText(line))).toEqual([
+        'Rodzaj zbiórki: ręczna',
+        'Data odbioru: 10.10.2026',
+        'Kto odbiera: Janex',
+        'Miejsce zrzutu: Bolęcin',
+      ]);
+
+      win.__docModalMode = 'bulk';
+      win.__docBulkPointJobs = [
+        { pointIdx: 0, filteredSeals: [{}] },
+        { pointIdx: 1, filteredSeals: [{}, {}, {}] },
+      ];
+      els['bolecin-aw-adres'].value = 'ul. Sklep 1; ul. A 1';
+      els['bolecin-aw-nazwa'].value = 'Sklep SA; Firma A';
+      api.fillBolecinAwizacjaSummary_(form);
+      expect(els['bolecin-aw-adres'].value).toBe('');
+      expect(els['bolecin-aw-nazwa'].value).toBe('');
+      expect(els['bolecin-aw-adres-label'].textContent).toBe('Adresy odbioru');
+      expect(els['bolecin-aw-nazwa-label'].textContent).toBe('Nazwy kontrahentów');
+      expect(els['bolecin-aw-summary'].children.map((line) => bolecinFlatText(line))).toEqual([
+        'Rodzaj zbiórki: ręczna; mechaniczna',
+        'Protokoły: 2',
+        'Data odbioru: 10.10.2026',
+        'Kto odbiera: Janex',
+        'Miejsce zrzutu: Bolęcin',
+      ]);
     });
 
     it('test_buildMapHtml_when_route_name_fetch_fails_should_still_clear_loading_indicator', () => {

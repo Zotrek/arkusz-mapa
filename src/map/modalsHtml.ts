@@ -85,6 +85,10 @@ export function wordModalHtml(): string {
         <input type="text" id="bolecin-aw-worki" inputmode="numeric" maxlength="12" autocomplete="off" spellcheck="false" />
         <p id="bolecin-aw-worki-hint" class="doc-field-hint">Liczba z worków na protokole. Można ją poprawić.</p>
       </div>
+      <label for="bolecin-aw-adres" id="bolecin-aw-adres-label">Adres odbioru</label>
+      <input type="text" id="bolecin-aw-adres" maxlength="500" autocomplete="off" spellcheck="false" />
+      <label for="bolecin-aw-nazwa" id="bolecin-aw-nazwa-label">Nazwa kontrahenta</label>
+      <input type="text" id="bolecin-aw-nazwa" maxlength="500" autocomplete="off" spellcheck="false" />
       <p class="doc-bulk-points-title">Z protokołu do arkusza Bolęcin</p>
       <div id="bolecin-aw-summary" class="bolecin-aw-summary"></div>
       <div class="doc-modal-actions">
