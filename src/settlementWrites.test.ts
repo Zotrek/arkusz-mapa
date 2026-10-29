@@ -925,7 +925,53 @@ describe("approve", () => {
 
     expect(scriptProps.has("transportLastPickupReady")).toBe(false);
     expect(scriptProps.has("transportLastPickupCount")).toBe(false);
+    expect(scriptProps.has("transportLastPickupAt")).toBe(false);
     expect(scriptProps.has("transportLastPickup.0")).toBe(false);
+  });
+
+  it("test_patchRouteRate_when_write_succeeds_should_drop_last_pickup_cache", () => {
+    const { register } = fresh();
+    seedRegister(register, 2);
+    scriptProps.clear();
+    scriptProps.set("transportLastPickupReady", "1");
+    scriptProps.set("transportLastPickupCount", "1");
+    scriptProps.set("transportLastPickupAt", String(Date.now()));
+    scriptProps.set("transportLastPickup.0", "{}");
+
+    postToSheet({
+      action: "patchRouteRate",
+      sheetRow: 2,
+      transportNumber: "15",
+      trasa: "trasa-a",
+      stawkaTrasy: "200",
+    });
+
+    expect(scriptProps.has("transportLastPickupReady")).toBe(false);
+    expect(scriptProps.has("transportLastPickupAt")).toBe(false);
+    expect(scriptProps.has("transportLastPickup.0")).toBe(false);
+  });
+
+  it("test_patchRouteRate_when_write_fails_should_keep_last_pickup_cache", () => {
+    const { register } = fresh();
+    seedRegister(register, 2);
+    scriptProps.clear();
+    scriptProps.set("transportLastPickupReady", "1");
+    scriptProps.set("transportLastPickupCount", "1");
+    scriptProps.set("transportLastPickupAt", String(Date.now()));
+    scriptProps.set("transportLastPickup.0", "{}");
+
+    expect(
+      postToSheet({
+        action: "patchRouteRate",
+        sheetRow: 2,
+        transportNumber: "16",
+        trasa: "trasa-a",
+        stawkaTrasy: "200",
+      }),
+    ).toEqual({ ok: false, error: "key" });
+
+    expect(scriptProps.get("transportLastPickupReady")).toBe("1");
+    expect(scriptProps.has("transportLastPickup.0")).toBe(true);
   });
 
   it("test_approve_route_writes_each_selected_shop_and_leaves_the_rest", () => {

@@ -256,6 +256,7 @@ describe('findLastTransportInfo_', () => {
     const store = new Map<string, string>([
       ['transportLastPickupReady', '1'],
       ['transportLastPickupCount', '1'],
+      ['transportLastPickupAt', String(Date.now())],
       ['transportLastPickup.0', '{}'],
     ]);
 
@@ -268,6 +269,7 @@ describe('findLastTransportInfo_', () => {
     const store = new Map<string, string>([
       ['transportLastPickupReady', '1'],
       ['transportLastPickupCount', '2'],
+      ['transportLastPickupAt', String(Date.now())],
       ['transportLastPickup.0', JSON.stringify({ 'inna\0ulica': { ms: OLDER, ktoOdbiera: 'Inny' } })],
       ['transportLastPickup.1', JSON.stringify({ [KEY]: { ms: OLDER, ktoOdbiera: 'Zcache' } })],
     ]);
@@ -275,6 +277,37 @@ describe('findLastTransportInfo_', () => {
     expect(loadGas(sheet, undefined, store).findLastTransportInfo_(PODMIOT, ADRES)).toEqual({
       ms: OLDER,
       ktoOdbiera: 'Zcache',
+    });
+  });
+
+  it('test_findLastTransportInfo_when_cache_is_older_than_30_minutes_should_read_the_sheet', () => {
+    const sheet = new FakeSheet();
+    seed(sheet, 2, '20.06.2026', 'Arkusz');
+    const store = new Map<string, string>([
+      ['transportLastPickupReady', '1'],
+      ['transportLastPickupCount', '1'],
+      ['transportLastPickupAt', String(Date.now() - 30 * 60 * 1000)],
+      ['transportLastPickup.0', JSON.stringify({ [KEY]: { ms: OLDER, ktoOdbiera: 'Zcache' } })],
+    ]);
+
+    expect(loadGas(sheet, undefined, store).findLastTransportInfo_(PODMIOT, ADRES)).toEqual({
+      ms: NEWER,
+      ktoOdbiera: 'Arkusz',
+    });
+  });
+
+  it('test_findLastTransportInfo_when_cache_has_no_timestamp_should_read_the_sheet', () => {
+    const sheet = new FakeSheet();
+    seed(sheet, 2, '20.06.2026', 'Arkusz');
+    const store = new Map<string, string>([
+      ['transportLastPickupReady', '1'],
+      ['transportLastPickupCount', '1'],
+      ['transportLastPickup.0', JSON.stringify({ [KEY]: { ms: OLDER, ktoOdbiera: 'Zcache' } })],
+    ]);
+
+    expect(loadGas(sheet, undefined, store).findLastTransportInfo_(PODMIOT, ADRES)).toEqual({
+      ms: NEWER,
+      ktoOdbiera: 'Arkusz',
     });
   });
 });

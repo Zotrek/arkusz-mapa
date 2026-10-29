@@ -567,6 +567,7 @@ describe('doGet reference and list actions', () => {
     });
     props.set('transportLastPickupReady', '1');
     props.set('transportLastPickupCount', '1');
+    props.set('transportLastPickupAt', String(Date.now()));
     props.set(
       'transportLastPickup.0',
       JSON.stringify({

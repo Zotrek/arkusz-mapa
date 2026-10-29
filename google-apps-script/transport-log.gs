@@ -6,6 +6,7 @@
  *
  * GET ?action=modalData&podmiot=…&adres=…  (zalecane — jeden request)
  * GET ?action=bulkLastTransportDates  (ostatnie daty + kto odbiera dla wszystkich sklepów — mapa)
+ *   Cache tych dat żyje 30 min. Udany zapis rozliczeń czyści go od razu. Otwarta mapa zostaje przy swoim odczycie.
  * GET ?action=previewNumber
  * GET ?action=lastTransportDate&podmiot=…&adres=…  (data + kto odbiera)
  * GET ?action=listReferenceData  → { ok, data: { podwykoLista, poprawAdres } }
@@ -195,10 +196,13 @@ var TRANSPORT_MAX_NUM_KEY = 'transportMaxNum';
 /** Cache wiersza ostatniego numeru: „sheetName\\trow”. */
 var TRANSPORT_LAST_ROW_KEY = 'transportLastRow';
 var TRANSPORT_LAST_SHEET_KEY = 'transportLastSheet';
-/** Ostatnie odbiory: Ready=1, Count i kawałki Prefix+0… (limit właściwości skryptu). */
+/** Ostatnie odbiory: Ready=1, Count, At (ms zapisu) i kawałki Prefix+0… (limit właściwości skryptu). */
 var TRANSPORT_LAST_PICKUP_READY = 'transportLastPickupReady';
 var TRANSPORT_LAST_PICKUP_COUNT = 'transportLastPickupCount';
+var TRANSPORT_LAST_PICKUP_AT = 'transportLastPickupAt';
 var TRANSPORT_LAST_PICKUP_PREFIX = 'transportLastPickup.';
+/** Po tym czasie odczyt mapy buduje cache od nowa, także gdy nikt nie zapisał rozliczenia. */
+var TRANSPORT_LAST_PICKUP_TTL_MS = 30 * 60 * 1000;
 var TRANSPORT_ROUTE_NAMES_KEY = 'transportRouteNames';
 var TRANSPORT_ROUTE_RATES_KEY = 'transportRouteRates';
 var TRANSPORT_CACHE_CHUNK = 7000;
@@ -828,9 +832,24 @@ function rememberRouteRate_(name, rate) {
   writeRouteRatesCache_(cached);
 }
 
+function lastPickupCacheFresh_(props) {
+  var raw = props.getProperty(TRANSPORT_LAST_PICKUP_AT);
+  if (raw == null || raw === '') {
+    return false;
+  }
+  var at = parseInt(raw, 10);
+  if (isNaN(at)) {
+    return false;
+  }
+  return new Date().getTime() - at < TRANSPORT_LAST_PICKUP_TTL_MS;
+}
+
 function readLastPickupCache_() {
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty(TRANSPORT_LAST_PICKUP_READY) !== '1') {
+    return null;
+  }
+  if (!lastPickupCacheFresh_(props)) {
     return null;
   }
   var n = parseInt(props.getProperty(TRANSPORT_LAST_PICKUP_COUNT) || '0', 10);
@@ -895,6 +914,7 @@ function writeLastPickupCache_(map) {
     props.deleteProperty(TRANSPORT_LAST_PICKUP_PREFIX + i);
   }
   props.setProperty(TRANSPORT_LAST_PICKUP_READY, '1');
+  props.setProperty(TRANSPORT_LAST_PICKUP_AT, String(new Date().getTime()));
 }
 
 function clearLastPickupCache_() {
@@ -909,6 +929,7 @@ function clearLastPickupCache_() {
   }
   props.deleteProperty(TRANSPORT_LAST_PICKUP_COUNT);
   props.deleteProperty(TRANSPORT_LAST_PICKUP_READY);
+  props.deleteProperty(TRANSPORT_LAST_PICKUP_AT);
 }
 
 function rememberLastPickup_(podmiot, adres, dateText, kto) {
@@ -1577,7 +1598,13 @@ function appendTransportRow_(numer, body) {
     body.komentarz2 || '',
     '',
   ];
-  sheet.appendRow(row);
+  // appendRow na zakładce z tabelą Arkuszów ubija runtime (HTML 500 INTERNAL),
+  // zanim doPost zwróci JSON. setValues dopisuje ten sam wiersz bez tego crashu.
+  var writeRow = sheet.getLastRow() + 1;
+  if (writeRow < 2) {
+    writeRow = 2;
+  }
+  sheet.getRange(writeRow, 1, 1, row.length).setValues([row]);
   expandSheetTablesQuiet_(sheet);
   if (bodyHasRoute_(body) && routeRate !== '') {
     applyRouteRateToUnsettled_(sheet, routeName, routeRate);
@@ -6931,34 +6958,32 @@ function patchPickupDate_(body) {
 }
 
 function runSettlementWrite_(action, body) {
+  var result;
   if (action === 'patchBags') {
-    return patchBags_(body);
+    result = patchBags_(body);
+  } else if (action === 'patchRouteRate') {
+    result = patchRouteRate_(body);
+  } else if (action === 'patchPickupDate') {
+    result = patchPickupDate_(body);
+  } else if (action === 'detachRoute') {
+    result = detachRoute_(body);
+  } else if (action === 'attachRoute') {
+    result = attachRoute_(body);
+  } else if (action === 'resolveRateTie') {
+    result = resolveRateTie_(body);
+  } else if (action === 'approve') {
+    result = approve_(body);
+  } else if (action === 'patchInvoiceComment') {
+    result = patchInvoiceComment_(body);
+  } else if (action === 'patchInvoiceEdit') {
+    result = patchInvoiceEdit_(body);
+  } else {
+    return { ok: false, error: 'unknown action' };
   }
-  if (action === 'patchRouteRate') {
-    return patchRouteRate_(body);
+  if (result && result.ok) {
+    clearLastPickupCache_();
   }
-  if (action === 'patchPickupDate') {
-    return patchPickupDate_(body);
-  }
-  if (action === 'detachRoute') {
-    return detachRoute_(body);
-  }
-  if (action === 'attachRoute') {
-    return attachRoute_(body);
-  }
-  if (action === 'resolveRateTie') {
-    return resolveRateTie_(body);
-  }
-  if (action === 'approve') {
-    return approve_(body);
-  }
-  if (action === 'patchInvoiceComment') {
-    return patchInvoiceComment_(body);
-  }
-  if (action === 'patchInvoiceEdit') {
-    return patchInvoiceEdit_(body);
-  }
-  return { ok: false, error: 'unknown action' };
+  return result;
 }
 
 /**

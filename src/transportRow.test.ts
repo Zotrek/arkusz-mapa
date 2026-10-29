@@ -392,7 +392,7 @@ function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
         };
       },
     },
-    // Po appendRow skrypt rozciąga tabelę Arkuszów przez Sheets API.
+    // Po dopisaniu wiersza skrypt rozciąga tabelę Arkuszów przez Sheets API.
     ScriptApp: {
       getOAuthToken() {
         return 'test-token';
@@ -578,7 +578,9 @@ describe('appendTransportRow_', () => {
       expect(sheet.cell(1, col)).toBe(`H${col}`);
     }
     for (const write of sheet.writes) {
-      expect(write.col).toBeGreaterThanOrEqual(10);
+      if (write.row === 1) {
+        expect(write.col).toBeGreaterThanOrEqual(10);
+      }
     }
     expect(sheet.cell(2, 1)).toBe('10');
     expect(sheet.cell(2, 20)).toBe('k2');
@@ -810,7 +812,7 @@ describe('appendTransportRow_', () => {
     expect(sheet.cell(3, 17)).toBe('S16');
     expect(sheet.cell(4, 18)).toBe('T17');
     expect(sheet.cell(5, 17)).toBe('I16');
-    const dataWrites = sheet.writes.filter((write) => write.row >= 2);
+    const dataWrites = sheet.writes.filter((write) => write.row >= 2 && write.numCols === 1);
     for (const write of dataWrites) {
       expect(write.col).toBe(12);
       expect(write.numCols).toBe(1);
