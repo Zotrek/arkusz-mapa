@@ -152,12 +152,16 @@ var COL = {
   komentarz1: 19,
   komentarz2: 20,
   komentarzFaktury: 21,
+  dataZatwierdzenia: 22,
 };
 
 /** Nagłówek kolumny komentarza do faktury. Ten sam tekst na Na zgłoszenie i Harmonogramie. */
 var INVOICE_COMMENT_HEADER = 'Komentarz do faktury';
 
-/** Tekst nagłówka, nie pusta komórka. Kolumn 1–9 to nie rusza. Kolumny 10–20 wpisuje protokół, gdy puste. Komentarz do faktury dopisuje też zapis rozliczeń, gdy nagłówek jest pusty. */
+/** Nagłówek daty pierwszego zatwierdzenia numeru. Ten sam tekst na Na zgłoszenie i Harmonogramie. */
+var APPROVED_AT_HEADER = 'Data zatwierdzenia';
+
+/** Tekst nagłówka, nie pusta komórka. Kolumn 1–9 to nie rusza. Kolumny 10–22 wpisuje protokół, gdy puste. Komentarz do faktury i data zatwierdzenia dopisuje też zapis rozliczeń, gdy nagłówek jest pusty. */
 var REGISTER_HEADERS_10_20 = [
   'transport się odbył',
   'Trasa',
@@ -171,6 +175,7 @@ var REGISTER_HEADERS_10_20 = [
   'Komentarz 1',
   'Komentarz 2',
   INVOICE_COMMENT_HEADER,
+  APPROVED_AT_HEADER,
 ];
 
 /** Pełne nagłówki rejestru Na zgłoszenie (nowe zakładki miesięczne). */
@@ -279,6 +284,7 @@ var SCHEDULE_REGISTER_HEADERS = [
   'Komentarz 1',
   'Komentarz 2',
   INVOICE_COMMENT_HEADER,
+  APPROVED_AT_HEADER,
 ];
 
 /** Kolumny zestawienia (1-based) — bez nr zlecenia. */
@@ -303,6 +309,7 @@ var SCHEDULE_COL = {
   komentarz1: 18,
   komentarz2: 19,
   komentarzFaktury: 20,
+  dataZatwierdzenia: 21,
 };
 var REF_PODWYKO_HEADER = ['Nazwa', 'Dane do Worda'];
 var REF_PRZ_HEADER = [
@@ -1305,7 +1312,7 @@ function cellIsEmpty_(value) {
 
 /**
  * Przed dopisaniem jakiegokolwiek wiersza protokołu, także bez trasy.
- * Puste komórki 10–21 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
+ * Puste komórki 10–22 dostają tekst nagłówka. Wypełnionych nie nadpisuje.
  * Na układzie V1/V2 nie dopisuje nagłówków V3 — to psuje arkusz.
  * W tym samym kroku, raz: lista `tak` / `nie` na kolumnie 10 i przekreślenie wiersza z `nie`.
  */
@@ -4016,9 +4023,10 @@ function settlementStats_(query) {
   var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
   return buildSettlementStats_(
     query,
-    readAllRegisterSettlementCells_('report', COL.komentarzFaktury),
+    readAllRegisterSettlementCells_('report', COL.dataZatwierdzenia),
     readSettlementCells_(rateSheet, 5),
     readSettlementStatsOdebraneRows_(odebrane),
+    readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.dataZatwierdzenia),
   );
 }
 
@@ -4319,6 +4327,7 @@ function mapSettlementRegisterRow_(sheetRow, cells, sheetName) {
     receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 16)),
     costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 17)),
     invoiceComment: settlementText_(settlementCell_(cells, 20)),
+    approvedDate: settlementDateText_(settlementCell_(cells, 21)) || '',
   };
 }
 
@@ -4347,6 +4356,7 @@ function mapSettlementScheduleRegisterRow_(sheetRow, cells, sheetName) {
     receptionCost: settlementAmountToGrosze_(settlementCell_(cells, 15)),
     costPerBag: settlementAmountToGrosze_(settlementCell_(cells, 16)),
     invoiceComment: settlementText_(settlementCell_(cells, 19)),
+    approvedDate: settlementDateText_(settlementCell_(cells, 20)) || '',
   };
 }
 
@@ -4430,6 +4440,7 @@ function settlementStatsPublicRow_(mapped) {
     costPerBag: mapped.costPerBag,
     invoice: mapped.invoice || '',
     invoiceComment: mapped.invoiceComment || '',
+    approvedDate: mapped.approvedDate || '',
     mode: mapped.mode === 'schedule' ? 'schedule' : 'report',
   };
 }
@@ -4628,7 +4639,34 @@ function settlementStatsIncludeRow_(mapped, dataOd, dataDo) {
   return settlementDateInRange_(mapped.pickupDate, dataOd, dataDo);
 }
 
-function buildSettlementStats_(query, register, rates, odebrane) {
+/**
+ * Rozliczone wiersze Harmonogramu w zakresie dat odbioru.
+ * Osobno od `rows`, żeby worki z „odebrane” i KPI statystyk zostały jak były.
+ */
+function settlementStatsScheduleRows_(register, dataOd, dataDo, podwykonawca) {
+  var who = podwykonawca ? settlementFoldPl_(podwykonawca) : '';
+  var rows = [];
+  var sourceRows = register || [];
+  var i;
+  for (i = 0; i < sourceRows.length; i++) {
+    var item = sourceRows[i];
+    var mapped = mapSettlementScheduleRegisterRow_(item.sheetRow, item.cells, item.sheetName);
+    if (!mapped || mapped.didNotHappen || !mapped.settled) {
+      continue;
+    }
+    if (who && settlementFoldPl_(mapped.contractor) !== who) {
+      continue;
+    }
+    if (!settlementDateInRange_(mapped.pickupDate, dataOd, dataDo)) {
+      continue;
+    }
+    mapped.mode = 'schedule';
+    rows.push(settlementStatsPublicRow_(mapped));
+  }
+  return rows;
+}
+
+function buildSettlementStats_(query, register, rates, odebrane, scheduleRegister) {
   var error = settlementStatsQueryError_(query);
   if (error) {
     return { ok: false, error: error };
@@ -4671,7 +4709,12 @@ function buildSettlementStats_(query, register, rates, odebrane) {
     }
     rateRows.push(rate);
   }
-  return { ok: true, rows: rows, rates: rateRows };
+  return {
+    ok: true,
+    rows: rows,
+    rates: rateRows,
+    scheduleRows: settlementStatsScheduleRows_(scheduleRegister, dataOd, dataDo, q.podwykonawca),
+  };
 }
 
 /**
@@ -6847,6 +6890,7 @@ function approve_(body) {
     sheet.getRange(target.row, c.rozliczony, 1, 4).setValues([
       ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(perBag)],
     ]);
+    writeApprovedAtIfEmpty_(sheet, target.row, c.dataZatwierdzenia);
     if (scheduleRates) {
       if (!scheduleRates.route) {
         sheet.getRange(target.row, SCHEDULE_COL.stawkaPodjazdu).setValue(scheduleRates.pickup);
@@ -7108,6 +7152,28 @@ function ensureInvoiceCommentHeader_(sheet, col) {
   if (cellIsEmpty_(cell.getValue())) {
     cell.setValue(INVOICE_COMMENT_HEADER);
   }
+}
+
+/** Data pierwszego zatwierdzenia. Późniejszy zapis worków albo stawek komórki nie rusza. */
+function ensureApprovedAtHeader_(sheet, col) {
+  var cell = sheet.getRange(1, col);
+  if (cellIsEmpty_(cell.getValue())) {
+    cell.setValue(APPROVED_AT_HEADER);
+  }
+}
+
+function approvedAtToday_() {
+  var now = new Date();
+  return settlementFormatDate_(now.getFullYear(), now.getMonth() + 1, now.getDate());
+}
+
+function writeApprovedAtIfEmpty_(sheet, row, col) {
+  ensureApprovedAtHeader_(sheet, col);
+  var cell = sheet.getRange(row, col);
+  if (!cellIsEmpty_(cell.getValue())) {
+    return;
+  }
+  cell.setValue(approvedAtToday_());
 }
 
 function patchInvoiceComment_(body) {
