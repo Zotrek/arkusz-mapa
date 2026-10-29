@@ -824,9 +824,14 @@ describe("approve", () => {
     expect(register.cell(3, 17)).toBe("999");
     expect(register.cell(3, 18)).toBe("111");
     expect(register.cell(3, 10)).toBe("");
+    expect(register.cell(1, 22)).toBe("Data zatwierdzenia");
+    expect(register.cell(2, 22)).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
+    expect(register.cell(3, 22)).toBe("");
     expect(register.writes).toEqual([
       { row: 2, col: 10, numRows: 1, numCols: 1 },
       { row: 2, col: 15, numRows: 1, numCols: 4 },
+      { row: 1, col: 22, numRows: 1, numCols: 1 },
+      { row: 2, col: 22, numRows: 1, numCols: 1 },
     ]);
   });
 

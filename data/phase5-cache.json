@@ -12082,6 +12082,395 @@
       "lng": 19.2624408,
       "wojewodztwo": "Śląskie",
       "updatedAt": "2026-09-21T08:06:13.680Z"
+    },
+    "32-340 Wolbrom Miechowska 50a": {
+      "status": "ok",
+      "lat": 50.3851007,
+      "lng": 19.7696675,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:00:02.249Z"
+    },
+    "37-500 Jarosław 3 maja 85": {
+      "status": "ok",
+      "lat": 50.0072135,
+      "lng": 22.7094933,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-10-29T14:00:06.023Z"
+    },
+    "62-230 WITKOWO ŻWIRKI I WIGURY 4": {
+      "status": "city_only",
+      "lat": 52.4395881,
+      "lng": 17.7725138,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:00:45.149Z"
+    },
+    "88-410 Gąsawa Rynek 20": {
+      "status": "ok",
+      "lat": 52.76752,
+      "lng": 17.75501,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-10-29T14:00:48.274Z"
+    },
+    "38-222 Folusz Folusz b/n": {
+      "status": "ok",
+      "lat": 49.6154171,
+      "lng": 21.3790755,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-10-29T14:00:49.633Z"
+    },
+    "88-400 Żnin Górska 2": {
+      "status": "ok",
+      "lat": 52.85301,
+      "lng": 17.75168,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-10-29T14:00:52.281Z"
+    },
+    "65-273 ZIELONA GÓRA BRANIBORSKA 15B": {
+      "status": "ok",
+      "lat": 51.9359448,
+      "lng": 15.5253191,
+      "wojewodztwo": "Lubuskie",
+      "updatedAt": "2026-10-29T14:00:59.468Z"
+    },
+    "33-140 Lisia Góra 1 maja 1": {
+      "status": "ok",
+      "lat": 50.0837214,
+      "lng": 21.0231996,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:01:03.023Z"
+    },
+    "41-943 Piekary Śląskie MACZKA 13": {
+      "status": "ok",
+      "lat": 50.3953767,
+      "lng": 18.9557661,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-10-29T14:01:24.005Z"
+    },
+    "89-210 Lubostroń Lubostroń 15": {
+      "status": "ok",
+      "lat": 52.91018,
+      "lng": 17.88708,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-10-29T14:01:25.441Z"
+    },
+    "02-739 Warszawa Wałbrzyska 21": {
+      "status": "ok",
+      "lat": 52.1724526,
+      "lng": 21.0203384,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-10-29T14:01:28.787Z"
+    },
+    "62-070 Dąbrowa Szafirowa 1a": {
+      "status": "ok",
+      "lat": 52.3964427,
+      "lng": 16.7573524,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:01:32.255Z"
+    },
+    "30-004 Kraków Słowackiego 64": {
+      "status": "ok",
+      "lat": 50.0740916,
+      "lng": 19.9352897,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:01:34.002Z"
+    },
+    "32-007 WOLA ZABIERZOWSKA WOLA ZABIERZOWSKA 5": {
+      "status": "ok",
+      "lat": 50.0720035,
+      "lng": 20.3407745,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:01:35.905Z"
+    },
+    "07-420 KADZIDŁO TRASA MAZURSKA 56": {
+      "status": "ok",
+      "lat": 53.2507778,
+      "lng": 21.4503964,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-10-29T14:01:57.241Z"
+    },
+    "33-159 Zalasowa Karpacka 10": {
+      "status": "ok",
+      "lat": 49.9251647,
+      "lng": 21.1233039,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:02:00.279Z"
+    },
+    "31-876 Kraków Generała Tadeusza Bora-Komorowskiego 39": {
+      "status": "ok",
+      "lat": 50.0870055,
+      "lng": 19.9850209,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:02:03.056Z"
+    },
+    "62-510 Konin Wróblewskiego 25": {
+      "status": "ok",
+      "lat": 52.2364919,
+      "lng": 18.3176472,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:02:06.156Z"
+    },
+    "60-584 Poznań Szpitalna 2/MAGAZYN1": {
+      "status": "ok",
+      "lat": 52.4173552,
+      "lng": 16.8818558,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:02:07.526Z"
+    },
+    "31-855 Kraków os. Albertyńskie 29a": {
+      "status": "ok",
+      "lat": 50.0820437,
+      "lng": 20.0167685,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:02:11.017Z"
+    },
+    "60-658 POZNAŃ BONIN 8": {
+      "status": "ok",
+      "lat": 52.4304213,
+      "lng": 16.9091375,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:02:16.616Z"
+    },
+    "80-174 Gdańsk Morelowa 2": {
+      "status": "ok",
+      "lat": 54.33009,
+      "lng": 18.5582599,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-10-29T14:02:19.937Z"
+    },
+    "32-851 JADOWNIKI ŚRODKOWA 134": {
+      "status": "ok",
+      "lat": 49.97778,
+      "lng": 20.64553,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:02:33.093Z"
+    },
+    "57-540 Lądek Zdrój Żwirki i Wigury 14": {
+      "status": "uncertain",
+      "lat": 50.3434501,
+      "lng": 16.8936822,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-10-29T14:03:50.008Z"
+    },
+    "33-140 Lisia Góra Jaracza 50": {
+      "status": "ok",
+      "lat": 50.079651,
+      "lng": 21.0361035,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:04:03.535Z"
+    },
+    "22-100 Chełm Okszowska 54": {
+      "status": "ok",
+      "lat": 51.1494943,
+      "lng": 23.4861238,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-10-29T14:04:06.609Z"
+    },
+    "24-350 Chodel Partyzantów 40": {
+      "status": "ok",
+      "lat": 51.1138156,
+      "lng": 22.1386316,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-10-29T14:04:09.176Z"
+    },
+    "88-420 Rogowo Powstańców Wielkopolskich 26": {
+      "status": "ok",
+      "lat": 52.72316,
+      "lng": 17.65196,
+      "wojewodztwo": "Kujawsko-pomorskie",
+      "updatedAt": "2026-10-29T14:04:12.663Z"
+    },
+    "62-230 Witkowo Wojska Polskiego 2": {
+      "status": "ok",
+      "lat": 52.4387827,
+      "lng": 17.7633869,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:04:15.716Z"
+    },
+    "24-350 chodel ratoszyńska 1": {
+      "status": "ok",
+      "lat": 51.1079728,
+      "lng": 22.1297623,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-10-29T14:04:18.391Z"
+    },
+    "37-300 Leżajsk Sanowa 26": {
+      "status": "ok",
+      "lat": 50.263616,
+      "lng": 22.4240877,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-10-29T14:04:24.075Z"
+    },
+    "32-020 Koźmice Wielkie Koźmice Wielkie 535": {
+      "status": "ok",
+      "lat": 49.9574393,
+      "lng": 20.0382763,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:04:25.385Z"
+    },
+    "34-721 Podsarnie Podsarnie 61": {
+      "status": "ok",
+      "lat": 49.5522071,
+      "lng": 19.7850134,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:04:26.700Z"
+    },
+    "98-100 ŁASK Bałucz 28c": {
+      "status": "city_only",
+      "lat": 51.5929947,
+      "lng": 19.1334784,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-10-29T14:05:35.203Z"
+    },
+    "84-120 Władysławowo Starowiejska 33": {
+      "status": "ok",
+      "lat": 54.791119,
+      "lng": 18.4192341,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-10-29T14:05:37.905Z"
+    },
+    "62-230 WITKOWO Warszawska 35": {
+      "status": "ok",
+      "lat": 52.4404272,
+      "lng": 17.7810311,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:05:48.880Z"
+    },
+    "38-232 Krempna Krempna 84": {
+      "status": "ok",
+      "lat": 49.511609,
+      "lng": 21.5005433,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-10-29T14:05:50.570Z"
+    },
+    "33-171 Pleśna Pleśna 449": {
+      "status": "ok",
+      "lat": 49.9292959,
+      "lng": 20.9454962,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:05:51.814Z"
+    },
+    "33-170 Tuchów Adama Mickiewicza 6B": {
+      "status": "ok",
+      "lat": 49.8944178,
+      "lng": 21.0545067,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:05:54.920Z"
+    },
+    "83-021 Rokitnica Bałtycka 30 lok.9A": {
+      "status": "city_only",
+      "lat": 54.2731451,
+      "lng": 18.6844238,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-10-29T14:06:27.389Z"
+    },
+    "37-100 Łańcut Józefa Piłsudskiego 72G": {
+      "status": "ok",
+      "lat": 50.0654875,
+      "lng": 22.2198238,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-10-29T14:06:30.154Z"
+    },
+    "36-030 Błażowa 3 maja 51": {
+      "status": "ok",
+      "lat": 49.8799692,
+      "lng": 22.0963159,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-10-29T14:06:32.735Z"
+    },
+    "96-300 Żyrardów Jaktorowska 55": {
+      "status": "ok",
+      "lat": 52.0591108,
+      "lng": 20.4715324,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-10-29T14:06:35.516Z"
+    },
+    "34-500 Zakopane Hala Gąsienicowa b/n": {
+      "status": "bad",
+      "updatedAt": "2026-10-29T14:07:16.134Z"
+    },
+    "22-650 Łaszczów DWORCOWA 3": {
+      "status": "ok",
+      "lat": 50.5337317,
+      "lng": 23.7279312,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-10-29T14:07:18.997Z"
+    },
+    "60-693 Poznań Obornicka 263": {
+      "status": "ok",
+      "lat": 52.4507924,
+      "lng": 16.9044106,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:07:22.070Z"
+    },
+    "30-552 Kraków Malborska 1": {
+      "status": "ok",
+      "lat": 50.0264675,
+      "lng": 19.9763053,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:07:25.079Z"
+    },
+    "77-400 Złotów Za Dworcem 1 D": {
+      "status": "ok",
+      "lat": 53.3578349,
+      "lng": 17.0553665,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:07:28.232Z"
+    },
+    "61-816 Poznań Ratajczaka 32": {
+      "status": "ok",
+      "lat": 52.4059073,
+      "lng": 16.9252858,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-10-29T14:07:31.020Z"
+    },
+    "32-015 Kłaj Kłaj 1052": {
+      "status": "ok",
+      "lat": 49.9874867,
+      "lng": 20.3418359,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:07:32.467Z"
+    },
+    "31-403 Kraków Kamienna 21": {
+      "status": "ok",
+      "lat": 50.076142,
+      "lng": 19.9417502,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-10-29T14:07:35.556Z"
+    },
+    "26-330 Żarnów Powstańsców Wielkopolskich 27": {
+      "status": "city_only",
+      "lat": 51.2479931,
+      "lng": 20.1720504,
+      "wojewodztwo": "Łódzkie",
+      "updatedAt": "2026-10-29T14:08:18.690Z"
+    },
+    "00-012 Warszawa Zgoda 12": {
+      "status": "ok",
+      "lat": 52.2337553,
+      "lng": 21.0113581,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-10-29T14:08:21.356Z"
+    },
+    "89-620 Lipienice Podmiejska 2a": {
+      "status": "ok",
+      "lat": 53.6933072,
+      "lng": 17.6188197,
+      "wojewodztwo": "Pomorskie",
+      "updatedAt": "2026-10-29T14:08:22.722Z"
+    },
+    "02-885 Warszawa Puławska 617/621a": {
+      "status": "ok",
+      "lat": 52.1272575,
+      "lng": 21.0173853,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-10-29T14:08:24.063Z"
+    },
+    "50-014 Wrocław marszałka Józefa Piłsudskiego 104": {
+      "status": "ok",
+      "lat": 51.1011947,
+      "lng": 17.0284495,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-10-29T14:08:25.876Z"
     }
   }
 }

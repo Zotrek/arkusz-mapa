@@ -40,7 +40,9 @@ describe('runPushReferenceCli', () => {
 
   it('test_runPushReferenceCli_when_ok_should_merge_and_write_sheet', async () => {
     const client = { sheets: true };
-    const writeSheet = vi.fn(async () => {});
+    const writeSheet = vi.fn(
+      async (_client: unknown, _spreadsheetId: string, _lista: Array<{ label: string; dane: string }>) => {},
+    );
     const exitFn = vi.fn();
     const logger = { log: vi.fn(), error: vi.fn() };
 
@@ -63,7 +65,7 @@ describe('runPushReferenceCli', () => {
     expect(writeSheet).toHaveBeenCalledTimes(1);
     expect(writeSheet.mock.calls[0][0]).toBe(client);
     expect(writeSheet.mock.calls[0][1]).toBe('sheet-id');
-    const written = writeSheet.mock.calls[0][2] as Array<{ label: string; dane: string }>;
+    const written = writeSheet.mock.calls[0][2];
     expect(written.map((item) => item.label).sort()).toEqual(['GPW', 'Stary']);
     expect(logger.log).toHaveBeenCalledWith(expect.stringContaining('xlsx entries: 1'));
     expect(exitFn).not.toHaveBeenCalled();

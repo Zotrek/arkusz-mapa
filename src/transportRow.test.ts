@@ -524,6 +524,7 @@ const HEADERS_10_20 = [
   'Komentarz 1',
   'Komentarz 2',
   'Komentarz do faktury',
+  'Data zatwierdzenia',
 ];
 
 function protocolBody(extra: Record<string, unknown> = {}): Record<string, unknown> {
