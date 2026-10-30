@@ -2466,6 +2466,9 @@ __api = {
       expect(html).toContain('Wszystkie worki');
       expect(html).not.toContain('Nie odebrane');
       expect(html).toContain('btn-gen-doc:disabled');
+      expect(html).toContain('data-bulk-locked');
+      expect(html).toContain("#doc-btn-ok:disabled");
+      expect(html).toContain("#bolecin-aw-add:disabled");
       expect(html).toContain('wirePopupControls');
     });
 
@@ -2592,7 +2595,19 @@ __api = {
       return el;
     }
 
-    function loadOrchestration(): { api: OrchestrationApi; els: Record<string, FakeEl> } {
+    type DocActionButton = {
+      disabled: boolean;
+      getAttribute: (name: string) => string | null;
+    };
+
+    function loadOrchestration(): {
+      api: OrchestrationApi;
+      els: Record<string, FakeEl>;
+      docOk: { disabled: boolean };
+      awAdd: { disabled: boolean };
+      genFree: DocActionButton;
+      genLocked: DocActionButton;
+    } {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
         templateBase64: 'UEsDBA==',
         podwykoOptions: [{ label: 'GPW', dane: 'GPW dane' }],
@@ -2611,12 +2626,24 @@ __api = {
 
       const pendingFetches: Array<(resp: { ok?: boolean; names?: string[] }) => void> = [];
       const lookupRouteRateCalls: string[] = [];
+      const docOk = { disabled: false };
+      const awAdd = { disabled: false };
+      const genFree: DocActionButton = { disabled: false, getAttribute: () => null };
+      const genLocked: DocActionButton = {
+        disabled: true,
+        getAttribute: (name: string) => (name === 'data-bulk-locked' ? '1' : null),
+      };
 
       const sandbox: Record<string, unknown> = {
         Promise,
         document: {
           getElementById(id: string) {
+            if (id === 'doc-btn-ok') return docOk;
+            if (id === 'bolecin-aw-add') return awAdd;
             return els[id] ?? null;
+          },
+          querySelectorAll(selector: string) {
+            return selector === '.btn-gen-doc' ? [genFree, genLocked] : [];
           },
         },
         window: {
@@ -2706,6 +2733,10 @@ __api = {
       return {
         api: { ...api, pendingFetches, lookupRouteRateCalls: api.lookupRouteRateCalls },
         els,
+        docOk,
+        awAdd,
+        genFree,
+        genLocked,
       };
     }
 
@@ -2713,6 +2744,28 @@ __api = {
       await new Promise<void>((resolve) => setImmediate(resolve));
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
+
+    it('test_syncMapLoaderUi_when_loader_on_should_block_generate_and_download_until_idle', () => {
+      const { api, docOk, awAdd, genFree, genLocked } = loadOrchestration();
+
+      api.setTransportDatesLoading(true, 'Pobieranie danych transportu…');
+      expect(docOk.disabled).toBe(true);
+      expect(awAdd.disabled).toBe(true);
+      expect(genFree.disabled).toBe(true);
+      expect(genLocked.disabled).toBe(true);
+
+      api.setRouteNameFieldLoading(true);
+      api.setTransportDatesLoading(false);
+      expect(docOk.disabled).toBe(true);
+      expect(awAdd.disabled).toBe(true);
+      expect(genFree.disabled).toBe(true);
+
+      api.setRouteNameFieldLoading(false);
+      expect(docOk.disabled).toBe(false);
+      expect(awAdd.disabled).toBe(false);
+      expect(genFree.disabled).toBe(false);
+      expect(genLocked.disabled).toBe(true);
+    });
 
     it('test_syncMapLoaderUi_when_route_load_ends_should_restore_transport_message', () => {
       const { api, els } = loadOrchestration();

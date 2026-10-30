@@ -103,8 +103,12 @@ export function markersPopupBrowserScript(): string {
           ? '<div class="popup-podmiot">Podmiot handlowy: ' + escapeHtmlMap(p.podmiotyHandlowe.join(', ')) + '</div>'
           : '';
       var bulkSelected = isBulkPointSelected(pointIdx);
+      var loaderOn = (typeof mapLoaderDepth !== 'undefined' && mapLoaderDepth > 0)
+        || (typeof routeNameFieldLoadDepth !== 'undefined' && routeNameFieldLoadDepth > 0);
       var genDocBtn = wordDocEnabled
-        ? '<div><button type="button" class="btn-gen-doc"' + (bulkSelected ? ' disabled' : '') +
+        ? '<div><button type="button" class="btn-gen-doc"' +
+          (bulkSelected ? ' data-bulk-locked="1"' : '') +
+          ((bulkSelected || loaderOn) ? ' disabled' : '') +
           '>Generuj dokument</button></div>'
         : '';
       var bulkSelect = wordDocEnabled
@@ -265,9 +269,10 @@ export function markersPopupBrowserScript(): string {
           };
         }
         var btn = el.querySelector('.btn-gen-doc');
-        if (btn && !btn.disabled) {
+        if (btn) {
           btn.onclick = function (ev) {
             if (ev.stopPropagation) ev.stopPropagation();
+            if (btn.disabled) return;
             openDocModal(pointIdx);
           };
         }
@@ -339,6 +344,18 @@ export function markersPopupBrowserScript(): string {
       var on = mapLoaderDepth > 0 || routeNameFieldLoadDepth > 0;
       el.hidden = !on;
       el.setAttribute('aria-busy', on ? 'true' : 'false');
+      var okBtn = document.getElementById('doc-btn-ok');
+      if (okBtn) okBtn.disabled = on;
+      var awAddBtn = document.getElementById('bolecin-aw-add');
+      if (awAddBtn) awAddBtn.disabled = on;
+      if (typeof document.querySelectorAll === 'function') {
+        var genBtns = document.querySelectorAll('.btn-gen-doc');
+        for (var gi = 0; gi < genBtns.length; gi++) {
+          var genBtn = genBtns[gi];
+          var bulkLocked = genBtn.getAttribute && genBtn.getAttribute('data-bulk-locked') === '1';
+          genBtn.disabled = on || !!bulkLocked;
+        }
+      }
       var label = document.getElementById('map-transport-loader-label');
       if (!label) return;
       if (messageForTransport) mapLoaderLastMessage = messageForTransport;

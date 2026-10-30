@@ -309,6 +309,8 @@ export function docCss(): string {
     #bolecin-aw-modal { z-index: 21000; }
     #bolecin-aw-add { background: var(--map-accent); color: #fff; border-color: var(--map-accent-deep); }
     #bolecin-aw-add:hover { background: var(--map-accent-deep); color: #fff; }
+    #bolecin-aw-add:disabled { opacity: 0.45; cursor: not-allowed; background: #94a3b8; border-color: #94a3b8; color: #fff; }
+    #bolecin-aw-add:disabled:hover { background: #94a3b8; border-color: #94a3b8; color: #fff; }
     .bolecin-aw-summary { margin-top: 4px; max-height: 180px; overflow-y: auto; font-size: 12px; line-height: 1.45; color: #334155; }
     .bolecin-aw-summary p { margin: 2px 0; }
     .popup-bulk-select { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; cursor: pointer; color: #334155; }
@@ -338,6 +340,8 @@ export function docCss(): string {
     .map-auto-bulk-btn.is-active:hover { background: #5a32a3; border-color: #5a32a3; color: #fff; }
     #doc-btn-ok { background: var(--map-accent); border-color: var(--map-accent-deep); color: #fff; box-shadow: 0 1px 3px rgba(15, 118, 110, 0.28); }
     #doc-btn-ok:hover { background: var(--map-accent-deep); color: #fff; }
+    #doc-btn-ok:disabled { opacity: 0.45; cursor: not-allowed; background: #94a3b8; border-color: #94a3b8; box-shadow: none; color: #fff; }
+    #doc-btn-ok:disabled:hover { background: #94a3b8; border-color: #94a3b8; color: #fff; }
     #bulk-rates-btn-ok { background: #6f42c1; border-color: #5a32a3; color: #fff; box-shadow: 0 1px 3px rgba(111, 66, 193, 0.28); }
     #bulk-rates-btn-ok:hover { background: #5a32a3; color: #fff; }
     #bulk-rates-btn-ok:disabled { opacity: 0.75; cursor: wait; }
