@@ -77,6 +77,7 @@ describe('saveRate', () => {
     expect(rules.normalizeRateDate_(null)).toBe('');
     expect(rules.normalizeRateDate_('1.9.2026')).toBe('01.09.2026');
     expect(rules.normalizeRateDate_('10.09.2026')).toBe('10.09.2026');
+    expect(rules.normalizeRateDate_('10-09-2026')).toBe('10.09.2026');
     expect(rules.normalizeRateDate_('29.02.2024')).toBe('29.02.2024');
   });
 

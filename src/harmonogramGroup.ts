@@ -197,8 +197,21 @@ export function joinHarmonogramLabels(values: readonly string[]): string {
   return unique.join('; ');
 }
 
+function bolecinDateKey(data: string): string {
+  const s = collapse(data);
+  const match = s.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
+  if (!match) {
+    return s.toLocaleLowerCase('pl');
+  }
+  const day = match[1]!.padStart(2, '0');
+  const month = match[2]!.padStart(2, '0');
+  return `${day}.${month}.${match[3]}`;
+}
+
 export function bolecinRowIdentity(adres: string, data: string, kto: string): string {
-  return [adres, data, kto].map((part) => collapse(part).toLocaleLowerCase('pl')).join('\n');
+  return [collapse(adres).toLocaleLowerCase('pl'), bolecinDateKey(data), collapse(kto).toLocaleLowerCase('pl')].join(
+    '\n',
+  );
 }
 
 export function buildBolecinRow(fields: {

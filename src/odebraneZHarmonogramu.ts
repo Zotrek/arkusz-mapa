@@ -5,6 +5,7 @@
  */
 
 import { SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU } from './config.js';
+import { parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 import { expandAllTables } from './sheetTables.js';
 import { shouldCopyToOdebraneZHarmonogramu } from './harmonogramDays.js';
 import { ensureSheetExists } from './phase4.js';
@@ -24,6 +25,7 @@ type SheetsValuesClient = {
       clear(args: any, ...rest: any[]): Promise<unknown>;
       update(args: any, ...rest: any[]): Promise<unknown>;
       append(args: any, ...rest: any[]): Promise<unknown>;
+      batchUpdate(args: any, ...rest: any[]): Promise<unknown>;
     };
   };
 };
@@ -109,6 +111,28 @@ export function findNumerPlombyColumnIndex(headers: string[]): number {
   return -1;
 }
 
+function headerIsDateColumn(header: string): boolean {
+  return normalizeOdebraneHeader(header).includes('data');
+}
+
+/** Tekst daty do komórki: `dd-mm-yyyy`. Nie-data zostaje jak była. */
+export function sheetCellDateText(raw: string): string {
+  const text = raw.trim();
+  if (!text) {
+    return '';
+  }
+  const ms = parseDataZamknieciaWorkaToSortMs(text);
+  if (ms === Number.NEGATIVE_INFINITY || !Number.isFinite(ms)) {
+    return text;
+  }
+  const parsed = new Date(ms);
+  const year = parsed.getUTCFullYear();
+  const month = parsed.getUTCMonth() + 1;
+  const day = parsed.getUTCDate();
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${pad(day)}-${pad(month)}-${year}`;
+}
+
 /**
  * Przepisuje wiersz źródłowy (trasówki) na kolejność kolumn ewidencji po nazwach nagłówków.
  */
@@ -127,16 +151,19 @@ export function remapRawRowToTargetHeaders(
 
   return targetHeaders.map((targetHeader) => {
     const targetKey = canonicalOdebraneHeader(normalizeOdebraneHeader(targetHeader));
+    let value = '';
     const exact = sourceIndexByCanonical.get(targetKey);
     if (exact !== undefined) {
-      return String(sourceRaw[exact] ?? '');
-    }
-    for (let i = 0; i < sourceHeaders.length; i++) {
-      if (headersLooselyMatch(targetHeader, sourceHeaders[i] ?? '')) {
-        return String(sourceRaw[i] ?? '');
+      value = String(sourceRaw[exact] ?? '');
+    } else {
+      for (let i = 0; i < sourceHeaders.length; i++) {
+        if (headersLooselyMatch(targetHeader, sourceHeaders[i] ?? '')) {
+          value = String(sourceRaw[i] ?? '');
+          break;
+        }
       }
     }
-    return '';
+    return headerIsDateColumn(targetHeader) ? sheetCellDateText(value) : value;
   });
 }
 
@@ -277,6 +304,98 @@ interface LoggerLike {
   info: (message: string, ...args: unknown[]) => void;
 }
 
+function columnLetter(index: number): string {
+  let n = index + 1;
+  let letters = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
+}
+
+/**
+ * RAW zostawia datę, gdy kolumna tabeli jest typu Data.
+ * Apostrof (USER_ENTERED) i format tekstu trzymają `dd-mm-yyyy` jako tekst.
+ */
+async function forceOdebraneDateColumnsAsText(
+  api: OdebraneSheetsClient,
+  spreadsheetId: string,
+  sheetName: string,
+  headers: string[],
+  dataRows: string[][],
+): Promise<void> {
+  if (dataRows.length === 0) {
+    return;
+  }
+  const dateCols: number[] = [];
+  for (let i = 0; i < headers.length; i++) {
+    if (headerIsDateColumn(headers[i] ?? '')) {
+      dateCols.push(i);
+    }
+  }
+  if (dateCols.length === 0) {
+    return;
+  }
+
+  const escaped = sheetName.replace(/'/g, "''");
+  const data: Array<{ range: string; values: string[][] }> = [];
+  for (const col of dateCols) {
+    for (let r = 0; r < dataRows.length; r++) {
+      const text = dataRows[r]?.[col] ?? '';
+      if (!/^\d{2}-\d{2}-\d{4}$/.test(text)) {
+        continue;
+      }
+      data.push({
+        range: `'${escaped}'!${columnLetter(col)}${r + 2}`,
+        values: [["'" + text]],
+      });
+    }
+  }
+  if (data.length === 0) {
+    return;
+  }
+
+  await api.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: 'USER_ENTERED', data },
+  });
+
+  const metaResponse = await api.spreadsheets.get({ spreadsheetId });
+  const sheets =
+    (
+      metaResponse.data as {
+        sheets?: Array<{ properties?: { title?: string; sheetId?: number } }>;
+      }
+    ).sheets ?? [];
+  const sheetId = sheets.find((sheet) => sheet.properties?.title === sheetName)?.properties?.sheetId;
+  if (sheetId == null) {
+    return;
+  }
+
+  await api.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: dateCols.map((col) => ({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 1,
+            endRowIndex: 1 + dataRows.length,
+            startColumnIndex: col,
+            endColumnIndex: col + 1,
+          },
+          cell: {
+            userEnteredFormat: { numberFormat: { type: 'TEXT', pattern: '@' } },
+          },
+          fields: 'userEnteredFormat.numberFormat',
+        },
+      })),
+    },
+  });
+}
+
 async function overwriteOdebraneSheet(
   api: OdebraneSheetsClient,
   spreadsheetId: string,
@@ -296,6 +415,7 @@ async function overwriteOdebraneSheet(
       values: [headers, ...dataRows],
     },
   });
+  await forceOdebraneDateColumnsAsText(api, spreadsheetId, sheetName, headers, dataRows);
 }
 
 /**

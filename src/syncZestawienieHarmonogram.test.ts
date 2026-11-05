@@ -12,9 +12,11 @@ import {
   defaultSyncWindow,
   planOffScheduleCleanup,
   scheduleDateOnOrAfter,
+  parseToDdMmYyyy,
   planScheduleSync,
   scheduleMonthSheetName,
   scheduleRowKey,
+  scheduleSheetDateText,
   sheetRateWriteValue,
   syncZestawienieHarmonogram,
   zestawienieRowValues,
@@ -628,6 +630,21 @@ describe('zestawienieRowValues', () => {
     expect(values[ixPickup]).toBe(175);
     expect(values[ixBag]).toBe(5);
     expect(typeof values[ixPickup]).toBe('number');
+    expect(values[ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf('Data odbioru')]).toBe('15-09-2026');
+  });
+
+  it('test_scheduleSheetDateText_when_canonical_dot_date_should_use_hyphens', () => {
+    expect(scheduleSheetDateText('02.10.2026')).toBe('02-10-2026');
+    expect(scheduleSheetDateText(' 15.09.2026 ')).toBe('15-09-2026');
+  });
+
+  it('test_parseToDdMmYyyy_when_hyphen_slash_or_dot_should_share_one_key', () => {
+    expect(parseToDdMmYyyy('15-09-2026')).toBe('15.09.2026');
+    expect(parseToDdMmYyyy('15/09/2026')).toBe('15.09.2026');
+    expect(parseToDdMmYyyy('15.09.2026')).toBe('15.09.2026');
+    expect(scheduleRowKey('A', parseToDdMmYyyy('15-09-2026') ?? '', 'THOR')).toBe(
+      scheduleRowKey('A', '15.09.2026', 'THOR'),
+    );
   });
 });
 
@@ -742,6 +759,29 @@ __api = scheduleSyncDefaultWindow_();`,
   return sandbox.__api!;
 }
 
+function sheetDateText(raw: string): string | null {
+  const source = readFileSync(gasPath, 'utf8');
+  const code = [
+    gasFunctionBody(source, 'settlementText_'),
+    gasFunctionBody(source, 'settlementPad2_'),
+    gasFunctionBody(source, 'settlementCalendarOk_'),
+    gasFunctionBody(source, 'settlementFormatDate_'),
+    gasFunctionBody(source, 'settlementDateText_'),
+  ].join('\n');
+  const sandbox: { __api?: string | null } = {};
+  runInNewContext(`${code}\n__api = settlementDateText_(${JSON.stringify(raw)});`, sandbox);
+  return sandbox.__api ?? null;
+}
+
+describe('settlementDateText_ sheet script', () => {
+  it('test_settlementDateText_when_hyphen_slash_or_dot_should_stay_canonical_dots', () => {
+    expect(sheetDateText('21-09-2026')).toBe('21.09.2026');
+    expect(sheetDateText('21/09/2026')).toBe('21.09.2026');
+    expect(sheetDateText('21.09.2026')).toBe('21.09.2026');
+    expect(sheetDateText('2026-09-21')).toBe('21.09.2026');
+  });
+});
+
 describe('scheduleSyncDefaultWindow_ sheet script', () => {
   it('test_scheduleSyncDefaultWindow_when_first_of_month_should_reach_back_a_week', () => {
     expect(sheetSyncWindow('2026-11-01T12:00:00Z')).toEqual({
@@ -824,7 +864,12 @@ function fakeSheetsApi(sheets: Map<string, string[][]>) {
             [...sheets.keys()].find((name) => args.range.startsWith(`'${name}'`)) ??
             scheduleMonthSheetName('15.09.2026');
           const current = sheets.get(title) ?? [[...ZESTAWIENIE_HARMONOGRAM_HEADERS]];
-          sheets.set(title, [...current, ...args.requestBody.values]);
+          const start = current.length + 1;
+          const next = [...current, ...args.requestBody.values];
+          sheets.set(title, next);
+          return {
+            data: { updates: { updatedRange: `'${title}'!A${start}:T${next.length}` } },
+          };
         }),
         batchUpdate: vi.fn(async (_args: {
           requestBody: { data: Array<{ range: string; values: unknown[][] }> };
@@ -936,6 +981,17 @@ describe('syncZestawienieHarmonogram', () => {
     expect(result.createdCount).toBe(1);
     expect(api.spreadsheets.values.clear).not.toHaveBeenCalled();
     expect(api.spreadsheets.values.append).toHaveBeenCalled();
+    const dateIx = ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf('Data odbioru');
+    expect(sheets.get(monthSheet)?.[1]?.[dateIx]).toBe('15-09-2026');
+    const locked = api.spreadsheets.values.batchUpdate.mock.calls.filter(
+      (call) => call[0].requestBody.valueInputOption === 'USER_ENTERED',
+    );
+    expect(locked).toHaveLength(1);
+    expect(locked[0]?.[0].requestBody.data[0]?.values).toEqual([["'15-09-2026"]]);
+    const textFormat = api.spreadsheets.batchUpdate.mock.calls.filter((call) =>
+      JSON.stringify(call[0]).includes('"type":"TEXT"'),
+    );
+    expect(textFormat.length).toBeGreaterThan(0);
     expect(result.tablesExpanded).toBe(0);
     expect(sheets.has(monthSheet)).toBe(true);
     const validationCalls = api.spreadsheets.batchUpdate.mock.calls.filter((c) =>
@@ -1028,6 +1084,7 @@ describe('syncZestawienieHarmonogram', () => {
     const writtenColumns = written.map((d) => /!([A-Z]+)\d+$/.exec(d.range)?.[1]);
     const col = (name: string) => String.fromCharCode(65 + ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf(name as never));
     expect(writtenColumns).toContain(col('Ilość worków'));
+    expect(writtenColumns).not.toContain(col('Data odbioru'));
     for (const name of ['Trasa', 'Stawka za trasę', 'Stawka za podjazd', 'Stawka za worek']) {
       expect(writtenColumns).not.toContain(col(name));
     }

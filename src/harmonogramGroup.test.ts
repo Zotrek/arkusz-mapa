@@ -112,7 +112,7 @@ describe('harmonogramGroup', () => {
     });
     expect(row[7]).toBe('');
     expect(bolecinRowIdentity('A; B', '12.10.2026', 'Interzero')).toBe(
-      bolecinRowIdentity('a; b', '12.10.2026', ' interzero '),
+      bolecinRowIdentity('a; b', '12-10-2026', ' interzero '),
     );
   });
 

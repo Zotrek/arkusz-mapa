@@ -99,6 +99,10 @@ class FakeRange {
     this.setValues([[value]]);
   }
 
+  setNumberFormat(): this {
+    return this;
+  }
+
   getDataValidation(): Validation | null {
     return this.sheet.validationAt(this.row, this.col);
   }
@@ -813,7 +817,9 @@ describe('appendTransportRow_', () => {
     expect(sheet.cell(3, 17)).toBe('S16');
     expect(sheet.cell(4, 18)).toBe('T17');
     expect(sheet.cell(5, 17)).toBe('I16');
-    const dataWrites = sheet.writes.filter((write) => write.row >= 2 && write.numCols === 1);
+    const dataWrites = sheet.writes.filter(
+      (write) => write.row >= 2 && write.numCols === 1 && write.col === 12,
+    );
     for (const write of dataWrites) {
       expect(write.col).toBe(12);
       expect(write.numCols).toBe(1);

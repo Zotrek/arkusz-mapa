@@ -180,6 +180,19 @@ export function formatDdMmYyyy(year: number, month: number, day: number): string
 }
 
 /**
+ * Tekst nowej komórki „Data odbioru” w Harmonogramie: `dd-mm-yyyy`.
+ * Wewnątrz syncu zostaje `dd.mm.yyyy` (klucz wiersza). Starych komórek nie przepisujemy.
+ * Kreski + format tekstu, żeby Arkusz nie zamienił wpisu na datę i nie pokazał innego formatu.
+ */
+export function scheduleSheetDateText(canonical: string): string {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(canonical.trim());
+  if (!match) {
+    return canonical.trim();
+  }
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+/**
  * Fold klucza sync: al./pl./Św. jak w stawkach, potem ASCII (ogonki).
  * Surowy adres z odebrane schodzi do adresu z Bazy cen: Gdańska→Gdańsk,
  * Wrocław-Fabryczna, dopisek w nawiasie, przyklejone al./ul./pl.
@@ -1218,7 +1231,7 @@ export function zestawienieRowValues(
   put('Adres odbioru', row.address);
   put('Nazwa kontrahenta / podmiot handlowy', row.podmiot);
   put('Nazwa punktu / nazwa skrócona', row.shopName);
-  put('Data odbioru', row.pickupDate);
+  put('Data odbioru', scheduleSheetDateText(row.pickupDate));
   put('Kto odbiera', row.contractor);
   put('Rodzaj zbiórki', row.rodzajZbiorki);
   put('Ilość worków', row.bagCount);
@@ -1541,6 +1554,98 @@ function isBlankRow(row: string[]): boolean {
   return row.every((c) => c.trim() === '');
 }
 
+function readUpdatedRange(appended: unknown): string {
+  if (!appended || typeof appended !== 'object') {
+    return '';
+  }
+  const body = appended as {
+    data?: { updates?: { updatedRange?: unknown } };
+    updates?: { updatedRange?: unknown };
+  };
+  const range = body.data?.updates?.updatedRange ?? body.updates?.updatedRange;
+  return typeof range === 'string' ? range : '';
+}
+
+/** Zakres dopisanych wierszy, bez nagłówka. */
+function appendedRowSpan(updatedRange: string): { start: number; end: number } | null {
+  const match = /![A-Z]+(\d+)(?::[A-Z]+(\d+))?$/.exec(updatedRange.replace(/\$/g, ''));
+  if (!match) {
+    return null;
+  }
+  const start = Number(match[1]);
+  const end = Number(match[2] ?? match[1]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 2 || end < start) {
+    return null;
+  }
+  return { start, end };
+}
+
+/**
+ * Dopięcie nowych dat jako tekstu. RAW potrafi zostać datą, gdy kolumna tabeli jest typu Data
+ * — wtedy Arkusz pokazuje ją raz jako `yyyy-mm-dd`, raz jako `d.mm.yyyy`.
+ * Apostrof (USER_ENTERED) nadpisuje tylko te nowe komórki. Starych wierszy nie rusza.
+ */
+async function forceAppendedPickupDatesAsText(
+  api: SheetsClient,
+  spreadsheetId: string,
+  sheetName: string,
+  headers: string[],
+  dates: string[],
+  appended: unknown,
+): Promise<void> {
+  const span = appendedRowSpan(readUpdatedRange(appended));
+  const dateCol = headerIndex(headers, 'Data odbioru');
+  if (!span || dateCol < 0 || dates.length === 0) {
+    return;
+  }
+  const rowCount = Math.min(dates.length, span.end - span.start + 1);
+  const data: Array<{ range: string; values: string[][] }> = [];
+  for (let i = 0; i < rowCount; i++) {
+    const text = dates[i] ?? '';
+    if (!/^\d{2}-\d{2}-\d{4}$/.test(text)) {
+      continue;
+    }
+    data.push({
+      range: `${quoteSheet(sheetName)}!${columnLetter(dateCol)}${span.start + i}`,
+      values: [["'" + text]],
+    });
+  }
+  if (data.length === 0) {
+    return;
+  }
+  await api.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: 'USER_ENTERED', data },
+  });
+  const sheetId = (await sheetProperties(api, spreadsheetId, sheetName))?.sheetId;
+  if (sheetId == null) {
+    return;
+  }
+  const first = span.start - 1;
+  await api.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: first,
+              endRowIndex: first + rowCount,
+              startColumnIndex: dateCol,
+              endColumnIndex: dateCol + 1,
+            },
+            cell: {
+              userEnteredFormat: { numberFormat: { type: 'TEXT', pattern: '@' } },
+            },
+            fields: 'userEnteredFormat.numberFormat',
+          },
+        },
+      ],
+    },
+  });
+}
+
 /**
  * Uzupełnia braki i aktualizuje nierozliczone. NIE czyści zakładki (żadnego clear/overwrite całości).
  * Na końcu rozciąga tabele na każdej zakładce pliku.
@@ -1655,7 +1760,7 @@ export async function syncZestawienieHarmonogram(
         requestBody: { values: [headers] },
       });
     }
-    await api.spreadsheets.values.append({
+    const appended = await api.spreadsheets.values.append({
       spreadsheetId,
       range: `${quoteSheet(sheetName)}!A1`,
       valueInputOption: 'RAW',
@@ -1664,6 +1769,14 @@ export async function syncZestawienieHarmonogram(
         values: rows.map((row) => zestawienieRowValues(row, headers)),
       },
     });
+    await forceAppendedPickupDatesAsText(
+      api,
+      spreadsheetId,
+      sheetName,
+      headers,
+      rows.map((row) => scheduleSheetDateText(row.pickupDate)),
+      appended,
+    );
     await ensureTransportOdbyłValidation(api, spreadsheetId, sheetName, headerWritten);
   }
 

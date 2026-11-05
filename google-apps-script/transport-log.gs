@@ -34,7 +34,7 @@
  *   Pola: P/Q/I, status, snapshoty L/M, adres, data, podwykonawca, mode; rates do remisów.
  * POST { action: patchBags | patchRouteRate | patchPickupDate | detachRoute | attachRoute | resolveRateTie | approve | patchInvoiceComment }
  *   Zapis od razu, pod tym samym lockiem co protokół. saveRate tu nie powstaje drugi raz.
- *   patchPickupDate — Data odbioru (dd.mm.yyyy) na wierszach z body.wiersze.
+ *   patchPickupDate — Data odbioru na wierszach z body.wiersze. Inny miesiąc przenosi też Data zatwierdzenia.
  *   Inny miesiąc przenosi wiersz na zakładkę tego miesiąca i kasuje stary. Kolumn 17–18 nie przelicza.
  *   tryb=harmonogram|schedule → zapis na „zestawienie z harmonogramu”; inaczej Arkusz1.
  *   Rejestr: sheetRow + transportNumber. Odpada, gdy w tym wierszu kolumna 1 jest inna.
@@ -1587,7 +1587,7 @@ function appendTransportRow_(numer, body) {
     adres,
     body.podmiotHandlowy || '',
     body.sklep || '',
-    dataOdbioru,
+    scheduleSheetDateText_(dataOdbioru) || dataOdbioru,
     kto,
     body.miejsceZrzutu || '',
     body.rodzajZbiorki || '',
@@ -1612,6 +1612,7 @@ function appendTransportRow_(numer, body) {
     writeRow = 2;
   }
   sheet.getRange(writeRow, 1, 1, row.length).setValues([row]);
+  putSheetDateCell_(sheet, writeRow, COL.dataOdbioru, dataOdbioru);
   expandSheetTablesQuiet_(sheet);
   if (bodyHasRoute_(body) && routeRate !== '') {
     applyRouteRateToUnsettled_(sheet, routeName, routeRate);
@@ -2296,7 +2297,8 @@ function normalizeRateDate_(text) {
   if (!raw) {
     return '';
   }
-  var parts = raw.split('.');
+  var normalized = raw.replace(/-/g, '.').split('/').join('.');
+  var parts = normalized.split('.');
   if (parts.length !== 3) {
     return null;
   }
@@ -2513,8 +2515,8 @@ function handleSaveRatePost_(body) {
   }
   var next = Math.max(sheet.getLastRow(), 1) + 1;
   sheet.getRange(next, 5).setNumberFormat('@');
-  sheet.getRange(next, 1, 1, 5).setValues([[shop, contractor, pickupCell, bagCell, validFrom]]);
-  sheet.getRange(next, 5).setNumberFormat('@').setValue(String(validFrom));
+  sheet.getRange(next, 1, 1, 5).setValues([[shop, contractor, pickupCell, bagCell, scheduleSheetDateText_(validFrom) || validFrom]]);
+  putSheetDateCell_(sheet, next, 5, validFrom);
   return jsonResponse({ ok: true, action: 'append' });
 }
 
@@ -2786,8 +2788,8 @@ function handleSaveRateHarmonogramPost_(body) {
   sheet.getRange(next, 7).setNumberFormat('@');
   sheet
     .getRange(next, 1, 1, 8)
-    .setValues([[shop, contractor, routeName, pickupCell, bagCell, routeRateCell, validFrom, days]]);
-  sheet.getRange(next, 7).setNumberFormat('@').setValue(String(validFrom));
+    .setValues([[shop, contractor, routeName, pickupCell, bagCell, routeRateCell, scheduleSheetDateText_(validFrom) || validFrom, days]]);
+  putSheetDateCell_(sheet, next, 7, validFrom);
   var appendedSchedule = applyHarmonogramRatesToScheduleRegister_(shop, contractor);
   return jsonResponse({
     ok: true,
@@ -2971,11 +2973,25 @@ function joinHarmonogramLabels_(values) {
   return unique.join('; ');
 }
 
+function bolecinDateKey_(data) {
+  var s = collapseText_(data);
+  var match = s.match(/^(\d{1,2})[.\-](\d{1,2})[.\-](\d{4})$/);
+  if (!match) {
+    return s.toLocaleLowerCase('pl');
+  }
+  var day = parseInt(match[1], 10);
+  var month = parseInt(match[2], 10);
+  function pad(n) {
+    return n < 10 ? '0' + n : String(n);
+  }
+  return pad(day) + '.' + pad(month) + '.' + match[3];
+}
+
 function bolecinRowIdentity_(adres, data, kto) {
   return (
     collapseText_(adres).toLocaleLowerCase('pl') +
     '\n' +
-    collapseText_(data).toLocaleLowerCase('pl') +
+    bolecinDateKey_(data) +
     '\n' +
     collapseText_(kto).toLocaleLowerCase('pl')
   );
@@ -3479,6 +3495,18 @@ function bolecinSheetHasIdentity_(sheet, identity) {
   return false;
 }
 
+function lockBolecinDateCell_(sheet, row, raw) {
+  var headers = sheetHeaders_(sheet);
+  var i;
+  for (i = 0; i < headers.length; i++) {
+    if (bolecinFieldKey_(headers[i]) === 'data') {
+      putSheetDateCell_(sheet, row, i + 1, raw);
+      return;
+    }
+  }
+  putSheetDateCell_(sheet, row, 4, raw);
+}
+
 function appendBolecinMapped_(sheet, fields) {
   var headers = sheetHeaders_(sheet);
   var row = [];
@@ -3489,14 +3517,20 @@ function appendBolecinMapped_(sheet, fields) {
     if (key) {
       any = true;
     }
-    row.push(key && fields[key] != null ? String(fields[key]) : '');
+    if (key === 'data') {
+      var storedData = scheduleSheetDateText_(fields.data);
+      row.push(/^\d{2}-\d{2}-\d{4}$/.test(storedData) ? storedData : fields.data || '');
+    } else {
+      row.push(key && fields[key] != null ? String(fields[key]) : '');
+    }
   }
   if (!any) {
+    var fallbackData = scheduleSheetDateText_(fields.data);
     sheet.appendRow([
       fields.oknoAwizacji || '',
       fields.adres || '',
       fields.nazwa || '',
-      fields.data || '',
+      /^\d{2}-\d{2}-\d{4}$/.test(fallbackData) ? fallbackData : fields.data || '',
       fields.kto || '',
       fields.miejsce || '',
       fields.rodzajZbiorki || '',
@@ -3504,10 +3538,12 @@ function appendBolecinMapped_(sheet, fields) {
       fields.rodzajTransportu || '',
       fields.awizacja || '',
     ]);
+    lockBolecinDateCell_(sheet, sheet.getLastRow(), fields.data);
     expandSheetTablesQuiet_(sheet);
     return;
   }
   sheet.appendRow(row);
+  lockBolecinDateCell_(sheet, sheet.getLastRow(), fields.data);
   expandSheetTablesQuiet_(sheet);
 }
 
@@ -3588,7 +3624,11 @@ function writeBolecinMappedRow_(sheet, sheetRow, fields) {
     }
     any = true;
     var value = fields[key] != null ? String(fields[key]) : '';
-    sheet.getRange(sheetRow, i + 1).setValue(value);
+    if (key === 'data' && value) {
+      putSheetDateCell_(sheet, sheetRow, i + 1, value);
+    } else {
+      sheet.getRange(sheetRow, i + 1).setValue(value);
+    }
   }
   return any;
 }
@@ -4104,7 +4144,7 @@ function settlementFormatDate_(year, month, day) {
   return settlementPad2_(day) + '.' + settlementPad2_(month) + '.' + String(year);
 }
 
-/** Tekst dd.mm.yyyy albo null. Data z arkusza (obiekt) idzie składnikami lokalnymi. Akceptuje też ISO yyyy-mm-dd. */
+/** Tekst dd.mm.yyyy albo null. Data z arkusza (obiekt) idzie składnikami lokalnymi. Akceptuje też `dd-mm-yyyy`, `dd/mm/yyyy` i ISO. */
 function settlementDateText_(value) {
   if (value instanceof Date) {
     if (isNaN(value.getTime())) {
@@ -4137,7 +4177,10 @@ function settlementDateText_(value) {
   if (!s) {
     return null;
   }
-  var match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
+  if (s.charAt(0) === "'") {
+    s = s.substring(1).trim();
+  }
+  var match = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(s);
   if (match) {
     var d = parseInt(match[1], 10);
     var m = parseInt(match[2], 10);
@@ -5682,6 +5725,29 @@ function settlementStatsOdebraneReadWidth_(headers) {
 }
 /* settlement-read-pure:end */
 
+/** Nowa komórka Data odbioru w Harmonogramie: `dd-mm-yyyy`. W środku zostaje `dd.mm.yyyy`. */
+function scheduleSheetDateText_(canonical) {
+  var text = settlementDateText_(canonical) || settlementText_(canonical);
+  var match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text);
+  if (!match) {
+    return text;
+  }
+  return match[1] + '-' + match[2] + '-' + match[3];
+}
+
+/** Apostrof + format @ — Arkusz trzyma tekst i nie podmienia go na datę lokalną. */
+function putSheetDateCell_(sheet, row, col, raw) {
+  var stored = scheduleSheetDateText_(raw);
+  if (!/^\d{2}-\d{2}-\d{4}$/.test(stored)) {
+    return;
+  }
+  sheet.getRange(row, col).setNumberFormat('@').setValue("'" + stored);
+}
+
+function putScheduleDateCell_(sheet, row, canonical) {
+  putSheetDateCell_(sheet, row, SCHEDULE_COL.dataOdbioru, canonical);
+}
+
 function scheduleWeekdayOfDate_(date) {
   var parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date || '');
   if (!parts) {
@@ -5953,7 +6019,7 @@ function scheduleApplyOffDayCleanup_(cleanup, existingByKey) {
     line[SCHEDULE_COL.adres - 1] = draft.address;
     line[SCHEDULE_COL.podmiot - 1] = draft.podmiot || '';
     line[SCHEDULE_COL.sklep - 1] = draft.shopName || '';
-    line[SCHEDULE_COL.dataOdbioru - 1] = draft.pickupDate;
+    line[SCHEDULE_COL.dataOdbioru - 1] = scheduleSheetDateText_(draft.pickupDate);
     line[SCHEDULE_COL.ktoOdbiera - 1] = draft.contractor;
     line[SCHEDULE_COL.rodzajZbiorki - 1] = draft.rodzajZbiorki || '';
     line[SCHEDULE_COL.iloscWorkow - 1] = draft.bagCount;
@@ -5962,6 +6028,7 @@ function scheduleApplyOffDayCleanup_(cleanup, existingByKey) {
     line[SCHEDULE_COL.stawkaPodjazdu - 1] = sheetRateWriteValue_(draft.pickupRate);
     line[SCHEDULE_COL.stawkaWorka - 1] = sheetRateWriteValue_(draft.bagRate);
     sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
+    putScheduleDateCell_(sheet, newRow, draft.pickupDate);
     existingByKey[item.targetKey] = {
       sheetName: sheet.getName(),
       row: newRow,
@@ -6327,7 +6394,7 @@ function syncZestawienieHarmonogram_(body) {
     line[SCHEDULE_COL.adres - 1] = exp.address;
     line[SCHEDULE_COL.podmiot - 1] = exp.podmiot || '';
     line[SCHEDULE_COL.sklep - 1] = exp.shopName || '';
-    line[SCHEDULE_COL.dataOdbioru - 1] = exp.pickupDate;
+    line[SCHEDULE_COL.dataOdbioru - 1] = scheduleSheetDateText_(exp.pickupDate);
     line[SCHEDULE_COL.ktoOdbiera - 1] = exp.contractor;
     line[SCHEDULE_COL.rodzajZbiorki - 1] = exp.rodzajZbiorki || '';
     line[SCHEDULE_COL.iloscWorkow - 1] = exp.bagCount;
@@ -6336,6 +6403,7 @@ function syncZestawienieHarmonogram_(body) {
     line[SCHEDULE_COL.stawkaPodjazdu - 1] = sheetRateWriteValue_(exp.pickupRate);
     line[SCHEDULE_COL.stawkaWorka - 1] = sheetRateWriteValue_(exp.bagRate);
     sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
+    putScheduleDateCell_(sheet, newRow, exp.pickupDate);
     created += 1;
     scheduledByKey[exp.key] = { bagCount: exp.bagCount || 0, rodzajZbiorki: exp.rodzajZbiorki || '' };
     existing.byKey[exp.key] = {
@@ -6908,7 +6976,8 @@ function approve_(body) {
 /**
  * Data odbioru na wskazanych wierszach. Pusta i zła data odpadają.
  * Ta sama zakładka miesiąca: tylko komórka daty. Inny miesiąc: kopia wiersza
- * na zakładkę tego miesiąca i usunięcie starego. Kosztu nie przelicza.
+ * (razem z Data zatwierdzenia) na zakładkę tego miesiąca i usunięcie starego.
+ * Kosztu nie przelicza.
  */
 function pickupDateItems_(body) {
   var rows = body && body.wiersze;
@@ -6923,12 +6992,14 @@ function pickupDateItems_(body) {
 
 function writePickupDate_(target, dateText, schedule) {
   var dateCol = schedule ? SCHEDULE_COL.dataOdbioru : COL.dataOdbioru;
-  var width = schedule ? SCHEDULE_COL.komentarzFaktury : COL.komentarzFaktury;
+  var approvedCol = schedule ? SCHEDULE_COL.dataZatwierdzenia : COL.dataZatwierdzenia;
+  var width = approvedCol;
   var kind = schedule ? 'schedule' : 'report';
   var destName = schedule ? scheduleMonthSheetName_(dateText) : reportMonthSheetName_(dateText);
   var sourceName = target.sheet.getName();
+  var stored = scheduleSheetDateText_(dateText);
   if (sourceName === destName) {
-    target.sheet.getRange(target.row, dateCol).setNumberFormat('@').setValue(dateText);
+    putSheetDateCell_(target.sheet, target.row, dateCol, dateText);
     return {
       sheetName: sourceName,
       sheetRow: target.row,
@@ -6937,10 +7008,12 @@ function writePickupDate_(target, dateText, schedule) {
   }
   var dest = getOrCreateMonthRegisterSheet_(kind, dateText);
   var values = target.sheet.getRange(target.row, 1, 1, width).getValues()[0];
-  values[dateCol - 1] = dateText;
+  var approvedRaw = values[approvedCol - 1];
+  values[dateCol - 1] = stored;
   dest.appendRow(values);
   var newRow = dest.getLastRow();
-  dest.getRange(newRow, dateCol).setNumberFormat('@').setValue(dateText);
+  putSheetDateCell_(dest, newRow, dateCol, dateText);
+  putSheetDateCell_(dest, newRow, approvedCol, approvedRaw);
   if (dest.getName() !== sourceName) {
     target.sheet.deleteRow(target.row);
   }
@@ -7173,7 +7246,7 @@ function writeApprovedAtIfEmpty_(sheet, row, col) {
   if (!cellIsEmpty_(cell.getValue())) {
     return;
   }
-  cell.setValue(approvedAtToday_());
+  putSheetDateCell_(sheet, row, col, approvedAtToday_());
 }
 
 function patchInvoiceComment_(body) {

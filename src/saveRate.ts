@@ -53,7 +53,8 @@ function normalizeRateDate_(text) {
   if (!raw) {
     return '';
   }
-  var parts = raw.split('.');
+  var normalized = raw.replace(/-/g, '.').split('/').join('.');
+  var parts = normalized.split('.');
   if (parts.length !== 3) {
     return null;
   }

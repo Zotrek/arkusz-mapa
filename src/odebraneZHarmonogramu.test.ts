@@ -147,6 +147,7 @@ describe('odebraneZHarmonogramu', () => {
     expect(mapped[7]).toBe('Proszowice');
     expect(mapped[12]).toBe('SEAL-9');
     expect(mapped[13]).toBe('Zamknięty');
+    expect(mapped[EWIDENCJA_HEADERS.indexOf('Data zamknięcia')]).toBe('07-08-2026');
   });
 
   it('test_executeOdebrane_when_no_candidates_and_no_sheet_should_noop', async () => {
@@ -184,11 +185,18 @@ describe('odebraneZHarmonogramu', () => {
     const batchUpdateMock = vi.fn().mockResolvedValue({});
     const clearMock = vi.fn().mockResolvedValue({});
     const updateMock = vi.fn().mockResolvedValue({});
+    const valuesBatchMock = vi.fn().mockResolvedValue({});
     const api = {
       spreadsheets: {
         get: getMock,
         batchUpdate: batchUpdateMock,
-        values: { get: vi.fn(), clear: clearMock, update: updateMock, append: vi.fn() },
+        values: {
+          get: vi.fn(),
+          clear: clearMock,
+          update: updateMock,
+          append: vi.fn(),
+          batchUpdate: valuesBatchMock,
+        },
       },
     };
 
@@ -211,7 +219,24 @@ describe('odebraneZHarmonogramu', () => {
         spreadsheetId: 'ewidencja-id',
         range: `'${SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU}'!A1`,
         requestBody: {
-          values: [SOURCE_HEADERS, makeSourceRaw({ 'Numer plomby': 'NEW1' })],
+          values: [
+            SOURCE_HEADERS,
+            makeSourceRaw({ 'Numer plomby': 'NEW1', 'Data zamknięcia worka': '07-08-2026' }),
+          ],
+        },
+      }),
+    );
+    expect(valuesBatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spreadsheetId: 'ewidencja-id',
+        requestBody: {
+          valueInputOption: 'USER_ENTERED',
+          data: [
+            {
+              range: `'${SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU}'!M2`,
+              values: [["'07-08-2026"]],
+            },
+          ],
         },
       }),
     );
@@ -222,20 +247,28 @@ describe('odebraneZHarmonogramu', () => {
       data: {
         sheets: [
           { properties: { title: 'Arkusz1' } },
-          { properties: { title: SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU } },
+          { properties: { title: SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU, sheetId: 7 } },
         ],
       },
     });
     const clearMock = vi.fn().mockResolvedValue({});
     const updateMock = vi.fn().mockResolvedValue({});
+    const valuesBatchMock = vi.fn().mockResolvedValue({});
+    const formatMock = vi.fn().mockResolvedValue({});
     const valuesGetMock = vi.fn().mockResolvedValue({
       data: { values: [EWIDENCJA_HEADERS] },
     });
     const api = {
       spreadsheets: {
         get: getMock,
-        batchUpdate: vi.fn(),
-        values: { get: valuesGetMock, clear: clearMock, update: updateMock, append: vi.fn() },
+        batchUpdate: formatMock,
+        values: {
+          get: valuesGetMock,
+          clear: clearMock,
+          update: updateMock,
+          append: vi.fn(),
+          batchUpdate: valuesBatchMock,
+        },
       },
     };
 
@@ -267,6 +300,46 @@ describe('odebraneZHarmonogramu', () => {
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         requestBody: { values: [EWIDENCJA_HEADERS, ...expected] },
+      }),
+    );
+    expect(valuesBatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: {
+          valueInputOption: 'USER_ENTERED',
+          data: [
+            {
+              range: `'${SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU}'!P2`,
+              values: [["'07-08-2026"]],
+            },
+            {
+              range: `'${SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU}'!P3`,
+              values: [["'07-08-2026"]],
+            },
+          ],
+        },
+      }),
+    );
+    expect(formatMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId: 7,
+                  startRowIndex: 1,
+                  endRowIndex: 3,
+                  startColumnIndex: 15,
+                  endColumnIndex: 16,
+                },
+                cell: {
+                  userEnteredFormat: { numberFormat: { type: 'TEXT', pattern: '@' } },
+                },
+                fields: 'userEnteredFormat.numberFormat',
+              },
+            },
+          ],
+        },
       }),
     );
   });
