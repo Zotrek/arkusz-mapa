@@ -121,6 +121,10 @@ export function buildMapHtml(
     const v = normalizeWgHarmonogramu(p.wgHarmonogramu);
     return v === 'tak' || v === 'nie';
   });
+  const showAutomatykaFilter = points.some((p) => {
+    const v = normalizeWgHarmonogramu(p.automatykaTms);
+    return v === 'tak' || v === 'nie';
+  });
   const wojewodztwaOptions = uniqueWojewodztwaFromMapPoints(points);
   const showWojewodztwoFilter = wojewodztwaOptions.length >= 2;
   const wordEnabled = Boolean(wordEmbed?.templateBase64);
@@ -150,6 +154,7 @@ ${SITE_PASSWORD_FETCH_SNIPPET}
     const hasCountLegend = ${jsonForScript(hasAnyPoints)};
     const showZbiorkaFilter = ${jsonForScript(showZbiorkaFilter)};
     const showHarmonogramFilter = ${jsonForScript(showHarmonogramFilter)};
+    const showAutomatykaFilter = ${jsonForScript(showAutomatykaFilter)};
     const showWojewodztwoFilter = ${jsonForScript(showWojewodztwoFilter)};
     const wordDocEnabled = ${jsonForScript(wordEnabled)};
     const transportApiEnabled = ${jsonForScript(transportApiEnabled)};

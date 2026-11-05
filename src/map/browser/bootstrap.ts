@@ -155,6 +155,15 @@ export function bootstrapBrowserScript({
         '<label><input type="radio" name="map-harmonogram-filter" value="nie" /> Nie</label>' +
         '</div></div>'
       : '';
+    var automatykaFilterHtml = showAutomatykaFilter
+      ? '<div class="map-automatyka-filter" role="group" aria-labelledby="map-automatyka-filter-title">' +
+        '<span id="map-automatyka-filter-title" class="map-automatyka-filter-title">Automatyka TMS</span>' +
+        '<div class="map-automatyka-filter-options">' +
+        '<label><input type="radio" name="map-automatyka-filter" value="wszystkie" checked /> Wszystkie</label>' +
+        '<label><input type="radio" name="map-automatyka-filter" value="tak" /> Tak</label>' +
+        '<label><input type="radio" name="map-automatyka-filter" value="nie" /> Nie</label>' +
+        '</div></div>'
+      : '';
     var wojewodztwoFilterHtml = showWojewodztwoFilter
       ? '<div class="map-wojewodztwo-filter" role="group" aria-labelledby="map-wojewodztwo-filter-title">' +
         '<span id="map-wojewodztwo-filter-title" class="map-wojewodztwo-filter-title">Województwo</span>' +
@@ -215,6 +224,7 @@ export function bootstrapBrowserScript({
         '<div id="map-search-status" class="map-search-status" role="status" aria-live="polite"></div>' +
         zbiorkaFilterHtml +
         harmonogramFilterHtml +
+        automatykaFilterHtml +
         wojewodztwoFilterHtml +
         clusterToggleHtml +
         '<button type="button" id="map-clear-all-filters" class="map-clear-all-filters">Wyczyść wszystkie filtry</button>' +
@@ -246,6 +256,12 @@ export function bootstrapBrowserScript({
         var harmRadios = wrap.querySelectorAll('input[name="map-harmonogram-filter"]');
         for (var hi = 0; hi < harmRadios.length; hi++) {
           harmRadios[hi].addEventListener('change', applyAddressSearch);
+        }
+      }
+      if (showAutomatykaFilter) {
+        var autoRadios = wrap.querySelectorAll('input[name="map-automatyka-filter"]');
+        for (var ai = 0; ai < autoRadios.length; ai++) {
+          autoRadios[ai].addEventListener('change', applyAddressSearch);
         }
       }
       if (showWojewodztwoFilter) {
@@ -385,12 +401,14 @@ export function bootstrapBrowserScript({
         if (String(r).trim().length === 0) return;
         var zMode = getZbiorkaFilterMode();
         var hMode = getWgHarmonogramuFilterMode();
+        var aMode = getAutomatykaTmsFilterMode();
         var wMode = getWojewodztwoFilterSelection();
         var matched = markerEntries.filter(function(e) {
           var zOk = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(e.p.zbiorka, zMode);
           var hOk = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(e.p.wgHarmonogramu, hMode);
+          var aOk = !showAutomatykaFilter || mapPointMatchesAutomatykaTmsFilterMap(e.p.automatykaTms, aMode);
           var wOk = !showWojewodztwoFilter || mapPointMatchesWojewodztwoFilterMap(e.p.woj, wMode);
-          return zOk && hOk && wOk && mapPointMatchesSearchMap(e.p, r);
+          return zOk && hOk && aOk && wOk && mapPointMatchesSearchMap(e.p, r);
         });
         if (matched.length === 0) return;
         if (matched.length === 1) {
@@ -417,6 +435,7 @@ export function bootstrapBrowserScript({
       var hasSearchFilter = String(raw).trim().length > 0;
       var zbiorkaMode = getZbiorkaFilterMode();
       var harmMode = getWgHarmonogramuFilterMode();
+      var autoMode = getAutomatykaTmsFilterMode();
       var wojMode = getWojewodztwoFilterSelection();
       var matchCount = 0;
       var filterCount = 0;
@@ -425,8 +444,9 @@ export function bootstrapBrowserScript({
       markerEntries.forEach(function(entry) {
         var zMatch = !showZbiorkaFilter || mapPointMatchesZbiorkaFilterMap(entry.p.zbiorka, zbiorkaMode);
         var hMatch = !showHarmonogramFilter || mapPointMatchesWgHarmonogramuFilterMap(entry.p.wgHarmonogramu, harmMode);
+        var aMatch = !showAutomatykaFilter || mapPointMatchesAutomatykaTmsFilterMap(entry.p.automatykaTms, autoMode);
         var wMatch = !showWojewodztwoFilter || mapPointMatchesWojewodztwoFilterMap(entry.p.woj, wojMode);
-        if (!zMatch || !hMatch || !wMatch) {
+        if (!zMatch || !hMatch || !aMatch || !wMatch) {
           setMarkerVisible(entry.marker, false, clusterAdds, clusterRemovals);
           entry.marker.setOpacity(1);
           entry.marker.setZIndexOffset(0);

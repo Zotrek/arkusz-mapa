@@ -21,6 +21,13 @@ export function filtersUiBrowserScript(): string {
       var el = document.querySelector('input[name="map-harmonogram-filter"]:checked');
       return el ? String(el.value) : 'wszystkie';
     }
+    function mapPointMatchesAutomatykaTmsFilterMap(automatykaTms, mode) {
+      return mapPointMatchesAutomatykaTmsFilter(automatykaTms, mode);
+    }
+    function getAutomatykaTmsFilterMode() {
+      var el = document.querySelector('input[name="map-automatyka-filter"]:checked');
+      return el ? String(el.value) : 'wszystkie';
+    }
     function mapPointMatchesWojewodztwoFilterMap(woj, selected) {
       return mapPointMatchesWojewodztwoFilter(woj, selected);
     }
@@ -54,6 +61,8 @@ export function filtersUiBrowserScript(): string {
       if (zDefault) zDefault.checked = true;
       var hDefault = document.querySelector('input[name="map-harmonogram-filter"][value="wszystkie"]');
       if (hDefault) hDefault.checked = true;
+      var aDefault = document.querySelector('input[name="map-automatyka-filter"][value="wszystkie"]');
+      if (aDefault) aDefault.checked = true;
       clearWojewodztwoFilter();
       setWojewodztwoDropdownOpen(false);
       applyAddressSearch();

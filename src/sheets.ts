@@ -38,6 +38,8 @@ export interface SheetRow extends AddressParts {
   dniHarmonogramu: string;
   /** Firma transportowa (opcjonalna kolumna; np. wstawiona jako F). */
   firmaTransportowa: string;
+  /** Automatyka TMS – tak / nie (surowy tekst z arkusza). */
+  automatykaTms: string;
   /** Ulica z arkusza przed rozwinięciem skrótów (Gen. → Generała). */
   ulicaRaw: string;
   raw: string[];
@@ -131,6 +133,7 @@ export function resolveSheetColumnMap(headers: string[]): SheetColumnMap {
       ['firma transportowa', 'firma transport'],
       DEFAULT_SHEET_COLUMN_MAP.firmaTransportowa,
     ),
+    automatykaTms: pick(['automatyka tms'], DEFAULT_SHEET_COLUMN_MAP.automatykaTms),
   };
 }
 
@@ -408,6 +411,7 @@ export function mapRawRowToSheetRow(
     wgHarmonogramu: normalizeCell(raw[columns.wgHarmonogramu] ?? ''),
     dniHarmonogramu: normalizeCell(raw[columns.dniHarmonogramu] ?? ''),
     firmaTransportowa: normalizeCell(raw[columns.firmaTransportowa] ?? ''),
+    automatykaTms: normalizeCell(raw[columns.automatykaTms] ?? ''),
     raw,
     address: buildAddress({
       kodPocztowy,

@@ -32,6 +32,7 @@ import {
   COL_WG_HARMONOGRAMU,
   COL_DNI_HARMONOGRAMU,
   COL_FIRMA_TRANSPORTOWA,
+  COL_AUTOMATYKA_TMS,
   SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU,
   GEOJSON_WOJEWODZTWA_URL,
 } from './config';
@@ -106,6 +107,10 @@ describe('config', () => {
 
     it('should expose column index fallback for Firma transportowa (T) as 19', () => {
       expect(COL_FIRMA_TRANSPORTOWA).toBe(19);
+    });
+
+    it('should expose column index fallback for Automatyka TMS (U) as 20', () => {
+      expect(COL_AUTOMATYKA_TMS).toBe(20);
     });
 
     it('should expose odebrane z harmonogramu sheet name', () => {

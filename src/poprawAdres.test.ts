@@ -28,6 +28,7 @@ function makeGroup(address: string, podmiot = 'PH', sklep = 'Sklep A'): AddressG
         wgHarmonogramu: '',
         dniHarmonogramu: '',
         firmaTransportowa: '',
+        automatykaTms: '',
         raw: [],
         address,
       },

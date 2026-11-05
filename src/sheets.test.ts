@@ -34,6 +34,7 @@ import {
   COL_ZBIORKA,
   COL_WG_HARMONOGRAMU,
   COL_FIRMA_TRANSPORTOWA,
+  COL_AUTOMATYKA_TMS,
 } from './config';
 
 const CURRENT_HEADERS = [
@@ -248,6 +249,47 @@ describe('sheets phase 2', () => {
       expect(map.firmaTransportowa).toBe(COL_FIRMA_TRANSPORTOWA);
       expect(map.ulica).toBe(5);
     });
+
+    it('test_resolveSheetColumnMap_when_automatyka_tms_header_at_end_should_map_column', () => {
+      const headers = [
+        'NIP',
+        'Podmiot handlowy',
+        'Sklep',
+        'Wg harmonogramu',
+        'Dni harmonogramu',
+        'Firma transportowa',
+        'Kod pocztowy',
+        'Miasto',
+        'Ulica',
+        'Numer budynku',
+        'Gmina',
+        'Województwo',
+        'Numer plomby',
+        'Stan worka',
+        'Status TMS worka',
+        'Data zamknięcia worka',
+        'Tryb zbiórki',
+        'Waga',
+        'Frakcja',
+        'Typ worka',
+        'Automatyka TMS',
+      ];
+      const map = resolveSheetColumnMap(headers);
+
+      expect(map.automatykaTms).toBe(20);
+      expect(map.automatykaTms).not.toBe(headers.indexOf('Status TMS worka'));
+      expect(map.kodPocztowy).toBe(6);
+      expect(map.ulica).toBe(8);
+      expect(map.numerPlomby).toBe(12);
+      expect(map.zbiorka).toBe(16);
+      expect(map.wgHarmonogramu).toBe(3);
+      expect(map.firmaTransportowa).toBe(5);
+    });
+
+    it('test_resolveSheetColumnMap_when_no_automatyka_header_should_use_fallback_index', () => {
+      const map = resolveSheetColumnMap(CURRENT_HEADERS);
+      expect(map.automatykaTms).toBe(COL_AUTOMATYKA_TMS);
+    });
   });
 
   describe('applyAddressAliases', () => {
@@ -398,6 +440,36 @@ describe('sheets phase 2', () => {
       expect(row.zbiorka).toBe('Maszyna');
       expect(row.wgHarmonogramu).toBe('tak');
       expect(row.address).toBe('62-320 Miłosław Leśna 1');
+    });
+
+    it('test_mapRawRowToSheetRow_when_automatyka_tms_column_should_read_tak_nie', () => {
+      const headers = [...HEADERS_WITH_FIRMA_AT_F, 'Automatyka TMS'];
+      const columns = resolveSheetColumnMap(headers);
+      const raw = [
+        '7790000000',
+        'PH',
+        'Sklep',
+        '62-320',
+        'Miłosław',
+        'Janex',
+        'Leśna',
+        '1',
+        'Gmina',
+        'Wielkopolskie',
+        '123',
+        '',
+        '',
+        '15.04.2026',
+        'Maszyna',
+        'tak',
+        'pn',
+        'Nie',
+      ];
+      const row = mapRawRowToSheetRow(raw, 2, columns);
+      expect(columns.automatykaTms).toBe(17);
+      expect(row.automatykaTms).toBe('Nie');
+      expect(row.wgHarmonogramu).toBe('tak');
+      expect(row.ulica).toBe('Leśna');
     });
 
     it('test_mapRawRowToSheetRow_when_srem_has_wrong_postcode_should_correct_to_63_100', () => {

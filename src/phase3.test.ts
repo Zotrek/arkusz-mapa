@@ -31,6 +31,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
     wgHarmonogramu: params.wgHarmonogramu ?? '',
     dniHarmonogramu: params.dniHarmonogramu ?? '',
     firmaTransportowa: params.firmaTransportowa ?? '',
+    automatykaTms: params.automatykaTms ?? '',
     raw: params.raw ?? [],
     address: params.address ?? '62-320 Miłosław os. Władysława Łokietka 18',
   };

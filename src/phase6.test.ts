@@ -42,6 +42,7 @@ import {
   formatWojewodztwoFilterSummary,
   mapPointMatchesSearch,
   mapPointMatchesWgHarmonogramuFilter,
+  mapPointMatchesAutomatykaTmsFilter,
   mapPointMatchesWojewodztwoFilter,
   mapPointMatchesZbiorkaFilter,
   normalizeForAddressSearch,
@@ -79,6 +80,7 @@ function makeSheetRow(overrides: Partial<SheetRow> = {}): SheetRow {
     wgHarmonogramu: overrides.wgHarmonogramu ?? '',
     dniHarmonogramu: overrides.dniHarmonogramu ?? '',
     firmaTransportowa: overrides.firmaTransportowa ?? '',
+    automatykaTms: overrides.automatykaTms ?? '',
     raw: overrides.raw ?? [],
     address: overrides.address ?? '62-320 Miłosław Leśna 1',
     kodPocztowy: overrides.kodPocztowy ?? '62-320',
@@ -431,6 +433,62 @@ describe('phase6', () => {
     it('test_buildMapHtml_when_no_harmonogram_data_should_omit_filter_controls', () => {
       const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
       expect(html).toContain('showHarmonogramFilter = false');
+    });
+  });
+
+  describe('automatyka TMS filter', () => {
+    it('test_mapPointMatchesAutomatykaTmsFilter_when_modes_should_match', () => {
+      expect(mapPointMatchesAutomatykaTmsFilter('Tak', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesAutomatykaTmsFilter('', 'wszystkie')).toBe(true);
+      expect(mapPointMatchesAutomatykaTmsFilter('Tak', 'tak')).toBe(true);
+      expect(mapPointMatchesAutomatykaTmsFilter('Nie', 'tak')).toBe(false);
+      expect(mapPointMatchesAutomatykaTmsFilter('Nie', 'nie')).toBe(true);
+      expect(mapPointMatchesAutomatykaTmsFilter(undefined, 'nie')).toBe(false);
+      expect(mapPointMatchesAutomatykaTmsFilter('może', 'tak')).toBe(false);
+    });
+
+    it('test_buildMapHtml_when_automatyka_tms_present_should_embed_filter_popup_and_value', () => {
+      const html = buildMapHtml(
+        [
+          {
+            address: 'Adres tak',
+            count: 1,
+            lat: 52.1,
+            lng: 21.0,
+            wojewodztwo: 'Mazowieckie',
+            automatykaTms: 'tak',
+            rows: [],
+          },
+          {
+            address: 'Adres nie',
+            count: 1,
+            lat: 52.2,
+            lng: 21.1,
+            wojewodztwo: 'Mazowieckie',
+            automatykaTms: 'nie',
+            rows: [],
+          },
+        ],
+        [],
+        'https://example.com/woj.json',
+      );
+      expect(html).toContain('showAutomatykaFilter = true');
+      expect(html).toContain('map-automatyka-filter');
+      expect(html).toContain('Automatyka TMS');
+      expect(html).toContain('name="map-automatyka-filter"');
+      expect(html).toContain('mapPointMatchesAutomatykaTmsFilterMap');
+      expect(html).toContain('input[name="map-automatyka-filter"][value="wszystkie"]');
+      expect(html).toContain('"automatykaTms":"tak"');
+      expect(html).toContain('"automatykaTms":"nie"');
+      expect(html).toContain('popup-automatyka-tms');
+      expect(html).toContain("Automatyka TMS: ' + autoLabel");
+      expect(html).toContain("autoNorm === 'tak' ? 'tak'");
+      expect(html).toContain("autoNorm === 'nie' ? 'nie' : 'brak wartości'");
+    });
+
+    it('test_buildMapHtml_when_no_automatyka_tms_data_should_omit_filter_controls', () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json');
+      expect(html).toContain('showAutomatykaFilter = false');
     });
   });
 

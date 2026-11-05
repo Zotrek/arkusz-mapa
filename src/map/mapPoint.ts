@@ -43,6 +43,8 @@ export type MapPoint = {
   dniHarmonogramu?: string;
   /** Firma transportowa (gdy harmonogram tak — pokazywana w popupie). */
   firmaTransportowa?: string;
+  /** Automatyka TMS: tak / nie */
+  automatykaTms?: string;
   /** Agregat zbiórki całej pinezki (mapa). Protokół Word i rejestr transportu liczą rodzaj z `sealRows` po filtrze daty. */
   rodzaj_zbiorki: string;
   /** Listę plomb przeglądarka buduje z `sealRows` po filtrze daty — tu tylko miejsce załadunku. */
@@ -126,6 +128,7 @@ export function toMapPoint(item: GeocodedAddress, confidence: MapPoint['confiden
     wgHarmonogramu: item.wgHarmonogramu,
     dniHarmonogramu: item.dniHarmonogramu,
     firmaTransportowa: item.firmaTransportowa,
+    automatykaTms: item.automatykaTms,
     rodzaj_zbiorki: formatRodzajZbiorkiForDoc(item.zbiorka),
     doc: { miejsce_zaladunku: buildMiejsceZaladunkuText(item.rows) },
   };

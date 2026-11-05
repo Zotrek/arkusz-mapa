@@ -30,7 +30,8 @@ export function mapBaseCss(): string {
     .popup-count-detail { font-size: 0.88em; color: var(--map-muted); margin-top: 4px; }
     .popup-woj { font-size: 0.85em; color: var(--map-muted); margin-top: 4px; }
     .popup-zbiorka { font-size: 0.85em; color: var(--map-accent-deep); margin-top: 4px; }
-    .popup-harmonogram { font-size: 0.85em; color: var(--map-accent-deep); margin-top: 4px; }
+    .popup-harmonogram,
+    .popup-automatyka-tms { font-size: 0.85em; color: var(--map-accent-deep); margin-top: 4px; }
     .popup-confidence { font-size: 0.85em; color: #b02a37; margin-top: 4px; font-weight: 600; }
     .pin-woj { background: none !important; border: none !important; }
     .dm-cluster { background: none !important; border: none !important; }
@@ -99,6 +100,7 @@ export function mapBaseCss(): string {
     .map-search-label,
     .map-zbiorka-filter-title,
     .map-harmonogram-filter-title,
+    .map-automatyka-filter-title,
     .map-wojewodztwo-filter-title {
       display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
       text-transform: uppercase; margin-bottom: 6px; color: var(--map-muted);
@@ -127,6 +129,7 @@ export function mapBaseCss(): string {
     .map-search-status { margin-top: 4px; font-size: 10px; color: var(--map-muted); min-height: 1.2em; }
     .map-zbiorka-filter,
     .map-harmonogram-filter,
+    .map-automatyka-filter,
     .map-wojewodztwo-filter,
     .map-cluster-filter { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--map-line); }
     .map-zbiorka-filter-options { display: flex; flex-direction: column; gap: 1px; }
@@ -139,21 +142,25 @@ export function mapBaseCss(): string {
       background: var(--map-accent-soft); color: var(--map-accent-deep); font-weight: 600;
     }
     .map-zbiorka-filter-options input { margin: 0; flex-shrink: 0; accent-color: var(--map-accent); }
-    .map-harmonogram-filter-options {
+    .map-harmonogram-filter-options,
+    .map-automatyka-filter-options {
       display: flex; flex-direction: row; gap: 0;
       padding: 2px; border-radius: 8px;
       background: rgba(148, 163, 184, 0.16);
       border: 1px solid rgba(148, 163, 184, 0.25);
     }
-    .map-harmonogram-filter-options label {
+    .map-harmonogram-filter-options label,
+    .map-automatyka-filter-options label {
       flex: 1; display: flex; align-items: center; justify-content: center;
       gap: 0; font-size: 11px; font-weight: 600; color: #475569; cursor: pointer;
       margin: 0; padding: 5px 4px; border-radius: 6px; position: relative; user-select: none;
     }
-    .map-harmonogram-filter-options input {
+    .map-harmonogram-filter-options input,
+    .map-automatyka-filter-options input {
       position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
     }
-    .map-harmonogram-filter-options label:has(input:checked) {
+    .map-harmonogram-filter-options label:has(input:checked),
+    .map-automatyka-filter-options label:has(input:checked) {
       background: var(--map-accent); color: #fff;
       box-shadow: 0 1px 3px rgba(15, 118, 110, 0.35);
     }

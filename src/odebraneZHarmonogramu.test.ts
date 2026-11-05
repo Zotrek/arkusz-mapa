@@ -102,6 +102,7 @@ function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
     wgHarmonogramu: overrides.wgHarmonogramu ?? 'tak',
     dniHarmonogramu: overrides.dniHarmonogramu ?? 'pn',
     firmaTransportowa: overrides.firmaTransportowa ?? '',
+    automatykaTms: overrides.automatykaTms ?? '',
     raw,
     address: overrides.address ?? '62-320 Miłosław Leśna 1',
   };

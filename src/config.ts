@@ -20,6 +20,7 @@ const ARKUSZ_MAPA_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // S=18 Dni harmonogramu (opcjonalna; wykrywana po nagłówku)
 // Firma transportowa — opcjonalna (np. wstawiona jako F); pozycja TYLKO po nagłówku
 // (fallback poniżej nie koliduje z Ulicą przy braku nagłówków).
+// U=20 Automatyka TMS (tak/nie) — na końcu arkusza; pozycja po nagłówku, fallback gdy go brak.
 export const COL_NIP = 0;
 export const COL_PODMIOT_HANDLOWY = 1;
 export const COL_SKLEP = 2;
@@ -39,6 +40,8 @@ export const COL_WG_HARMONOGRAMU = 17;
 export const COL_DNI_HARMONOGRAMU = 18;
 /** T (19): Firma transportowa — fallback gdy brak nagłówka (realna pozycja: resolveSheetColumnMap). */
 export const COL_FIRMA_TRANSPORTOWA = 19;
+/** U (20): Automatyka TMS (tak/nie) — fallback gdy brak nagłówka. */
+export const COL_AUTOMATYKA_TMS = 20;
 
 /** Domyślne indeksy kolumn — używane gdy brak wiersza nagłówków; patrz też resolveSheetColumnMap(). */
 export const DEFAULT_SHEET_COLUMN_MAP = {
@@ -55,6 +58,7 @@ export const DEFAULT_SHEET_COLUMN_MAP = {
   wgHarmonogramu: COL_WG_HARMONOGRAMU,
   dniHarmonogramu: COL_DNI_HARMONOGRAMU,
   firmaTransportowa: COL_FIRMA_TRANSPORTOWA,
+  automatykaTms: COL_AUTOMATYKA_TMS,
 } as const;
 
 // REQ-1.5: nazwy zakładek w Google Sheets

@@ -98,6 +98,9 @@ export function markersPopupBrowserScript(): string {
         harmLabel = 'tak - ' + escapeHtmlMap(p.firmaTransportowa);
       }
       var harmLine = '<div class="popup-harmonogram">Harmonogram: ' + harmLabel + '</div>';
+      var autoNorm = normalizeWgHarmonogramuMap(p.automatykaTms);
+      var autoLabel = autoNorm === 'tak' ? 'tak' : (autoNorm === 'nie' ? 'nie' : 'brak wartości');
+      var autoLine = '<div class="popup-automatyka-tms">Automatyka TMS: ' + autoLabel + '</div>';
       var podmiotLine =
         p.podmiotyHandlowe && p.podmiotyHandlowe.length > 0
           ? '<div class="popup-podmiot">Podmiot handlowy: ' + escapeHtmlMap(p.podmiotyHandlowe.join(', ')) + '</div>'
@@ -124,6 +127,7 @@ export function markersPopupBrowserScript(): string {
         buildPopupCountHtml(p) +
         (zbiorkaLine || '') +
         (harmLine || '') +
+        (autoLine || '') +
         '<div class="popup-woj">' + escapeHtmlMap(p.woj) + '</div>' +
         confidenceLabel +
         bulkSelect +

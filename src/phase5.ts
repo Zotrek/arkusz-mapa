@@ -94,6 +94,8 @@ export interface GeocodedAddress {
   dniHarmonogramu?: string;
   /** Firma transportowa (agregat unikalnych wartości z wierszy). */
   firmaTransportowa?: string;
+  /** Automatyka TMS: "tak" / "nie" (agregat z wierszy; brak/mixed → undefined). */
+  automatykaTms?: string;
   rows: SheetRow[];
 }
 
@@ -360,9 +362,24 @@ function normalizeGmina(gmina: string): string {
  * mieszane lub puste → undefined.
  */
 export function aggregateWgHarmonogramu(rows: SheetRow[]): string | undefined {
+  return aggregateTakNie(rows, (row) => row.wgHarmonogramu);
+}
+
+/**
+ * Agregat „Automatyka TMS” na pinezkę: jeden wspólny tak/nie → ta wartość;
+ * mieszane lub puste → undefined. Puste komórki nie psują wspólnej wartości.
+ */
+export function aggregateAutomatykaTms(rows: SheetRow[]): string | undefined {
+  return aggregateTakNie(rows, (row) => row.automatykaTms);
+}
+
+function aggregateTakNie(
+  rows: SheetRow[],
+  read: (row: SheetRow) => string | undefined,
+): string | undefined {
   const values = new Set<'tak' | 'nie'>();
   for (const row of rows) {
-    const v = normalizeWgHarmonogramu(row.wgHarmonogramu);
+    const v = normalizeWgHarmonogramu(read(row));
     if (v) {
       values.add(v);
     }
@@ -1315,6 +1332,7 @@ function applyGeocodingFromCache(
     wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
     dniHarmonogramu: aggregateDniHarmonogramu(group.rows),
     firmaTransportowa: aggregateFirmaTransportowa(group.rows),
+    automatykaTms: aggregateAutomatykaTms(group.rows),
     rows: group.rows,
   };
 
@@ -1698,6 +1716,7 @@ export async function executePhase5(
               wgHarmonogramu: aggregateWgHarmonogramu(group.rows),
               dniHarmonogramu: aggregateDniHarmonogramu(group.rows),
               firmaTransportowa: aggregateFirmaTransportowa(group.rows),
+              automatykaTms: aggregateAutomatykaTms(group.rows),
               rows: group.rows,
             };
             if (bestPick.status === 'ok') {

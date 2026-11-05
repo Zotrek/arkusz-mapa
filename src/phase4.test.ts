@@ -30,6 +30,7 @@ function makeRow(raw: string[]): SheetRow {
     wgHarmonogramu: '',
     dniHarmonogramu: '',
     firmaTransportowa: '',
+    automatykaTms: '',
     raw,
     address: '',
   };

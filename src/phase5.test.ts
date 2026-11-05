@@ -24,6 +24,7 @@ import {
   stripStreetPrefix,
   stripAfterSlash,
   aggregateWgHarmonogramu,
+  aggregateAutomatykaTms,
   aggregateFirmaTransportowa,
   aggregateDniHarmonogramu,
   parseRetryAfterMs,
@@ -52,6 +53,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
     wgHarmonogramu: params.wgHarmonogramu ?? '',
     dniHarmonogramu: params.dniHarmonogramu ?? '',
     firmaTransportowa: params.firmaTransportowa ?? '',
+    automatykaTms: params.automatykaTms ?? '',
     raw: params.raw ?? ['A', 'B'],
     address: params.address ?? '62-320 Miłosław os. Władysława Łokietka 18',
   };
@@ -86,6 +88,32 @@ describe('phase5', () => {
         aggregateWgHarmonogramu([
           makeRow({ wgHarmonogramu: 'tak' }),
           makeRow({ wgHarmonogramu: 'nie' }),
+        ]),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('aggregateAutomatykaTms', () => {
+    it('test_aggregateAutomatykaTms_when_single_tak_or_nie_should_return_normalized', () => {
+      expect(aggregateAutomatykaTms([makeRow({ automatykaTms: 'Tak' })])).toBe('tak');
+      expect(aggregateAutomatykaTms([makeRow({ automatykaTms: ' NIE ' })])).toBe('nie');
+    });
+
+    it('test_aggregateAutomatykaTms_when_empty_cells_share_one_value_should_keep_it', () => {
+      expect(
+        aggregateAutomatykaTms([
+          makeRow({ automatykaTms: 'tak' }),
+          makeRow({ automatykaTms: '' }),
+        ]),
+      ).toBe('tak');
+    });
+
+    it('test_aggregateAutomatykaTms_when_mixed_or_empty_should_return_undefined', () => {
+      expect(aggregateAutomatykaTms([makeRow({ automatykaTms: '' })])).toBeUndefined();
+      expect(
+        aggregateAutomatykaTms([
+          makeRow({ automatykaTms: 'tak' }),
+          makeRow({ automatykaTms: 'nie' }),
         ]),
       ).toBeUndefined();
     });

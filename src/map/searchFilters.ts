@@ -187,6 +187,20 @@ export function mapPointMatchesWgHarmonogramuFilter(
   return normalizeWgHarmonogramu(wgHarmonogramu) === mode;
 }
 
+/** Filtr „Automatyka TMS” na mapie. */
+export type AutomatykaTmsFilterMode = 'wszystkie' | 'tak' | 'nie';
+
+/** Czy punkt jest widoczny przy filtrze „Automatyka TMS”. */
+export function mapPointMatchesAutomatykaTmsFilter(
+  automatykaTms: string | undefined,
+  mode: AutomatykaTmsFilterMode,
+): boolean {
+  if (mode === 'wszystkie') {
+    return true;
+  }
+  return normalizeWgHarmonogramu(automatykaTms) === mode;
+}
+
 /** Kanoniczna etykieta wyświetlana (pierwsza litera wielka, reszta mała). */
 export function displayWojewodztwoLabel(name: string): string {
   const lower = name.toLowerCase();

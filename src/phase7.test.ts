@@ -28,6 +28,7 @@ function makeRow(overrides: Partial<SheetRow> = {}): SheetRow {
     wgHarmonogramu: overrides.wgHarmonogramu ?? '',
     dniHarmonogramu: overrides.dniHarmonogramu ?? '',
     firmaTransportowa: overrides.firmaTransportowa ?? '',
+    automatykaTms: overrides.automatykaTms ?? '',
     raw: overrides.raw ?? ['A', 'B'],
     address: overrides.address ?? '62-320 Miłosław os. Władysława Łokietka 18',
   };
@@ -364,6 +365,7 @@ describe('phase7 pipeline', () => {
             wgHarmonogramu: 10,
             dniHarmonogramu: 11,
             firmaTransportowa: 12,
+            automatykaTms: 13,
           },
         };
       }),
