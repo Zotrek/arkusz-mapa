@@ -175,11 +175,13 @@ ${saveRateRulesSource}
       var trasa = document.getElementById('bulk-rates-trasa');
       var kwotaTrasy = document.getElementById('bulk-rates-kwota-trasy');
       var odKiedy = document.getElementById('bulk-rates-od-kiedy');
+      var doKiedy = document.getElementById('bulk-rates-do-kiedy');
       if (podjazd) podjazd.value = '';
       if (worek) worek.value = '';
       if (trasa) trasa.value = '';
       if (kwotaTrasy) kwotaTrasy.value = '';
       if (odKiedy) odKiedy.value = '';
+      if (doKiedy) doKiedy.value = '';
       setDayMultiValue('bulk-rates-dni', commonBulkShopField(shops, 'dniHarmonogramu'));
       syncBulkRatesTargetUi();
       validateBulkRatesFields();
@@ -272,6 +274,7 @@ ${saveRateRulesSource}
         kwotaTrasy = String((document.getElementById('bulk-rates-kwota-trasy') || {}).value || '');
       }
       var odKiedy = rateValidFromFromPicker((document.getElementById('bulk-rates-od-kiedy') || {}).value);
+      var doKiedy = rateValidFromFromPicker((document.getElementById('bulk-rates-do-kiedy') || {}).value);
       var dniOdbiorow = String((document.getElementById('bulk-rates-dni') || {}).value || '').trim();
       var okBtn = document.getElementById('bulk-rates-btn-ok');
       if (okBtn) okBtn.disabled = true;
@@ -327,7 +330,8 @@ ${saveRateRulesSource}
           podwykonawca: podwykonawca,
           kwotaPodjazd: kwotaPodjazd,
           kwotaWorek: kwotaWorek,
-          odKiedy: odKiedy
+          odKiedy: odKiedy,
+          doKiedy: doKiedy
         };
         if (target === 'harmonogram') {
           payload.dniOdbiorow = dniOdbiorow;

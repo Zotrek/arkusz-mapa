@@ -180,10 +180,13 @@ function rateCellDateKey_(value) {
 
 export const RATE_SHEET_NAME = 'Baza stawek';
 
+export const RATE_VALID_UNTIL_HEADER = 'Do kiedy obowiązuje';
+
 export const RATE_HEADERS = [
   'Sklep',
   'Podwykonawca',
   'Kwota za podjazd',
   'Kwota za worek',
   'Od kiedy obowiązuje',
+  RATE_VALID_UNTIL_HEADER,
 ] as const;

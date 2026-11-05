@@ -163,6 +163,20 @@ class FakeSheet {
     return max;
   }
 
+  getLastColumn(): number {
+    let max = 0;
+    for (const [key, value] of this.cells) {
+      if (value == null || value === '') {
+        continue;
+      }
+      const col = Number(key.split(',')[1]);
+      if (col > max) {
+        max = col;
+      }
+    }
+    return max;
+  }
+
   getMaxRows(): number {
     return this.maxRows;
   }

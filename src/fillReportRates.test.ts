@@ -56,6 +56,7 @@ function rate(overrides: Partial<ReportRateRow> = {}): ReportRateRow {
     pickup: 80,
     bag: 12,
     validFrom: '01.10.2026',
+    validUntil: '',
     ...overrides,
   };
 }
@@ -79,6 +80,16 @@ describe('resolveReportRateSnapshot', () => {
       '02.10.2026',
     );
     expect(snap).toEqual({ pickup: 80, bag: 12 });
+  });
+
+  it('test_resolveReportRateSnapshot_when_until_passed_should_stay_empty', () => {
+    const snap = resolveReportRateSnapshot(
+      [rate({ validFrom: '01.01.2026', validUntil: '01.10.2026' })],
+      '51-602 Wrocław Kochanowskiego 33',
+      'Interzero',
+      '02.10.2026',
+    );
+    expect(snap).toEqual({ pickup: '', bag: '' });
   });
 
   it('test_resolveReportRateSnapshot_when_same_valid_from_should_stay_empty', () => {
@@ -184,6 +195,23 @@ describe('parseReportRateRows', () => {
         pickup: 80,
         bag: 12,
         validFrom: '',
+        validUntil: '',
+      },
+    ]);
+  });
+
+  it('test_parseReportRateRows_when_until_set_should_keep_last_day', () => {
+    const rows = parseReportRateRows([...RATE_HEADERS], [
+      ['51-602 Wrocław Kochanowskiego 33', 'Interzero', 80, 12, '01.09.2026', '30.09.2026'],
+    ]);
+    expect(rows).toEqual([
+      {
+        shop: '51-602 Wrocław Kochanowskiego 33',
+        contractor: 'Interzero',
+        pickup: 80,
+        bag: 12,
+        validFrom: '01.09.2026',
+        validUntil: '30.09.2026',
       },
     ]);
   });
@@ -202,6 +230,7 @@ describe('parseReportRateRows live headers', () => {
         pickup: '',
         bag: '18,5',
         validFrom: '',
+        validUntil: '',
       },
     ]);
   });

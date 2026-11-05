@@ -412,8 +412,30 @@ type BazaRate = {
   bagAmount: string;
   routeAmount: string;
   validFrom: string;
+  /** Pusty = bez końca. `\u0000` = nieczytelna data, wiersz nie obowiązuje. */
+  validUntil: string;
   days: string;
 };
+
+function readOptionalRateDate(raw: string): string {
+  if (!raw) {
+    return '';
+  }
+  return parseToDdMmYyyy(raw) ?? '\u0000';
+}
+
+function bazaRateCoversDay(rate: BazaRate, day: string): boolean {
+  if (rate.validFrom && compareDdMmYyyy(rate.validFrom, day) > 0) {
+    return false;
+  }
+  if (!rate.validUntil) {
+    return true;
+  }
+  if (rate.validUntil === '\u0000') {
+    return false;
+  }
+  return compareDdMmYyyy(day, rate.validUntil) <= 0;
+}
 
 /** Ile dni szukać odbioru, gdy święta zjadają dwa kolejne piątki (25.12 i 1.01 → 8.01). */
 const SCHEDULE_DATE_SEARCH_DAYS = 22;
@@ -486,6 +508,7 @@ export function buildScheduleSyncExpected(
   const ixBag = headerIndex(bazaHeaders, 'Cena za worek');
   const ixRoutePrice = headerIndex(bazaHeaders, 'Cena za trasę');
   const ixFrom = headerIndex(bazaHeaders, 'Od kiedy obowiązuje cena');
+  const ixUntil = headerIndex(bazaHeaders, 'Do kiedy obowiązuje cena');
   const ixDays = headerIndex(bazaHeaders, 'Dni odbiorów');
 
   const rateRows: BazaRate[] = [];
@@ -511,6 +534,7 @@ export function buildScheduleSyncExpected(
         bagAmount: ixBag >= 0 ? cell(row, ixBag) : '',
         routeAmount: ixRoutePrice >= 0 ? cell(row, ixRoutePrice) : '',
         validFrom,
+        validUntil: ixUntil >= 0 ? readOptionalRateDate(cell(row, ixUntil)) : '',
         days,
       });
       const sk = `${foldScheduleKeyPart(shop)}\n${foldScheduleKeyPart(contractor)}`;
@@ -689,7 +713,7 @@ export function buildScheduleSyncExpected(
       for (const rate of rateRows) {
         if (foldScheduleKeyPart(rate.shop) !== foldScheduleKeyPart(meta.address)) continue;
         if (foldScheduleKeyPart(rate.contractor) !== foldScheduleKeyPart(meta.contractor)) continue;
-        if (rate.validFrom && compareDdMmYyyy(rate.validFrom, day) > 0) continue;
+        if (!bazaRateCoversDay(rate, day)) continue;
         if (
           !best ||
           compareDdMmYyyy(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
@@ -964,6 +988,7 @@ function weekdaysByShopFromBaza(
   const ixBag = headerIndex(bazaHeaders, 'Cena za worek');
   const ixRoutePrice = headerIndex(bazaHeaders, 'Cena za trasę');
   const ixFrom = headerIndex(bazaHeaders, 'Od kiedy obowiązuje cena');
+  const ixUntil = headerIndex(bazaHeaders, 'Do kiedy obowiązuje cena');
   const ixDays = headerIndex(bazaHeaders, 'Dni odbiorów');
   const weekdays = new Map<string, number[]>();
   const rates: BazaRate[] = [];
@@ -991,6 +1016,7 @@ function weekdaysByShopFromBaza(
       bagAmount: ixBag >= 0 ? cell(row, ixBag) : '',
       routeAmount: ixRoutePrice >= 0 ? cell(row, ixRoutePrice) : '',
       validFrom,
+      validUntil: ixUntil >= 0 ? readOptionalRateDate(cell(row, ixUntil)) : '',
       days,
     });
     if (parsedDays.length === 0) continue;
@@ -1007,7 +1033,7 @@ function bestBazaRate(rates: BazaRate[], address: string, contractor: string, da
   for (const rate of rates) {
     if (foldScheduleKeyPart(rate.shop) !== foldScheduleKeyPart(address)) continue;
     if (foldScheduleKeyPart(rate.contractor) !== foldScheduleKeyPart(contractor)) continue;
-    if (rate.validFrom && compareDdMmYyyy(rate.validFrom, day) > 0) continue;
+    if (!bazaRateCoversDay(rate, day)) continue;
     if (
       !best ||
       compareDdMmYyyy(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0

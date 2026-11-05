@@ -159,7 +159,9 @@ export function manualAdminHtml(): string {
         <input type="text" id="manual-admin-stawki-worek" inputmode="decimal" autocomplete="off" />
         <label for="manual-admin-stawki-od-kiedy">Od kiedy obowiązuje</label>
         <input type="date" id="manual-admin-stawki-od-kiedy" />
-        <p class="manual-admin-hint">Nazwa sklepu i adres z pinezek mapy. Zapisuje się adres. Podwykonawca z nazw krótkich. Zapis od razu, bez przebudowy mapy. Pusta data znaczy od zawsze.</p>
+        <label for="manual-admin-stawki-do-kiedy">Do kiedy obowiązuje</label>
+        <input type="date" id="manual-admin-stawki-do-kiedy" />
+        <p class="manual-admin-hint">Nazwa sklepu i adres z pinezek mapy. Zapisuje się adres. Podwykonawca z nazw krótkich. Zapis od razu, bez przebudowy mapy. Pusta data początku znaczy od zawsze. Pusta data końca znaczy bez końca — wpisana data to ostatni dzień włącznie.</p>
         <button type="button" id="manual-admin-stawki-submit" class="manual-admin-submit">Zapisz stawkę</button>
       </div>
       <div id="manual-admin-panel-harmonogram" class="manual-admin-panel">
@@ -183,7 +185,9 @@ export function manualAdminHtml(): string {
         ${harmonogramDaysPickerHtml('manual-admin-harmonogram-dni')}
         <label for="manual-admin-harmonogram-od-kiedy">Od kiedy obowiązuje</label>
         <input type="date" id="manual-admin-harmonogram-od-kiedy" />
-        <p class="manual-admin-hint">Zapis do zakładki „Baza cen harmonogram”. Adres + podwykonawca + data. Dni wybierz z listy (można kilka).</p>
+        <label for="manual-admin-harmonogram-do-kiedy">Do kiedy obowiązuje</label>
+        <input type="date" id="manual-admin-harmonogram-do-kiedy" />
+        <p class="manual-admin-hint">Zapis do zakładki „Baza cen harmonogram”. Adres + podwykonawca + data. Dni wybierz z listy (można kilka). Pusta data końca znaczy bez końca — wpisana data to ostatni dzień włącznie.</p>
         <button type="button" id="manual-admin-harmonogram-submit" class="manual-admin-submit">Zapisz stawkę harmonogramu</button>
       </div>
       <p id="manual-admin-status" class="manual-admin-status" aria-live="polite"></p>
@@ -755,7 +759,8 @@ ${referenceFormatsBrowserScript()}
             podwykonawca: podwykonawca,
             kwotaPodjazd: String((document.getElementById('manual-admin-stawki-podjazd') || {}).value || ''),
             kwotaWorek: String((document.getElementById('manual-admin-stawki-worek') || {}).value || ''),
-            odKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-stawki-od-kiedy') || {}).value)
+            odKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-stawki-od-kiedy') || {}).value),
+            doKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-stawki-do-kiedy') || {}).value)
           }).then(function(resp) {
             if (!resp || !resp.ok) {
               var code = resp && resp.error;
@@ -772,6 +777,7 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-stawki-podjazd').value = '';
             document.getElementById('manual-admin-stawki-worek').value = '';
             document.getElementById('manual-admin-stawki-od-kiedy').value = '';
+            document.getElementById('manual-admin-stawki-do-kiedy').value = '';
           }, function(err) {
             reportManualAdminSave_('Zapis nieudany.', null, err);
           }).catch(reportManualAdminAfterSave_).then(function() {
@@ -797,6 +803,7 @@ ${referenceFormatsBrowserScript()}
             kwotaPodjazd: String((document.getElementById('manual-admin-harmonogram-podjazd') || {}).value || ''),
             kwotaWorek: String((document.getElementById('manual-admin-harmonogram-worek') || {}).value || ''),
             odKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-harmonogram-od-kiedy') || {}).value),
+            doKiedy: rateValidFromFromPicker((document.getElementById('manual-admin-harmonogram-do-kiedy') || {}).value),
             dniOdbiorow: String((document.getElementById('manual-admin-harmonogram-dni') || {}).value || '').trim()
           }).then(function(resp) {
             if (!resp || !resp.ok) {
@@ -815,6 +822,7 @@ ${referenceFormatsBrowserScript()}
             document.getElementById('manual-admin-harmonogram-worek').value = '';
             setDayMultiValue('manual-admin-harmonogram-dni', '');
             document.getElementById('manual-admin-harmonogram-od-kiedy').value = '';
+            document.getElementById('manual-admin-harmonogram-do-kiedy').value = '';
           }, function(err) {
             reportManualAdminSave_('Zapis nieudany.', null, err);
           }).catch(reportManualAdminAfterSave_).then(function() {

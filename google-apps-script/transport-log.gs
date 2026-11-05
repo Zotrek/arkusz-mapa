@@ -63,7 +63,8 @@
  *   Kolumna 21 = Komentarz do faktury (rozliczenia). Harmonogram: ta sama kolumna jako 20.
  *   mode=addReferencePodwyko | addPoprawAdres | saveRate | saveRateHarmonogram
  *   (legacy: addReferencePrzewoznik | addReferenceDostawa → zapis do Lista podwykonawców)
- *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy.
+ *   saveRate — Baza stawek. Body: sklep, podwykonawca, kwotaPodjazd, kwotaWorek, odKiedy, doKiedy.
+ *   doKiedy puste = bez własnego końca. Wpisana data to ostatni dzień włącznie. Wcześniejsza niż odKiedy → odmowa.
  *   Klucz: adres (po normalizacji al./pl./Św.) + podwykonawca + data. Trafione wiersze nadpisuje
  *   (także kilka wariantów tego samego adresu); adres w arkuszu ustawia na kanoniczny z mapy.
  *   Kwota 0 i puste pole są dozwolone. Usuwania nie ma. Rejestru (kolumny 15–18) nie rusza.
@@ -220,6 +221,8 @@ var REF_DOS_SHEET_NAME = 'Miejsca dostawy';
 var REF_POPRAW_SHEET_NAME = 'Popraw adres';
 var RATE_SHEET_NAME = 'Baza stawek';
 var HARMONOGRAM_RATE_SHEET_NAME = 'Baza cen harmonogram';
+var RATE_VALID_UNTIL_HEADER = 'Do kiedy obowiązuje';
+var HARMONOGRAM_RATE_VALID_UNTIL_HEADER = 'Do kiedy obowiązuje cena';
 var ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME = 'odebrane z harmonogramu';
 var SCHEDULE_REGISTER_SHEET_NAME = 'zestawienie z harmonogramu';
 var HARMONOGRAM_RATE_HEADERS = [
@@ -232,6 +235,7 @@ var HARMONOGRAM_RATE_HEADERS = [
   'Od kiedy obowiązuje cena',
   'Dni odbiorów',
   'Id harmonogramu',
+  HARMONOGRAM_RATE_VALID_UNTIL_HEADER,
 ];
 var HARMONOGRAMY_SHEET_NAME = 'Harmonogramy';
 var HARMONOGRAM_ID_HEADER = 'Id harmonogramu';
@@ -1543,6 +1547,9 @@ function resolveSnapshotFromRateList_(rates, shop, contractor, pickupDate) {
     if (!approveRateApplies_(rate.validFrom, pickupDate)) {
       continue;
     }
+    if (settlementRateEnded_(rate.validUntil, pickupDate)) {
+      continue;
+    }
     matching.push(rate);
   }
   if (matching.length === 0) {
@@ -2450,13 +2457,27 @@ function listRateRows_(sheet) {
 }
 
 /** Jak listRateRows_, plus surowe wartości kwot z kolumn 3–4 (do snapshotu rejestru). */
+function sheetDateKeyOrSentinel_(value) {
+  var dateKey = rateCellDateKey_(value);
+  if (dateKey == null) {
+    return '\u0000';
+  }
+  return dateKey;
+}
+
+function namedHeaderIndex_(sheet, name) {
+  return headerIndexNamed_(sheetHeaders_(sheet), name);
+}
+
 function listRateAmountRows_(sheet) {
   var last = sheet.getLastRow();
   var rows = [];
   if (last < 2) {
     return rows;
   }
-  var values = sheet.getRange(2, 1, last - 1, 5).getValues();
+  var untilIdx = namedHeaderIndex_(sheet, RATE_VALID_UNTIL_HEADER);
+  var width = Math.max(5, untilIdx + 1);
+  var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var i;
   for (i = 0; i < values.length; i++) {
     var dateKey = rateCellDateKey_(values[i][4]);
@@ -2467,6 +2488,7 @@ function listRateAmountRows_(sheet) {
       pickup: values[i][2],
       bag: values[i][3],
       validFrom: dateKey == null ? '\u0000' : dateKey,
+      validUntil: untilIdx >= 0 ? sheetDateKeyOrSentinel_(values[i][untilIdx]) : '',
     });
   }
   return rows;
@@ -2474,14 +2496,36 @@ function listRateAmountRows_(sheet) {
 
 function getOrCreateRateSheet_() {
   var name = 'Baza stawek';
-  var header = ['Sklep', 'Podwykonawca', 'Kwota za podjazd', 'Kwota za worek', 'Od kiedy obowiązuje'];
+  var header = ['Sklep', 'Podwykonawca', 'Kwota za podjazd', 'Kwota za worek', 'Od kiedy obowiązuje', RATE_VALID_UNTIL_HEADER];
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var existed = ss.getSheetByName(name) != null;
   var sheet = getOrCreateRefSheet_(name, header);
   if (!existed) {
-    sheet.getRange(1, 5, sheet.getMaxRows(), 1).setNumberFormat('@');
+    sheet.getRange(1, 5, sheet.getMaxRows(), 2).setNumberFormat('@');
   }
+  ensureSheetColumn_(sheet, RATE_VALID_UNTIL_HEADER);
   return sheet;
+}
+
+/** null = zła data albo koniec wcześniejszy niż początek. Pusty tekst = bez końca. */
+function readRateUntil_(body, validFrom) {
+  var validUntil = normalizeRateDate_(body && body.doKiedy);
+  if (validUntil === null) {
+    return null;
+  }
+  if (validFrom && validUntil && settlementCompareDate_(validUntil, validFrom) < 0) {
+    return null;
+  }
+  return validUntil;
+}
+
+function writeRateUntilCell_(sheet, rowNum, validUntil, headerName) {
+  var col = ensureSheetColumn_(sheet, headerName);
+  if (!validUntil) {
+    sheet.getRange(rowNum, col).setValue('');
+    return;
+  }
+  putSheetDateCell_(sheet, rowNum, col, validUntil);
 }
 
 function handleSaveRatePost_(body) {
@@ -2492,6 +2536,10 @@ function handleSaveRatePost_(body) {
   }
   var validFrom = normalizeRateDate_(body && body.odKiedy);
   if (validFrom === null) {
+    return jsonResponse({ ok: false, error: 'date' });
+  }
+  var validUntil = readRateUntil_(body, validFrom);
+  if (validUntil === null) {
     return jsonResponse({ ok: false, error: 'date' });
   }
   var pickup = parseRateAmount_(body && body.kwotaPodjazd);
@@ -2510,6 +2558,7 @@ function handleSaveRatePost_(body) {
       var rowNum = targetRows[ti];
       sheet.getRange(rowNum, 1).setValue(shop);
       sheet.getRange(rowNum, 3, 1, 2).setValues([[pickupCell, bagCell]]);
+      writeRateUntilCell_(sheet, rowNum, validUntil, RATE_VALID_UNTIL_HEADER);
     }
     return jsonResponse({ ok: true, action: 'overwrite', rows: targetRows.length });
   }
@@ -2517,6 +2566,7 @@ function handleSaveRatePost_(body) {
   sheet.getRange(next, 5).setNumberFormat('@');
   sheet.getRange(next, 1, 1, 5).setValues([[shop, contractor, pickupCell, bagCell, scheduleSheetDateText_(validFrom) || validFrom]]);
   putSheetDateCell_(sheet, next, 5, validFrom);
+  writeRateUntilCell_(sheet, next, validUntil, RATE_VALID_UNTIL_HEADER);
   return jsonResponse({ ok: true, action: 'append' });
 }
 
@@ -2536,6 +2586,7 @@ function getOrCreateHarmonogramRateSheet_() {
     sheet.getRange(1, 1, 1, HARMONOGRAM_RATE_HEADERS.length).setValues([HARMONOGRAM_RATE_HEADERS]);
   }
   ensureSheetColumn_(sheet, HARMONOGRAM_ID_HEADER);
+  ensureSheetColumn_(sheet, HARMONOGRAM_RATE_VALID_UNTIL_HEADER);
   return sheet;
 }
 
@@ -2602,7 +2653,9 @@ function listHarmonogramRateAmountRows_(sheet) {
   if (last < 2) {
     return rows;
   }
-  var values = sheet.getRange(2, 1, last - 1, 8).getValues();
+  var untilIdx = namedHeaderIndex_(sheet, HARMONOGRAM_RATE_VALID_UNTIL_HEADER);
+  var width = Math.max(8, untilIdx + 1);
+  var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var i;
   for (i = 0; i < values.length; i++) {
     var dateKey = rateCellDateKey_(values[i][6]);
@@ -2615,6 +2668,7 @@ function listHarmonogramRateAmountRows_(sheet) {
       bag: values[i][4],
       routeAmount: values[i][5],
       validFrom: dateKey == null ? '\u0000' : dateKey,
+      validUntil: untilIdx >= 0 ? sheetDateKeyOrSentinel_(values[i][untilIdx]) : '',
     });
   }
   return rows;
@@ -2642,6 +2696,9 @@ function resolveHarmonogramSnapshot_(rates, shop, contractor, pickupDate) {
       continue;
     }
     if (rate.validFrom && settlementCompareDate_(rate.validFrom, pickupDate) > 0) {
+      continue;
+    }
+    if (settlementRateEnded_(rate.validUntil, pickupDate)) {
       continue;
     }
     if (
@@ -2739,6 +2796,10 @@ function handleSaveRateHarmonogramPost_(body) {
   if (validFrom === null) {
     return jsonResponse({ ok: false, error: 'date' });
   }
+  var validUntil = readRateUntil_(body, validFrom);
+  if (validUntil === null) {
+    return jsonResponse({ ok: false, error: 'date' });
+  }
   var pickup = parseRateAmount_(body && body.kwotaPodjazd);
   var bag = parseRateAmount_(body && body.kwotaWorek);
   if (!pickup || !bag) {
@@ -2774,6 +2835,7 @@ function handleSaveRateHarmonogramPost_(body) {
       } else {
         sheet.getRange(rowNum, 4, 1, 2).setValues([[pickupCell, bagCell]]);
       }
+      writeRateUntilCell_(sheet, rowNum, validUntil, HARMONOGRAM_RATE_VALID_UNTIL_HEADER);
     }
     var overwrittenSchedule = applyHarmonogramRatesToScheduleRegister_(shop, contractor);
     return jsonResponse({
@@ -2790,6 +2852,7 @@ function handleSaveRateHarmonogramPost_(body) {
     .getRange(next, 1, 1, 8)
     .setValues([[shop, contractor, routeName, pickupCell, bagCell, routeRateCell, scheduleSheetDateText_(validFrom) || validFrom, days]]);
   putSheetDateCell_(sheet, next, 7, validFrom);
+  writeRateUntilCell_(sheet, next, validUntil, HARMONOGRAM_RATE_VALID_UNTIL_HEADER);
   var appendedSchedule = applyHarmonogramRatesToScheduleRegister_(shop, contractor);
   return jsonResponse({
     ok: true,
@@ -3791,16 +3854,30 @@ function uniqueStoreAddresses_(rows) {
  * i zapis Stawka za podjazd / Stawka za worek na wierszach tego zestawienia.
  * Ten zapis bierze lock skryptu. Inaczej: Arkusz1 + Na zgłoszenie + Baza stawek, bez zapisu i bez locka.
  */
+function readRateCells_(sheet, minWidth, untilHeader) {
+  var untilIndex = -1;
+  if (sheet) {
+    untilIndex = headerIndexNamed_(sheetHeaders_(sheet), untilHeader);
+  }
+  var width = minWidth;
+  if (untilIndex + 1 > width) {
+    width = untilIndex + 1;
+  }
+  return { items: readSettlementCells_(sheet, width), untilIndex: untilIndex };
+}
+
 function settlementSearch_(query) {
   var tryb = settlementText_(query && query.tryb).toLowerCase();
   if (tryb === 'harmonogram' || tryb === 'schedule') {
     return settlementSearchHarmonogram_(query);
   }
   var rateSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RATE_SHEET_NAME);
+  var packed = readRateCells_(rateSheet, 5, RATE_VALID_UNTIL_HEADER);
   return buildSettlementRead_(
     query,
     readAllRegisterSettlementCells_('report', COL.komentarzFaktury),
-    readSettlementCells_(rateSheet, 5),
+    packed.items,
+    packed.untilIndex,
   );
 }
 
@@ -3810,10 +3887,12 @@ function settlementSearch_(query) {
  */
 function settlementSearchHarmonogram_(query) {
   var baza = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
+  var packed = readRateCells_(baza, 8, HARMONOGRAM_RATE_VALID_UNTIL_HEADER);
   var result = buildSettlementHarmonogramRead_(
     query,
     readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.komentarzFaktury),
-    readSettlementCells_(baza, 8),
+    packed.items,
+    packed.untilIndex,
   );
   if (result.ok) {
     writeHarmonogramSearchRates_(result.rows);
@@ -3958,6 +4037,9 @@ function harmonogramRateOnDate_(rates, shop, contractor, pickupDate) {
     if (rate.validFrom && settlementCompareDate_(rate.validFrom, pickupDate) > 0) {
       continue;
     }
+    if (settlementRateEnded_(rate.validUntil, pickupDate)) {
+      continue;
+    }
     if (
       !best ||
       settlementCompareDate_(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
@@ -4061,12 +4143,14 @@ function settlementStats_(query) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var rateSheet = ss.getSheetByName(RATE_SHEET_NAME);
   var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
+  var packed = readRateCells_(rateSheet, 5, RATE_VALID_UNTIL_HEADER);
   return buildSettlementStats_(
     query,
     readAllRegisterSettlementCells_('report', COL.dataZatwierdzenia),
-    readSettlementCells_(rateSheet, 5),
+    packed.items,
     readSettlementStatsOdebraneRows_(odebrane),
     readAllRegisterSettlementCells_('schedule', SCHEDULE_COL.dataZatwierdzenia),
+    packed.untilIndex,
   );
 }
 
@@ -4221,6 +4305,31 @@ function settlementCompareDate_(a, b) {
     return left.m - right.m;
   }
   return left.d - right.d;
+}
+
+/** Puste „do kiedy” = bez końca. Wpisana data to ostatni dzień włącznie. Zły zapis nie obowiązuje. */
+function settlementRateEnded_(validUntil, day) {
+  if (validUntil == null || validUntil === '') {
+    return false;
+  }
+  if (validUntil === '\u0000') {
+    return true;
+  }
+  return settlementCompareDate_(day, validUntil) > 0;
+}
+
+/** '' = puste. null = nieczytelna data. Indeks < 0 = kolumny nie ma. */
+function settlementOptionalDate_(cells, index) {
+  if (typeof index !== 'number' || index < 0) {
+    return '';
+  }
+  var raw = settlementCell_(cells, index);
+  var has = raw instanceof Date || settlementText_(raw) !== '';
+  if (!has) {
+    return '';
+  }
+  var text = settlementDateText_(raw);
+  return text || null;
 }
 
 function settlementDateInRange_(pickup, dataOd, dataDo) {
@@ -4403,7 +4512,7 @@ function mapSettlementScheduleRegisterRow_(sheetRow, cells, sheetName) {
   };
 }
 
-function mapSettlementRateRow_(sheetRow, cells) {
+function mapSettlementRateRow_(sheetRow, cells, untilIndex) {
   var rawFrom = settlementCell_(cells, 4);
   var validFrom = '';
   var hasFrom = rawFrom instanceof Date || settlementText_(rawFrom) !== '';
@@ -4413,6 +4522,10 @@ function mapSettlementRateRow_(sheetRow, cells) {
       return null;
     }
   }
+  var validUntil = settlementOptionalDate_(cells, untilIndex);
+  if (validUntil === null) {
+    return null;
+  }
   return {
     sheetRow: sheetRow,
     shop: settlementText_(settlementCell_(cells, 0)),
@@ -4420,6 +4533,7 @@ function mapSettlementRateRow_(sheetRow, cells) {
     pickupAmount: settlementAmountToGrosze_(settlementCell_(cells, 2)),
     bagAmount: settlementAmountToGrosze_(settlementCell_(cells, 3)),
     validFrom: validFrom,
+    validUntil: validUntil,
   };
 }
 
@@ -4570,7 +4684,7 @@ function settlementStatsOdebraneRows_(odebrane, dataOd, dataDo, podwykonawca) {
   return out;
 }
 
-function buildSettlementRead_(query, register, rates) {
+function buildSettlementRead_(query, register, rates, untilIndex) {
   var error = settlementQueryError_(query);
   if (error) {
     return { ok: false, error: error };
@@ -4598,7 +4712,7 @@ function buildSettlementRead_(query, register, rates) {
   var sourceRates = rates || [];
   for (var j = 0; j < sourceRates.length; j++) {
     var rateItem = sourceRates[j];
-    var rate = mapSettlementRateRow_(rateItem.sheetRow, rateItem.cells);
+    var rate = mapSettlementRateRow_(rateItem.sheetRow, rateItem.cells, untilIndex);
     if (!rate || rate.contractor !== q.podwykonawca) {
       continue;
     }
@@ -4709,7 +4823,7 @@ function settlementStatsScheduleRows_(register, dataOd, dataDo, podwykonawca) {
   return rows;
 }
 
-function buildSettlementStats_(query, register, rates, odebrane, scheduleRegister) {
+function buildSettlementStats_(query, register, rates, odebrane, scheduleRegister, untilIndex) {
   var error = settlementStatsQueryError_(query);
   if (error) {
     return { ok: false, error: error };
@@ -4743,7 +4857,7 @@ function buildSettlementStats_(query, register, rates, odebrane, scheduleRegiste
   var sourceRates = rates || [];
   for (var j = 0; j < sourceRates.length; j++) {
     var rateItem = sourceRates[j];
-    var rate = mapSettlementRateRow_(rateItem.sheetRow, rateItem.cells);
+    var rate = mapSettlementRateRow_(rateItem.sheetRow, rateItem.cells, untilIndex);
     if (!rate) {
       continue;
     }
@@ -5012,7 +5126,7 @@ function settlementBuildAddressParts_(kod, miasto, ulica, numer) {
  * Wiersz zestawienia dostaje stawkę podjazdu i worka z bazy. Brak pary czyści obie.
  * Rozliczony i transport `nie` są pomijane wcześniej i stawek nie dostają.
  */
-function buildSettlementHarmonogramRead_(query, register, bazaCen) {
+function buildSettlementHarmonogramRead_(query, register, bazaCen, untilIndex) {
   var error = settlementQueryError_(query);
   if (error) {
     return { ok: false, error: error };
@@ -5042,6 +5156,10 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
         continue;
       }
     }
+    var validUntil = settlementOptionalDate_(rateCells, untilIndex);
+    if (validUntil === null) {
+      continue;
+    }
     publicRates.push({
       sheetRow: rateItem.sheetRow,
       shop: shop,
@@ -5049,11 +5167,13 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen) {
       pickupAmount: settlementAmountToGrosze_(rateCells[3]),
       bagAmount: settlementAmountToGrosze_(rateCells[4]),
       validFrom: validFrom,
+      validUntil: validUntil,
     });
     searchRates.push({
       shop: shop,
       contractor: contractor,
       validFrom: validFrom,
+      validUntil: validUntil,
       pickup: rateCells[3],
       bag: rateCells[4],
     });
@@ -5145,7 +5265,7 @@ function settlementScheduleDateOnOrAfter_(closeDate, weekdays) {
  * Rodzaj zbiórki: z Tryb zbiórki na workach; przy 0 workach = „brak worków”.
  * bazaCen = { sheetRow, cells }[]; odebrane = { headers, rows }.
  */
-function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
+function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane, untilIndex) {
   var start = settlementDateText_(dataOd);
   var end = settlementDateText_(dataDo);
   if (!start || !end || settlementCompareDate_(start, end) > 0) {
@@ -5173,6 +5293,11 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
         continue;
       }
     }
+    var validUntil = '';
+    if (typeof untilIndex === 'number' && untilIndex >= 0) {
+      var parsedUntil = settlementOptionalDate_(cells, untilIndex);
+      validUntil = parsedUntil === null ? '\u0000' : parsedUntil;
+    }
     rateRows.push({
       shop: shop,
       contractor: contractor,
@@ -5181,6 +5306,7 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
       bagAmount: cells[4],
       routeAmount: cells[5],
       validFrom: validFrom,
+      validUntil: validUntil,
       days: settlementText_(cells[7]),
     });
     var shopKey = settlementFoldPl_(shop) + '\n' + settlementFoldPl_(contractor);
@@ -5363,6 +5489,9 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane) {
           continue;
         }
         if (rate.validFrom && settlementCompareDate_(rate.validFrom, day) > 0) {
+          continue;
+        }
+        if (settlementRateEnded_(rate.validUntil, day)) {
           continue;
         }
         if (
@@ -6334,11 +6463,13 @@ function syncZestawienieHarmonogram_(body) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var baza = ss.getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
   var odebrane = ss.getSheetByName(ODEBRANE_Z_HARMONOGRAMU_SHEET_NAME);
+  var packedRates = readRateCells_(baza, 8, HARMONOGRAM_RATE_VALID_UNTIL_HEADER);
   var expected = buildScheduleSyncExpected_(
     dataOd,
     dataDo,
-    readSettlementCells_(baza, 8),
+    packedRates.items,
     readOdebraneSheetRows_(odebrane),
+    packedRates.untilIndex,
   );
   var existing = scheduleRegisterIndexAll_();
   var cleanupRows = scheduleCleanupSourceRows_();

@@ -139,7 +139,9 @@ export function bulkRatesModalHtml(): string {
       </div>
       <label for="bulk-rates-od-kiedy">Od kiedy obowiązuje</label>
       <input type="date" id="bulk-rates-od-kiedy" />
-      <p id="bulk-rates-footer-hint" class="doc-modal-hint" style="margin-top:10px;margin-bottom:0">Pusta data znaczy od zawsze. Puste kwoty i 0 są dozwolone.</p>
+      <label for="bulk-rates-do-kiedy">Do kiedy obowiązuje</label>
+      <input type="date" id="bulk-rates-do-kiedy" />
+      <p id="bulk-rates-footer-hint" class="doc-modal-hint" style="margin-top:10px;margin-bottom:0">Pusta data początku znaczy od zawsze. Pusta data końca znaczy bez końca — wpisana data to ostatni dzień włącznie. Puste kwoty i 0 są dozwolone.</p>
       <p id="bulk-rates-status" class="doc-filter-info" aria-live="polite"></p>
       <div class="doc-modal-actions">
         <button type="button" id="bulk-rates-btn-cancel">Anuluj</button>

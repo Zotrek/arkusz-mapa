@@ -17,6 +17,8 @@ import { buildAddress, stripTrailingHouseNumberFromStreet } from './sheets.js';
 import { normalizeCityFromSheet } from './cityNormalize.js';
 import { normalizeStreetFromSheet } from './streetNormalize.js';
 
+export const BAZA_CEN_VALID_UNTIL_HEADER = 'Do kiedy obowiązuje cena';
+
 export const BAZA_CEN_HEADERS = [
   'Adres sklepu',
   'Podwykonawca',
@@ -27,6 +29,7 @@ export const BAZA_CEN_HEADERS = [
   'Od kiedy obowiązuje cena',
   'Dni odbiorów',
   HARMONOGRAM_ID_HEADER,
+  BAZA_CEN_VALID_UNTIL_HEADER,
 ] as const;
 
 export interface BazaCenShop {
@@ -468,6 +471,16 @@ export async function syncBazaCenHarmonogram(
 
   if (headerIndex(headers, HARMONOGRAM_ID_HEADER) < 0) {
     headers = [...headers, HARMONOGRAM_ID_HEADER];
+    await api.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${quoteSheet(sheetName)}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [headers] },
+    });
+  }
+
+  if (headerIndex(headers, BAZA_CEN_VALID_UNTIL_HEADER) < 0) {
+    headers = [...headers, BAZA_CEN_VALID_UNTIL_HEADER];
     await api.spreadsheets.values.update({
       spreadsheetId,
       range: `${quoteSheet(sheetName)}!A1`,

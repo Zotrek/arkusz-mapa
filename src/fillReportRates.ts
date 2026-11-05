@@ -20,6 +20,8 @@ export interface ReportRateRow {
   bag: string | number;
   /** Pusty = od zawsze. Data już jako dd.mm.yyyy. */
   validFrom: string;
+  /** Pusty = bez własnego końca. Data już jako dd.mm.yyyy. Ostatni dzień włącznie. */
+  validUntil: string;
 }
 
 export interface ReportRegisterSheet {
@@ -126,11 +128,14 @@ function compareValidFrom(a: string, b: string): number {
   return compareDdMmYyyy(a, b);
 }
 
-function rateApplies(validFrom: string, pickupDate: string): boolean {
-  if (!validFrom) {
-    return true;
+function rateApplies(validFrom: string, validUntil: string, pickupDate: string): boolean {
+  if (validFrom && compareValidFrom(validFrom, pickupDate) > 0) {
+    return false;
   }
-  return compareValidFrom(validFrom, pickupDate) <= 0;
+  if (validUntil && compareValidFrom(pickupDate, validUntil) > 0) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -153,7 +158,7 @@ export function resolveReportRateSnapshot(
     (rate) =>
       normalizeRateShopKey(rate.shop) === shopKey &&
       rate.contractor === contractor &&
-      rateApplies(rate.validFrom, pickupDate),
+      rateApplies(rate.validFrom, rate.validUntil, pickupDate),
   );
   if (matching.length === 0) {
     return empty;
@@ -204,6 +209,7 @@ export function parseReportRateRows(headers: string[], rows: unknown[][]): Repor
   const ixPickup = headerIndexAny(headers, ['Kwota za podjazd', 'Cena za podjazd']);
   const ixBag = headerIndexAny(headers, ['Kwota za worek', 'Cena za worek']);
   const ixFrom = headerIndexAny(headers, ['Od kiedy obowiązuje', 'Od kiedy obowiązuje cena']);
+  const ixUntil = headerIndexAny(headers, ['Do kiedy obowiązuje', 'Do kiedy obowiązuje cena']);
   if (ixShop < 0 || ixContractor < 0 || ixPickup < 0 || ixBag < 0 || ixFrom < 0) {
     return [];
   }
@@ -219,6 +225,17 @@ export function parseReportRateRows(headers: string[], rows: unknown[][]): Repor
     if (validFrom == null) {
       continue;
     }
+    let validUntil = '';
+    if (ixUntil >= 0) {
+      const rawUntil = row?.[ixUntil];
+      if (rawUntil != null && String(rawUntil).trim() !== '') {
+        const parsedUntil = reportRateDateKey(rawUntil);
+        if (parsedUntil == null) {
+          continue;
+        }
+        validUntil = parsedUntil;
+      }
+    }
     const pickup = row?.[ixPickup];
     const bag = row?.[ixBag];
     out.push({
@@ -227,6 +244,7 @@ export function parseReportRateRows(headers: string[], rows: unknown[][]): Repor
       pickup: pickup == null || pickup === '' ? '' : (pickup as string | number),
       bag: bag == null || bag === '' ? '' : (bag as string | number),
       validFrom,
+      validUntil,
     });
   }
   return out;

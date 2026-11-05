@@ -589,8 +589,37 @@ describe('settlementSearch_', () => {
         pickupAmount: 4000,
         bagAmount: 1000,
         validFrom: '01.09.2026',
+        validUntil: '',
       },
     ]);
+  });
+
+  it('test_settlementSearch_reads_valid_until_from_named_column', () => {
+    const { register, rates } = fresh();
+    rates!.put(1, 1, 'Sklep');
+    rates!.put(1, 2, 'Podwykonawca');
+    rates!.put(1, 3, 'Kwota za podjazd');
+    rates!.put(1, 4, 'Kwota za worek');
+    rates!.put(1, 5, 'Od kiedy obowiązuje');
+    rates!.put(1, 6, 'Do kiedy obowiązuje');
+    seedRegister(register, 2);
+    seedRate(rates!, 2, 'Ul. Sklepowa 1', 'gpw', 40, 10, '01.09.2026');
+    rates!.put(2, 6, '30.09.2026');
+
+    const result = gas.settlementSearch_({
+      podwykonawca: 'gpw',
+      dataOd: '12.09.2026',
+      dataDo: '20.09.2026',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rates[0]).toMatchObject({
+      validFrom: '01.09.2026',
+      validUntil: '30.09.2026',
+    });
   });
 
   it('test_settlementSearch_missing_rate_sheet_returns_empty_rates', () => {

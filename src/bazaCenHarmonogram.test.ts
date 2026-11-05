@@ -148,6 +148,7 @@ describe('planBazaCenSync', () => {
       '',
       shop.dni,
       '',
+      '',
     ]);
   });
 
@@ -339,7 +340,7 @@ describe('syncBazaCenHarmonogram', () => {
     });
     expect(values.get(SHEET_NAME_BAZA_CEN_HARMONOGRAM)).toEqual([
       [...BAZA_CEN_HEADERS],
-      ['32-100 Proszowice 3 Maja 10', 'Interzero', '', '', '', '', '', 'pn, cz', ''],
+      ['32-100 Proszowice 3 Maja 10', 'Interzero', '', '', '', '', '', 'pn, cz', '', ''],
     ]);
     expect(api.spreadsheets.values.batchUpdate).not.toHaveBeenCalled();
   });

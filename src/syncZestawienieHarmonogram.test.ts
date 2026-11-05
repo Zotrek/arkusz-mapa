@@ -55,6 +55,40 @@ function odebraneRow(overrides: Record<string, string> = {}): string[] {
 }
 
 describe('buildScheduleSyncExpected', () => {
+  it('test_buildScheduleSyncExpected_when_price_ended_should_leave_rates_empty', () => {
+    const untilAt = BAZA_CEN_HEADERS.indexOf('Do kiedy obowiązuje cena');
+    const row = Array.from({ length: BAZA_CEN_HEADERS.length }, () => '');
+    row[0] = '31-342 Kraków Radzikowskiego 138';
+    row[1] = 'THOR';
+    row[2] = 'Trasa A';
+    row[3] = '100';
+    row[4] = '2';
+    row[5] = '40';
+    row[6] = '01.01.2026';
+    row[7] = 'wt';
+    row[untilAt] = '16.09.2026';
+    const rows = buildScheduleSyncExpected(
+      '14.09.2026',
+      '23.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [row],
+      ODEBRANE_HEADERS,
+      [],
+    );
+    expect(rows.find((item) => item.pickupDate === '15.09.2026')).toMatchObject({
+      pickupRate: '100',
+      bagRate: '2',
+      routeRate: '40',
+      routeName: 'Trasa A',
+    });
+    expect(rows.find((item) => item.pickupDate === '22.09.2026')).toMatchObject({
+      pickupRate: '',
+      bagRate: '',
+      routeRate: '',
+      routeName: '',
+    });
+  });
+
   it('test_buildScheduleSyncExpected_pickup_days_even_without_bags', () => {
     const rows = buildScheduleSyncExpected(
       '14.09.2026',
