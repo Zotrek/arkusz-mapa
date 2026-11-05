@@ -123,6 +123,26 @@ describe('shopsFromOdebraneRows', () => {
       '51-602 Wrocław Kochanowskiego 33',
     ]);
   });
+
+  it('test_shopsFromOdebraneRows_when_street_repeats_village_should_keep_city_once', () => {
+    const shops = shopsFromOdebraneRows(ODEBRANE_HEADERS, [
+      odebraneRow({
+        'Kod pocztowy': '26-806',
+        Miasto: 'Stara błotnica',
+        Ulica: 'StaraBłotnica41a',
+        'Numer budynku': '41a',
+        'Firma transportowa': 'GPW',
+        'Dni harmonogramu': 'śr',
+      }),
+    ]);
+    expect(shops).toEqual([
+      {
+        adres: '26-806 Stara błotnica 41a',
+        podwykonawca: 'GPW',
+        dni: 'śr',
+      },
+    ]);
+  });
 });
 
 describe('planBazaCenSync', () => {
@@ -152,7 +172,7 @@ describe('planBazaCenSync', () => {
     ]);
   });
 
-  it('test_planBazaCenSync_when_shop_exists_should_update_days_on_every_price_row', () => {
+  it('test_planBazaCenSync_when_every_price_row_shares_days_should_update_them', () => {
     const plan = planBazaCenSync(
       [{ ...shop, dni: 'pn' }],
       [
@@ -166,7 +186,7 @@ describe('planBazaCenSync', () => {
         existingRow(4, {
           adres: shop.adres,
           podwykonawca: shop.podwykonawca,
-          dni: 'pn',
+          dni: 'pn, cz',
           validFrom: '10.09.2026',
           hasPrices: true,
         }),
@@ -174,9 +194,39 @@ describe('planBazaCenSync', () => {
     );
     expect(plan.append).toEqual([]);
     expect(plan.duplicateDeletes).toEqual([]);
-    expect(plan.dayUpdates).toEqual([{ sheetRow: 2, dni: 'pn' }]);
+    expect(plan.dayUpdates).toEqual([
+      { sheetRow: 2, dni: 'pn' },
+      { sheetRow: 4, dni: 'pn' },
+    ]);
     expect(plan.idClears).toEqual([]);
     expect(plan.addressHeals).toEqual([]);
+  });
+
+  it('test_planBazaCenSync_when_price_periods_have_different_days_should_keep_each', () => {
+    const plan = planBazaCenSync(
+      [{ ...shop, dni: 'pn' }],
+      [
+        existingRow(2, {
+          adres: shop.adres,
+          podwykonawca: shop.podwykonawca,
+          dni: 'pn',
+          validFrom: '01.01.2026',
+          hasPrices: true,
+          harmonogramId: 'H0002',
+        }),
+        existingRow(4, {
+          adres: shop.adres,
+          podwykonawca: shop.podwykonawca,
+          dni: 'pt',
+          validFrom: '01.10.2026',
+          hasPrices: true,
+          harmonogramId: 'H0009',
+        }),
+      ],
+    );
+    expect(plan.dayUpdates).toEqual([]);
+    expect(plan.idClears).toEqual([]);
+    expect(plan.append).toEqual([]);
   });
 
   it('test_planBazaCenSync_when_canonical_days_change_should_clear_harmonogram_id', () => {
@@ -230,6 +280,26 @@ describe('planBazaCenSync', () => {
     expect(plan.dayUpdates).toEqual([]);
     expect(plan.duplicateDeletes).toEqual([]);
     expect(plan.addressHeals).toEqual([{ sheetRow: 3, adres: canonical.adres }]);
+  });
+
+  it('test_planBazaCenSync_when_village_repeated_in_street_should_heal_not_append', () => {
+    const canonical = {
+      adres: '26-806 Stara błotnica 41a',
+      podwykonawca: 'GPW',
+      dni: 'śr',
+    };
+    const plan = planBazaCenSync(
+      [canonical],
+      [
+        existingRow(4, {
+          adres: '26-806 Stara błotnica StaraBłotnica 41a',
+          podwykonawca: 'GPW',
+          dni: 'śr',
+        }),
+      ],
+    );
+    expect(plan.append).toEqual([]);
+    expect(plan.addressHeals).toEqual([{ sheetRow: 4, adres: canonical.adres }]);
   });
 
   it('test_planBazaCenSync_when_sw_twin_should_delete_duplicate_keep_priced', () => {

@@ -3,6 +3,10 @@
  * `zestawienie z harmonogramu`. Sync po „odebrane”: uzupełnia braki / aktualizuje nierozliczone.
  * Nie czyści całej zakładki. Nowe wiersze → zakładka miesiąca z daty odbioru (po nazwie).
  * Ilość worków przy update: tylko w górę (max z istniejącej i z odebrane).
+ * Wiersz z „Rozliczony = tak” zostaje. Worki, które dojdą później, dopisują drugi,
+ * nierozliczony wiersz — tylko różnicę ponad sumę już rozliczonych.
+ * Wiersz z „transport się odbył = nie” też zostaje i nie przyjmuje worków: idą na otwarty wiersz obok.
+ * Dni odbioru biorą się z okresu ceny obowiązującego w danym dniu, nie z pierwszego wiersza pary.
  * Sklep z dniami w Bazie cen: wiersz spoza tych dni (nierozliczony) oddaje worki na najbliższy
  * dzień odbioru i jest usuwany.
  */
@@ -21,8 +25,16 @@ import {
 } from './harmonogramDays.js';
 import { ensureSheetExists } from './phase4.js';
 import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js';
+import { normalizeCityFromSheet } from './cityNormalize.js';
 import { normalizeRateShopKey } from './saveRate.js';
-import { buildAddress } from './sheets.js';
+import { normalizeStreetFromSheet } from './streetNormalize.js';
+import {
+  buildAddress,
+  foldLocality,
+  LOCALITY_SECOND_WORD,
+  omitRepeatedLocalityFromAddress,
+  stripTrailingHouseNumberFromStreet,
+} from './sheets.js';
 import { expandAllTables } from './sheetTables.js';
 import { aggregateRodzajZbiorkiFromSealRows, parseDataZamknieciaWorkaToSortMs } from './wordMapSupport.js';
 
@@ -79,6 +91,11 @@ export interface ScheduleSyncExpectedRow {
   routeRate: string;
   pickupRate: string;
   bagRate: string;
+  /**
+   * Cena się skończyła: zapis ma wyzerować stawkę na istniejącym wierszu.
+   * Pusta stawka bez tej flagi zostaje — w bazie jej nie było, wpis ręczny nie schodzi.
+   */
+  clearRates?: boolean;
 }
 
 export interface ScheduleRegisterExistingRow {
@@ -88,6 +105,8 @@ export interface ScheduleRegisterExistingRow {
   settled: boolean;
   /** Aktualna Ilość worków w zestawieniu (do max przy sync). */
   bagCount: number;
+  /** Złożone: tak / nie / puste. „nie” nie przyjmuje worków. */
+  transport?: string;
 }
 
 export interface ScheduleSyncPlan {
@@ -193,12 +212,64 @@ export function scheduleSheetDateText(canonical: string): string {
 }
 
 /**
- * Fold klucza sync: al./pl./Św. jak w stawkach, potem ASCII (ogonki).
+ * Miasto i ulica w adresie „kod miasto ulica numer”. Drugi człon tylko dla typowych
+ * nazw (Góra, Wielkopolska) — tak jak przecinek w adresie. Reszta to ulica.
+ */
+function splitScheduleCityAndStreet(middle: string[]): { city: string; street: string } {
+  let cityWords = 1;
+  const second = foldLocality(middle[1] ?? '');
+  if (second === 'nad' && middle.length >= 4) {
+    cityWords = 3;
+  } else if (LOCALITY_SECOND_WORD.has(second)) {
+    cityWords = 2;
+  }
+  if (cityWords >= middle.length) {
+    cityWords = middle.length - 1;
+  }
+  return {
+    city: middle.slice(0, cityWords).join(' '),
+    street: middle.slice(cityWords).join(' '),
+  };
+}
+
+/**
+ * Adres worka tym samym torem co Baza cen: miasto, potem ulica (rondo, bulwar, wizawi,
+ * skrót B. Głowackiego, literówki Amii/Ramba). Bez numeru budynku zostaje surowy tekst
+ * — „tak”, „nie” i nazwa firmy nie są adresem.
+ */
+function canonicalizeScheduleAddress(text: string): string {
+  const cleaned = text.replace(/\s*\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  const parts = cleaned.split(' ').filter((part) => part.length > 0);
+  const last = parts[parts.length - 1] ?? '';
+  if (parts.length < 3 || !/^\d+[a-zA-Z]?$/.test(last)) {
+    return text;
+  }
+  const postcode = /^\d{2}-\d{3}$/.test(parts[0] ?? '') ? (parts[0] ?? '') : '';
+  const middle = parts.slice(postcode ? 1 : 0, -1);
+  if (middle.length < 2) {
+    return text;
+  }
+  const { city, street } = splitScheduleCityAndStreet(middle);
+  const cityNorm = normalizeCityFromSheet(city);
+  const streetNorm = normalizeStreetFromSheet(stripTrailingHouseNumberFromStreet(street, last), cityNorm);
+  if (!streetNorm) {
+    return text;
+  }
+  return [postcode, cityNorm, streetNorm, last].filter((part) => part.length > 0).join(' ');
+}
+
+/**
+ * Fold klucza sync: ten sam adres co Baza cen (ulica po pełnej normalizacji),
+ * potem al./pl./Św. jak w stawkach i ASCII (ogonki).
  * Surowy adres z odebrane schodzi do adresu z Bazy cen: Gdańska→Gdańsk,
- * Wrocław-Fabryczna, dopisek w nawiasie, przyklejone al./ul./pl.
+ * Wrocław-Fabryczna, dopisek w nawiasie, przyklejone al./ul./pl.,
+ * rondo / bulwar / wizawi, skrót imienia i literówka miasta,
+ * numer budynku doklejony do ulicy albo powtórzony na jej końcu
+ * (StaraBłotnica41a 41a → StaraBłotnica 41a, jak strip w Bazie cen),
+ * oraz wieś wpisana drugi raz w ulicy (Stara błotnica StaraBłotnica → Stara błotnica).
  */
 export function foldScheduleKeyPart(text: string): string {
-  return normalizeRateShopKey(text)
+  const folded = normalizeRateShopKey(canonicalizeScheduleAddress(text))
     .replace(/ą/g, 'a')
     .replace(/ć/g, 'c')
     .replace(/ę/g, 'e')
@@ -215,6 +286,36 @@ export function foldScheduleKeyPart(text: string): string {
     .replace(/\bgdanska\b/g, 'gdansk')
     .replace(/\s+/g, ' ')
     .trim();
+  return omitRepeatedLocalityFromAddress(foldRepeatedHouseNumber(folded));
+}
+
+/**
+ * Ostatni token to numer z „Numer budynku”. Baza cen zdejmuje ten sam numer
+ * z końca ulicy, zanim sklei adres. Tu ten sam efekt na już sklejonym tekście.
+ * Dłuższy numer zostaje: Kolejowa115 + 15 nie jest tym samym co Kolejowa 15.
+ */
+function foldRepeatedHouseNumber(folded: string): string {
+  const parts = folded.split(' ');
+  if (parts.length < 2) {
+    return folded;
+  }
+  const last = parts[parts.length - 1] ?? '';
+  let prev = parts[parts.length - 2] ?? '';
+  if (!/^\d+[a-z]?$/.test(last) || !prev) {
+    return folded;
+  }
+  if (prev.endsWith(last) && prev.length > last.length) {
+    const cut = prev.length - last.length;
+    const before = prev.charAt(cut - 1);
+    if (before && !/\d/.test(before)) {
+      prev = prev.slice(0, cut);
+      parts[parts.length - 2] = prev;
+    }
+  }
+  if (parts[parts.length - 2] === last) {
+    parts.splice(parts.length - 2, 1);
+  }
+  return parts.join(' ');
 }
 
 export function scheduleRowKey(address: string, pickupDate: string, contractor: string): string {
@@ -347,10 +448,12 @@ function earliestCloseRollingOntoRecentPickup(todayMs: number): number {
 }
 
 /**
- * Od wcześniejszej z dat: 1. dzień bieżącego miesiąca albo dziś − {@link SYNC_WINDOW_LOOKBACK_DAYS}.
- * Po 7. dniu miesiąca samo „od 1.” ucina worki zamknięte tuż przed miesiącem, które wchodzą
- * na odbiór z ostatnich 7 dni — także gdy święto przesuwa piątek (24.12 → 08.01).
- * „Dziś” w Europe/Warsaw (runner CI ma UTC).
+ * Od wcześniejszej z dat: 1. dzień bieżącego miesiąca albo dziś − {@link SYNC_WINDOW_LOOKBACK_DAYS},
+ * oraz najwcześniejsze zamknięcie, które wpada na odbiór z ostatnich 7 dni.
+ * Samo „dziś − 7” 1. dnia miesiąca ucina worek z dnia po poprzednim odbiorze
+ * (zamknięty 24.10, piątek 30.10): przebieg 31.10 go widzi, opuszczony 31.10
+ * i przebieg 1.11 już nie — wiersz 30.10 wstaje z zerem i worek nie wraca.
+ * Święto wydłuża odstęp tak samo (24.12 → 08.01). „Dziś” w Europe/Warsaw (runner CI ma UTC).
  */
 export function defaultSyncWindow(now = new Date()): { dataOd: string; dataDo: string } {
   const todayMs = todayWarsawUtcMidnight(now);
@@ -363,11 +466,9 @@ export function defaultSyncWindow(now = new Date()): { dataOd: string; dataDo: s
     d > SYNC_WINDOW_LOOKBACK_DAYS
       ? Date.UTC(y, m - 1, 1)
       : Date.UTC(back.getUTCFullYear(), back.getUTCMonth(), back.getUTCDate());
-  if (d > SYNC_WINDOW_LOOKBACK_DAYS) {
-    const earliest = earliestCloseRollingOntoRecentPickup(todayMs);
-    if (earliest < dataOdMs) {
-      dataOdMs = earliest;
-    }
+  const earliest = earliestCloseRollingOntoRecentPickup(todayMs);
+  if (earliest < dataOdMs) {
+    dataOdMs = earliest;
   }
   const od = new Date(dataOdMs);
   return {
@@ -479,10 +580,121 @@ export function scheduleDateOnOrAfter(closeDate: string, weekdays: number[]): st
 }
 
 /**
+ * Okres, z którego bierzemy dni odbioru.
+ * Najpierw ten, który dnia obejmuje (cena i dni). Gdy żaden już nie obowiązuje,
+ * zostaje ostatni rozpoczęty — dni zostają, stawka na wierszu i tak jest pusta.
+ */
+function scheduleRateForDay(
+  rates: BazaRate[],
+  address: string,
+  contractor: string,
+  day: string,
+): BazaRate | null {
+  const covering = bestBazaRate(rates, address, contractor, day);
+  if (covering) {
+    return covering;
+  }
+  let best: BazaRate | null = null;
+  for (const rate of rates) {
+    if (foldScheduleKeyPart(rate.shop) !== foldScheduleKeyPart(address)) continue;
+    if (foldScheduleKeyPart(rate.contractor) !== foldScheduleKeyPart(contractor)) continue;
+    if (rate.validFrom && compareDdMmYyyy(rate.validFrom, day) > 0) continue;
+    if (
+      !best ||
+      compareDdMmYyyy(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
+    ) {
+      best = rate;
+    }
+  }
+  return best;
+}
+
+function weekdaysCoveringDay(
+  rates: BazaRate[],
+  address: string,
+  contractor: string,
+  day: string,
+): number[] {
+  const best = scheduleRateForDay(rates, address, contractor, day);
+  if (!best) {
+    return [];
+  }
+  return parseWeekdaysFromDniHarmonogramu(best.days);
+}
+
+/** Każdy dzień z zakresu włącznie, bez filtra dnia tygodnia. */
+function eachDateInRange(dataOd: string, dataDo: string): string[] {
+  if (!dataOd || !dataDo || compareDdMmYyyy(dataOd, dataDo) > 0) {
+    return [];
+  }
+  const start = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(dataOd);
+  if (!start) {
+    return [];
+  }
+  let y = Number(start[3]);
+  let m = Number(start[2]);
+  let d = Number(start[1]);
+  const out: string[] = [];
+  for (let guard = 0; guard < 400; guard++) {
+    const text = formatDdMmYyyy(y, m, d);
+    if (compareDdMmYyyy(text, dataDo) > 0) {
+      break;
+    }
+    out.push(text);
+    const next = new Date(Date.UTC(y, m - 1, d + 1));
+    y = next.getUTCFullYear();
+    m = next.getUTCMonth() + 1;
+    d = next.getUTCDate();
+  }
+  return out;
+}
+
+/**
+ * Dzień odbioru worka według okresu ceny obowiązującego w kolejnych dniach.
+ * Data zamknięcia, gdy okres nie ma dni. Inaczej najbliższy roboczy dzień odbioru tego okresu,
+ * także gdy po drodze dni się zmienią (pn do 30.09, pt od 1.10 → piątek, nie poniedziałek).
+ */
+function pickupDateForClose(
+  closeDate: string,
+  rates: BazaRate[],
+  address: string,
+  contractor: string,
+): string | null {
+  if (!closeDate) {
+    return null;
+  }
+  if (weekdaysCoveringDay(rates, address, contractor, closeDate).length === 0) {
+    return closeDate;
+  }
+  let date = closeDate;
+  for (let i = 0; i < SCHEDULE_DATE_SEARCH_DAYS; i++) {
+    const weekdays = weekdaysCoveringDay(rates, address, contractor, date);
+    if (weekdays.length === 0) {
+      return date;
+    }
+    const parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+    if (!parts) {
+      return null;
+    }
+    const ms = Date.UTC(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1]));
+    if (weekdays.includes(new Date(ms).getUTCDay()) && !isPolishPublicHolidayUtc(ms)) {
+      return date;
+    }
+    const next = addOneDayDdMmYyyy(date);
+    if (!next) {
+      return null;
+    }
+    date = next;
+  }
+  return null;
+}
+
+/**
  * Oczekiwane wiersze: dni z Bazy cen + worki z odebrane.
+ * Dni biorą się z okresu ceny obowiązującego w tym dniu (najpóźniejsza „od kiedy” nie późniejsza niż dzień).
  * Sklep z dniami odbiorów dostaje wiersz tylko w te dni. Święto ustawowe nie jest odbiorem.
  * Worki zamknięte w inny dzień doliczają się do najbliższego takiego odbioru, bez osobnego wiersza.
- * Sklep bez dni w Bazie cen zostaje na dacie zamknięcia worka.
+ * Sklep bez dni w okresie obejmującym zamknięcie zostaje na dacie zamknięcia worka.
  * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
  * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
  * Rodzaj zbiórki = agregat Tryb zbiórki z worków grupy; przy 0 workach = „brak worków”.
@@ -512,7 +724,7 @@ export function buildScheduleSyncExpected(
   const ixDays = headerIndex(bazaHeaders, 'Dni odbiorów');
 
   const rateRows: BazaRate[] = [];
-  const shops = new Map<string, { address: string; contractor: string; days: string }>();
+  const shops = new Map<string, { address: string; contractor: string }>();
   if (ixShop >= 0 && ixContractor >= 0) {
     for (const row of bazaRows) {
       const shop = cell(row, ixShop);
@@ -538,11 +750,8 @@ export function buildScheduleSyncExpected(
         days,
       });
       const sk = `${foldScheduleKeyPart(shop)}\n${foldScheduleKeyPart(contractor)}`;
-      const prev = shops.get(sk);
-      if (!prev) {
-        shops.set(sk, { address: shop, contractor, days });
-      } else if (!prev.days && days) {
-        prev.days = days;
+      if (!shops.has(sk)) {
+        shops.set(sk, { address: omitRepeatedLocalityFromAddress(shop), contractor });
       }
     }
   }
@@ -574,12 +783,14 @@ export function buildScheduleSyncExpected(
     for (const row of odebraneRows) {
       const firma = cell(row, ixFirma);
       if (!firma) continue;
-      const adres = buildAddress({
-        kodPocztowy: cell(row, ixKod),
-        miasto: cell(row, ixMiasto),
-        ulica: cell(row, ixUlica),
-        numerBudynku: cell(row, ixNumer),
-      });
+      const adres = omitRepeatedLocalityFromAddress(
+        buildAddress({
+          kodPocztowy: cell(row, ixKod),
+          miasto: cell(row, ixMiasto),
+          ulica: cell(row, ixUlica),
+          numerBudynku: cell(row, ixNumer),
+        }),
+      );
       if (!adres) continue;
       const closeDate = parseToDdMmYyyy(cell(row, ixData));
       if (!closeDate || !dateInRange(closeDate, start, end)) continue;
@@ -612,12 +823,14 @@ export function buildScheduleSyncExpected(
   const namesByAddress = new Map<string, { shopName: string; podmiot: string }>();
   if (ixKod >= 0 && ixMiasto >= 0 && ixUlica >= 0 && ixNumer >= 0) {
     for (const row of odebraneRows) {
-      const adres = buildAddress({
-        kodPocztowy: cell(row, ixKod),
-        miasto: cell(row, ixMiasto),
-        ulica: cell(row, ixUlica),
-        numerBudynku: cell(row, ixNumer),
-      });
+      const adres = omitRepeatedLocalityFromAddress(
+        buildAddress({
+          kodPocztowy: cell(row, ixKod),
+          miasto: cell(row, ixMiasto),
+          ulica: cell(row, ixUlica),
+          numerBudynku: cell(row, ixNumer),
+        }),
+      );
       if (!adres) continue;
       const shopName = ixSklep >= 0 ? cell(row, ixSklep) : '';
       const podmiot = ixPodmiot >= 0 ? cell(row, ixPodmiot) : '';
@@ -661,6 +874,7 @@ export function buildScheduleSyncExpected(
         routeRate: '',
         pickupRate: '',
         bagRate: '',
+        clearRates: false,
       };
       expected.set(key, row);
       order.push(key);
@@ -689,16 +903,13 @@ export function buildScheduleSyncExpected(
     );
   }
 
-  const weekdaysByShop = new Map<string, number[]>();
   for (const meta of shops.values()) {
-    const weekdays = parseWeekdaysFromDniHarmonogramu(meta.days);
-    if (weekdays.length === 0) continue;
-    weekdaysByShop.set(
-      `${foldScheduleKeyPart(meta.address)}\n${foldScheduleKeyPart(meta.contractor)}`,
-      weekdays,
-    );
-    for (const day of datesMatchingWeekdays(start, end, weekdays)) {
+    for (const day of eachDateInRange(start, end)) {
       if (!pickupReadyForZestawienie(day, end)) continue;
+      const weekdays = weekdaysCoveringDay(rateRows, meta.address, meta.contractor, day);
+      if (weekdays.length === 0) continue;
+      const weekday = weekdayOfDdMmYyyy(day);
+      if (weekday == null || !weekdays.includes(weekday) || isPublicHolidayDdMmYyyy(day)) continue;
       const names = namesByAddress.get(foldScheduleKeyPart(meta.address));
       const row = ensure(
         meta.address,
@@ -709,42 +920,30 @@ export function buildScheduleSyncExpected(
         0,
         'brak worków',
       );
-      let best: BazaRate | null = null;
-      for (const rate of rateRows) {
-        if (foldScheduleKeyPart(rate.shop) !== foldScheduleKeyPart(meta.address)) continue;
-        if (foldScheduleKeyPart(rate.contractor) !== foldScheduleKeyPart(meta.contractor)) continue;
-        if (!bazaRateCoversDay(rate, day)) continue;
-        if (
-          !best ||
-          compareDdMmYyyy(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
-        ) {
-          best = rate;
-        }
-      }
+      const best = bestBazaRate(rateRows, meta.address, meta.contractor, day);
       if (best) {
         row.routeName = best.routeName;
         row.routeRate = best.routeAmount;
         row.pickupRate = best.pickupAmount;
         row.bagRate = best.bagAmount;
+        row.clearRates = false;
+      } else {
+        row.routeName = '';
+        row.routeRate = '';
+        row.pickupRate = '';
+        row.bagRate = '';
+        row.clearRates = true;
       }
     }
   }
 
   for (const g of bagGroups.values()) {
-    const shopKey = `${foldScheduleKeyPart(g.address)}\n${foldScheduleKeyPart(g.contractor)}`;
-    const weekdays = weekdaysByShop.get(shopKey) ?? [];
-    let pickupDate = g.pickupDate;
-    if (weekdays.length > 0) {
-      const target = scheduleDateOnOrAfter(g.pickupDate, weekdays);
-      if (
-        !target ||
-        !dateInRange(target, start, end) ||
-        !pickupReadyForZestawienie(target, end)
-      ) {
-        continue;
-      }
-      pickupDate = target;
-    } else if (!pickupReadyForZestawienie(g.pickupDate, end)) {
+    const pickupDate = pickupDateForClose(g.pickupDate, rateRows, g.address, g.contractor);
+    if (
+      !pickupDate ||
+      !dateInRange(pickupDate, start, end) ||
+      !pickupReadyForZestawienie(pickupDate, end)
+    ) {
       continue;
     }
     const row = ensure(
@@ -814,7 +1013,7 @@ export function isScheduleHeaderRow(headers: string[]): boolean {
 function readRegisterRow(
   headers: string[],
   row: string[] | undefined,
-): { key: string; settled: boolean; bagCount: number } | null {
+): { key: string; settled: boolean; bagCount: number; transport: string } | null {
   const address = cell(row, headerIndex(headers, 'Adres odbioru'));
   const pickupDate = parseToDdMmYyyy(cell(row, headerIndex(headers, 'Data odbioru')));
   const contractor = cell(row, headerIndex(headers, 'Kto odbiera'));
@@ -823,10 +1022,12 @@ function readRegisterRow(
   }
   const ixRoz = headerIndex(headers, 'Rozliczony');
   const ixBags = headerIndex(headers, 'Ilość worków');
+  const ixTransport = headerIndex(headers, 'transport się odbył');
   return {
     key: scheduleRowKey(address, pickupDate, contractor),
     settled: ixRoz >= 0 && foldScheduleKeyPart(cell(row, ixRoz)) === 'tak',
     bagCount: ixBags >= 0 ? parseBagCountCell(cell(row, ixBags)) : 0,
+    transport: ixTransport >= 0 ? foldScheduleKeyPart(cell(row, ixTransport)) : '',
   };
 }
 
@@ -848,37 +1049,63 @@ export function parseScheduleRegisterRows(
   return existing;
 }
 
+/** Rozliczony i „transport się odbył = nie” zostają. Worki idą na inny, otwarty wiersz. */
+function rowKeepsBagsOffSheet(item: ScheduleRegisterExistingRow): boolean {
+  return item.settled || foldScheduleKeyPart(item.transport ?? '') === 'nie';
+}
+
 /**
  * Plan sync: create / update nierozliczonych.
- * Przy update Ilość worków = max(istniejąca, oczekiwana) — nie cofamy sumy po usunięciu worków z odebrane.
+ * Przy update Ilość worków = max(istniejąca, oczekiwana − suma rozliczonych).
+ * Nie cofamy sumy po usunięciu worków z odebrane.
+ * Sam rozliczony wiersz zostaje. Nadwyżka worków dopisuje drugi wiersz, bez „Rozliczony”.
+ * „transport się odbył = nie” też zostaje. Worki z tego dnia dostają otwarty wiersz obok,
+ * bo Szukaj wiersza z „nie” nie bierze.
  */
 export function planScheduleSync(
   expected: ScheduleSyncExpectedRow[],
   existing: ScheduleRegisterExistingRow[],
 ): ScheduleSyncPlan {
-  const byKey = new Map<string, ScheduleRegisterExistingRow>();
-  const duplicates: ScheduleRegisterExistingRow[] = [];
+  const grouped = new Map<string, ScheduleRegisterExistingRow[]>();
   for (const e of existing) {
-    const shadowed = byKey.get(e.key);
-    if (shadowed) duplicates.push(shadowed);
-    byKey.set(e.key, e);
+    const list = grouped.get(e.key);
+    if (list) {
+      list.push(e);
+    } else {
+      grouped.set(e.key, [e]);
+    }
+  }
+  const duplicates: ScheduleRegisterExistingRow[] = [];
+  for (const rows of grouped.values()) {
+    const open = rows.filter((row) => !rowKeepsBagsOffSheet(row));
+    for (const shadowed of open.slice(0, -1)) {
+      duplicates.push(shadowed);
+    }
   }
   const create: ScheduleSyncExpectedRow[] = [];
   const update: Array<{ sheetName: string; sheetRow: number; row: ScheduleSyncExpectedRow }> = [];
   let skippedSettled = 0;
   for (const row of expected) {
-    const found = byKey.get(row.key);
-    if (found) {
-      if (found.settled) {
+    const rows = grouped.get(row.key) ?? [];
+    const settledBags = rows.reduce((sum, item) => sum + (item.settled ? item.bagCount || 0 : 0), 0);
+    const open = rows.filter((item) => !rowKeepsBagsOffSheet(item));
+    const uncovered = Math.max(0, (row.bagCount || 0) - settledBags);
+    const target = open[open.length - 1];
+    if (target) {
+      const bagCount = Math.max(target.bagCount || 0, uncovered);
+      update.push({
+        sheetName: target.sheetName,
+        sheetRow: target.sheetRow,
+        row: bagCount === row.bagCount ? row : { ...row, bagCount },
+      });
+      continue;
+    }
+    if (rows.length > 0) {
+      if (uncovered <= 0) {
         skippedSettled += 1;
         continue;
       }
-      const bagCount = Math.max(found.bagCount || 0, row.bagCount || 0);
-      update.push({
-        sheetName: found.sheetName,
-        sheetRow: found.sheetRow,
-        row: bagCount === row.bagCount ? row : { ...row, bagCount },
-      });
+      create.push({ ...row, bagCount: uncovered });
       continue;
     }
     create.push(row);
@@ -977,10 +1204,7 @@ export function parseScheduleCleanupRows(
   return out;
 }
 
-function weekdaysByShopFromBaza(
-  bazaHeaders: string[],
-  bazaRows: string[][],
-): { weekdays: Map<string, number[]>; rates: BazaRate[] } {
+function ratesFromBaza(bazaHeaders: string[], bazaRows: string[][]): BazaRate[] {
   const ixShop = headerIndex(bazaHeaders, 'Adres sklepu');
   const ixContractor = headerIndex(bazaHeaders, 'Podwykonawca');
   const ixRoute = headerIndex(bazaHeaders, 'Nazwa trasy');
@@ -990,10 +1214,9 @@ function weekdaysByShopFromBaza(
   const ixFrom = headerIndex(bazaHeaders, 'Od kiedy obowiązuje cena');
   const ixUntil = headerIndex(bazaHeaders, 'Do kiedy obowiązuje cena');
   const ixDays = headerIndex(bazaHeaders, 'Dni odbiorów');
-  const weekdays = new Map<string, number[]>();
   const rates: BazaRate[] = [];
   if (ixShop < 0 || ixContractor < 0) {
-    return { weekdays, rates };
+    return rates;
   }
   for (const row of bazaRows) {
     const shop = cell(row, ixShop);
@@ -1007,7 +1230,6 @@ function weekdaysByShopFromBaza(
       validFrom = parsed;
     }
     const days = ixDays >= 0 ? cell(row, ixDays) : '';
-    const parsedDays = parseWeekdaysFromDniHarmonogramu(days);
     rates.push({
       shop,
       contractor,
@@ -1019,13 +1241,8 @@ function weekdaysByShopFromBaza(
       validUntil: ixUntil >= 0 ? readOptionalRateDate(cell(row, ixUntil)) : '',
       days,
     });
-    if (parsedDays.length === 0) continue;
-    const key = `${foldScheduleKeyPart(shop)}\n${foldScheduleKeyPart(contractor)}`;
-    if (!weekdays.has(key)) {
-      weekdays.set(key, parsedDays);
-    }
   }
-  return { weekdays, rates };
+  return rates;
 }
 
 function bestBazaRate(rates: BazaRate[], address: string, contractor: string, day: string): BazaRate | null {
@@ -1044,12 +1261,31 @@ function bestBazaRate(rates: BazaRate[], address: string, contractor: string, da
   return best;
 }
 
+/** Ostatni wiersz pary, na który można doliczyć worki. Rozliczony, faktura i transport „nie” odpadają. */
+function openCleanupTarget(rows: ScheduleCleanupSourceRow[]): ScheduleCleanupSourceRow | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i];
+    if (!row || row.settled || row.invoice.trim() !== '' || row.transport === 'nie') {
+      continue;
+    }
+    return row;
+  }
+  return null;
+}
+
+function cleanupTargetBlocked(rows: ScheduleCleanupSourceRow[]): boolean {
+  return rows.some((row) => row.settled || row.invoice.trim() !== '');
+}
+
 /**
  * Wiersze spoza dni Bazy cen. Worki doliczają się do najbliższego dnia odbioru,
  * a sam wiersz wypada z rejestru. Rozliczony i wiersz z numerem faktury zostają.
  * „transport się odbył = nie” wypada bez doliczania (do rozliczenia i tak nie wchodzi).
- * Liczba na dniu odbioru = max(to, co sync i tak zapisze z odebrane, suma z arkusza + worki z błędnych dni),
- * żeby worki jeszcze obecne w odebrane nie weszły drugi raz.
+ * Otwarty dzień odbioru: max(zapis z odebrane, suma z arkusza + worki z błędnych dni).
+ * Rozliczony dzień z nadwyżką w planie: surowy wiersz schodzi, a wiersz obok dostaje
+ * różnicę z odebranych — nie większą liczbę z surowego wiersza.
+ * Bez nadwyżki surowy wiersz też schodzi, bez dopisywania worków (Szukaj nie liczy ich drugi raz).
+ * Cel bierze otwarty wiersz pary, nie ostatni rozliczony.
  */
 export function planOffScheduleCleanup(
   bazaHeaders: string[],
@@ -1057,10 +1293,16 @@ export function planOffScheduleCleanup(
   existing: ScheduleCleanupSourceRow[],
   scheduledByKey: ReadonlyMap<string, { bagCount: number; rodzajZbiorki: string }>,
 ): OffScheduleCleanupPlan {
-  const { weekdays: weekdaysByShop, rates } = weekdaysByShopFromBaza(bazaHeaders, bazaRows);
-  const byKey = new Map<string, ScheduleCleanupSourceRow>();
+  const rates = ratesFromBaza(bazaHeaders, bazaRows);
+  const rowsByKey = new Map<string, ScheduleCleanupSourceRow[]>();
   for (const row of existing) {
-    byKey.set(scheduleRowKey(row.address, row.pickupDate, row.contractor), row);
+    const key = scheduleRowKey(row.address, row.pickupDate, row.contractor);
+    const list = rowsByKey.get(key);
+    if (list) {
+      list.push(row);
+    } else {
+      rowsByKey.set(key, [row]);
+    }
   }
   const buckets = new Map<
     string,
@@ -1076,6 +1318,10 @@ export function planOffScheduleCleanup(
       routeRate: string;
       pickupRate: string;
       bagRate: string;
+      /** Cel jest rozliczony. Worki z odebrane są już na dopisanym obok wierszu — nie doliczać ich drugi raz do rozliczonego. */
+      besideSettled: boolean;
+      /** Otwarty wiersz dnia odbioru. Ostatni rozliczony albo „nie” nie jest celem. */
+      open: ScheduleCleanupSourceRow | null;
     }
   >();
   const remove: OffScheduleCleanupPlan['remove'] = [];
@@ -1083,9 +1329,8 @@ export function planOffScheduleCleanup(
   let skippedTargetSettled = 0;
 
   for (const row of existing) {
-    const shopKey = `${foldScheduleKeyPart(row.address)}\n${foldScheduleKeyPart(row.contractor)}`;
-    const weekdays = weekdaysByShop.get(shopKey);
-    if (!weekdays || weekdays.length === 0) continue;
+    const weekdays = weekdaysCoveringDay(rates, row.address, row.contractor, row.pickupDate);
+    if (weekdays.length === 0) continue;
     const weekday = weekdayOfDdMmYyyy(row.pickupDate);
     if (weekday == null) continue;
     if (weekdays.includes(weekday) && !isPublicHolidayDdMmYyyy(row.pickupDate)) continue;
@@ -1098,12 +1343,39 @@ export function planOffScheduleCleanup(
       remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
       continue;
     }
-    const targetDate = scheduleDateOnOrAfter(row.pickupDate, weekdays);
-    if (!targetDate) continue;
+    const targetDate = pickupDateForClose(row.pickupDate, rates, row.address, row.contractor);
+    if (!targetDate || targetDate === row.pickupDate) continue;
     const targetKey = scheduleRowKey(row.address, targetDate, row.contractor);
-    const target = byKey.get(targetKey);
-    if ((target && target.settled) || (target && target.invoice.trim() !== '')) {
-      skippedTargetSettled += 1;
+    const group = rowsByKey.get(targetKey) ?? [];
+    const open = openCleanupTarget(group);
+    if (!open && cleanupTargetBlocked(group)) {
+      const scheduled = scheduledByKey.get(targetKey);
+      if (!scheduled || !(scheduled.bagCount > 0)) {
+        remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
+        continue;
+      }
+      let bucket = buckets.get(targetKey);
+      if (!bucket) {
+        bucket = {
+          targetDate,
+          address: row.address,
+          contractor: row.contractor,
+          shopName: row.shopName,
+          podmiot: row.podmiot,
+          rolledBags: 0,
+          rodzaje: [],
+          routeName: '',
+          routeRate: '',
+          pickupRate: '',
+          bagRate: '',
+          besideSettled: true,
+          open: null,
+        };
+        buckets.set(targetKey, bucket);
+      }
+      bucket.rolledBags += row.bagCount;
+      if (row.rodzajZbiorki) bucket.rodzaje.push(row.rodzajZbiorki);
+      remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
       continue;
     }
     let bucket = buckets.get(targetKey);
@@ -1120,6 +1392,8 @@ export function planOffScheduleCleanup(
         routeRate: '',
         pickupRate: '',
         bagRate: '',
+        besideSettled: false,
+        open,
       };
       buckets.set(targetKey, bucket);
     }
@@ -1139,23 +1413,26 @@ export function planOffScheduleCleanup(
   const absorb: OffScheduleAbsorb[] = [];
   for (const [targetKey, bucket] of buckets) {
     if (bucket.rolledBags <= 0) continue;
-    const target = byKey.get(targetKey);
     const scheduled = scheduledByKey.get(targetKey);
-    const base = target?.bagCount ?? 0;
+    const base = bucket.besideSettled ? 0 : (bucket.open?.bagCount ?? 0);
     const planned = scheduled?.bagCount;
-    const bagCount = planned == null ? base + bucket.rolledBags : Math.max(planned, base + bucket.rolledBags);
+    const bagCount = bucket.besideSettled
+      ? (planned ?? 0)
+      : planned == null
+        ? base + bucket.rolledBags
+        : Math.max(planned, base + bucket.rolledBags);
     const rodzajZbiorki = mergeScheduleRodzaj([
       scheduled?.rodzajZbiorki ?? '',
-      target?.rodzajZbiorki ?? '',
+      bucket.besideSettled ? '' : (bucket.open?.rodzajZbiorki ?? ''),
       ...bucket.rodzaje,
     ]);
     const rate = bestBazaRate(rates, bucket.address, bucket.contractor, bucket.targetDate);
     const row: ScheduleSyncExpectedRow = {
       key: targetKey,
-      address: target?.address || bucket.address,
-      shopName: target?.shopName || bucket.shopName,
-      podmiot: target?.podmiot || bucket.podmiot,
-      contractor: target?.contractor || bucket.contractor,
+      address: bucket.open?.address || bucket.address,
+      shopName: bucket.open?.shopName || bucket.shopName,
+      podmiot: bucket.open?.podmiot || bucket.podmiot,
+      contractor: bucket.open?.contractor || bucket.contractor,
       pickupDate: bucket.targetDate,
       bagCount,
       rodzajZbiorki,
@@ -1168,7 +1445,10 @@ export function planOffScheduleCleanup(
       targetKey,
       bagCount,
       rodzajZbiorki,
-      existing: target ? { sheetName: target.sheetName, sheetRow: target.sheetRow } : null,
+      existing:
+        bucket.besideSettled || !bucket.open
+          ? null
+          : { sheetName: bucket.open.sheetName, sheetRow: bucket.open.sheetRow },
       row,
     });
   }
@@ -1437,11 +1717,20 @@ const UPDATE_FIELDS: Array<{
   { name: 'Stawka za worek', value: (r) => sheetRateWriteValue(r.bagRate) },
   { name: 'Nazwa punktu / nazwa skrócona', value: (r) => r.shopName },
   { name: 'Nazwa kontrahenta / podmiot handlowy', value: (r) => r.podmiot },
+  { name: 'Adres odbioru', value: (r) => r.address },
 ];
+
+const RATE_CLEAR_FIELDS = new Set([
+  'Trasa',
+  'Stawka za trasę',
+  'Stawka za podjazd',
+  'Stawka za worek',
+]);
 
 /**
  * Update po numerze wiersza z odczytu sprzed kilku sekund — tuż przed zapisem czyta zakładki
- * jeszcze raz i pomija wiersze, pod którymi jest już inny klucz albo „Rozliczony = tak”
+ * jeszcze raz i pomija wiersze, pod którymi jest już inny klucz, „Rozliczony = tak”
+ * albo „transport się odbył = nie”
  * (ręczne sortowanie/usunięcie, zatwierdzenie w rozliczeniach w międzyczasie).
  */
 async function writeScheduleUpdates(
@@ -1466,7 +1755,7 @@ async function writeScheduleUpdates(
     const headers = values[0] ?? [];
     for (const item of items) {
       const now = readRegisterRow(headers, values[item.sheetRow - 1]);
-      if (!now || now.key !== item.row.key || now.settled) {
+      if (!now || now.key !== item.row.key || now.settled || now.transport === 'nie') {
         skippedChanged += 1;
         logger?.info(
           'Zestawienie Harmonogram: pominięto %s!%d — wiersz zmienił się od odczytu',
@@ -1479,7 +1768,8 @@ async function writeScheduleUpdates(
       for (const field of UPDATE_FIELDS) {
         const ix = headerIndex(headers, field.name);
         const val = field.value(item.row);
-        if (ix < 0 || val === '') continue;
+        const clearEndedRate = item.row.clearRates === true && RATE_CLEAR_FIELDS.has(field.name);
+        if (ix < 0 || (val === '' && !clearEndedRate)) continue;
         data.push({
           range: `${quoteSheet(sheetName)}!${columnLetter(ix)}${item.sheetRow}`,
           values: [[val]],

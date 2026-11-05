@@ -13,6 +13,7 @@ import {
   addressWithCommaAfterLocality,
   applyAddressAliases,
   buildAddress,
+  omitRepeatedLocalityFromAddress,
   stripTrailingHouseNumberFromStreet,
   correctKnownPostcodeTypo,
   mapRawRowToSheetRow,
@@ -129,6 +130,27 @@ describe('sheets phase 2', () => {
       });
 
       expect(address).toBe('26-660 Wierzchowiny 29');
+    });
+
+    it('test_omitRepeatedLocalityFromAddress_when_village_glued_to_number_should_keep_city_once', () => {
+      expect(omitRepeatedLocalityFromAddress('26-806 Stara błotnica StaraBłotnica41a 41a')).toBe(
+        '26-806 Stara błotnica 41a',
+      );
+      expect(omitRepeatedLocalityFromAddress('26-806 Stara błotnica StaraBłotnica 41a')).toBe(
+        '26-806 Stara błotnica 41a',
+      );
+      expect(omitRepeatedLocalityFromAddress('38-242 Skołyszyn Skołyszyn 11B')).toBe(
+        '38-242 Skołyszyn 11B',
+      );
+    });
+
+    it('test_omitRepeatedLocalityFromAddress_when_street_is_real_should_leave_it', () => {
+      expect(omitRepeatedLocalityFromAddress('31-342 Kraków Radzikowskiego 138')).toBe(
+        '31-342 Kraków Radzikowskiego 138',
+      );
+      expect(omitRepeatedLocalityFromAddress('31-342 Kraków Kolejowa115 15')).toBe(
+        '31-342 Kraków Kolejowa115 15',
+      );
     });
 
     it('test_buildAddress_when_street_is_empty_should_skip_street', () => {

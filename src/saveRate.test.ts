@@ -226,6 +226,8 @@ describe('saveRate', () => {
     expect(daysUpdate).toContain('normalizeRateShopKey_');
     expect(daysUpdate).toContain('row.days === days');
     expect(daysUpdate).toContain('getRange(row.row, 8)');
+    expect(daysUpdate).toContain('harmonogramPeriodsKeepOwnDays_');
+    expect(handler).toContain('updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days, dayRows)');
 
     const apply = functionBody(gas, 'applyHarmonogramRatesToScheduleRegister_');
     expect(apply).toContain("listRegisterSheets_('schedule')");

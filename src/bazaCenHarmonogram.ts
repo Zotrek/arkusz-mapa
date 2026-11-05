@@ -13,7 +13,7 @@ import { sheetExists, normalizeOdebraneHeader } from './odebraneZHarmonogramu.js
 import { canonicalHarmonogramDays, HARMONOGRAM_ID_HEADER } from './harmonogramGroup.js';
 import { expandAllTables } from './sheetTables.js';
 import { normalizeRateShopKey } from './saveRate.js';
-import { buildAddress, stripTrailingHouseNumberFromStreet } from './sheets.js';
+import { buildAddress, omitRepeatedLocalityFromAddress, stripTrailingHouseNumberFromStreet } from './sheets.js';
 import { normalizeCityFromSheet } from './cityNormalize.js';
 import { normalizeStreetFromSheet } from './streetNormalize.js';
 
@@ -88,7 +88,7 @@ function collapse(value: string): string {
 }
 
 export function bazaCenKey(adres: string, podwykonawca: string): string {
-  return `${normalizeRateShopKey(adres)}\n${collapse(podwykonawca)}`;
+  return `${normalizeRateShopKey(omitRepeatedLocalityFromAddress(adres))}\n${collapse(podwykonawca)}`;
 }
 
 function headerIndex(headers: string[], name: string): number {
@@ -210,7 +210,8 @@ export function planBazaCenDuplicateDeletes(existing: BazaCenExistingRow[]): num
 /**
  * Jedna pozycja na adres + firmę transportową.
  * Adres jak na mapie: normalizacja miasta/ulicy (al./pl./Św.).
- * Przy różnych dniach zostaje pierwsza niepusta wartość.
+ * Przy różnych dniach w odebrane zostaje pierwsza niepusta wartość — służy nowemu sklepowi
+ * i parze, która ma jeden harmonogram. Okresy Bazy cen z różnymi dniami zostawia planBazaCenSync.
  */
 export function shopsFromOdebraneRows(headers: string[], rows: string[][]): BazaCenShop[] {
   const kod = requireHeader(headers, 'Kod pocztowy', SHEET_NAME_ODEBRANE_Z_HARMONOGRAMU);
@@ -228,12 +229,14 @@ export function shopsFromOdebraneRows(headers: string[], rows: string[][]): Baza
       stripTrailingHouseNumberFromStreet(collapse(cell(row, ulica)), numerBudynku),
       miastoNorm,
     );
-    const adres = buildAddress({
-      kodPocztowy: collapse(cell(row, kod)),
-      miasto: miastoNorm,
-      ulica: ulicaNorm,
-      numerBudynku,
-    });
+    const adres = omitRepeatedLocalityFromAddress(
+      buildAddress({
+        kodPocztowy: collapse(cell(row, kod)),
+        miasto: miastoNorm,
+        ulica: ulicaNorm,
+        numerBudynku,
+      }),
+    );
     const podwykonawca = collapse(cell(row, firma));
     if (!adres || !podwykonawca) {
       continue;
@@ -286,7 +289,23 @@ export function parseBazaCenRows(headers: string[], rows: string[][]): BazaCenEx
   return parsed;
 }
 
-/** Dopisuje brakujące sklepy. Dni aktualizuje na każdym wierszu tej pary. Cen nie rusza. */
+/** Para ma już dwa różne harmonogramy — nocny sync nie może ich zlać w pierwszą niepustą wartość. */
+function pricePeriodsKeepOwnDays(rows: BazaCenExistingRow[]): boolean {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const canonical = canonicalHarmonogramDays(row.dni);
+    if (!canonical) {
+      continue;
+    }
+    seen.add(canonical);
+    if (seen.size > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Dopisuje brakujące sklepy. Dni aktualizuje, gdy para ma jeden harmonogram. Okresy z różnymi dniami zostają. Cen nie rusza. */
 export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingRow[]): BazaCenSyncPlan {
   const duplicateDeletes = planBazaCenDuplicateDeletes(existing);
   const deleteSet = new Set(duplicateDeletes);
@@ -316,11 +335,13 @@ export function planBazaCenSync(shops: BazaCenShop[], existing: BazaCenExistingR
       append.push(shop);
       continue;
     }
+    const keepOwnDays = pricePeriodsKeepOwnDays(rows);
     for (const row of rows) {
-      if (row.dni !== shop.dni) {
+      if (!keepOwnDays && row.dni !== shop.dni) {
         dayUpdates.push({ sheetRow: row.sheetRow, dni: shop.dni });
       }
       if (
+        !keepOwnDays &&
         row.harmonogramId &&
         canonicalHarmonogramDays(row.dni) !== canonicalHarmonogramDays(shop.dni)
       ) {

@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { google, type sheets_v4 } from 'googleapis';
 import { DEFAULT_SHEET_COLUMN_MAP, DEFAULT_ADDRESS_ALIASES_PATH } from './config.js';
 import { normalizeCityFromSheet } from './cityNormalize.js';
+import { polishAsciiFold } from './polishText.js';
 import { normalizeStreetFromSheet } from './streetNormalize.js';
 
 export interface AddressParts {
@@ -200,6 +201,62 @@ export function buildAddress(parts: AddressParts): string {
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function compactLocality(text: string): string {
+  return polishAsciiFold(text).replace(/\s+/g, '');
+}
+
+/**
+ * Adres wiejski: miejscowość jest i w mieście, i w ulicy (często z numerem doklejonym).
+ * Zostaje kod, miejscowość i numer — ulicy, która jest tą samą wsią, nie powtarzamy.
+ * `Stara błotnica StaraBłotnica41a 41a` → `Stara błotnica 41a`.
+ * Inna ulica zostaje: `Kraków Kolejowa115 15` nie jest powtórzeniem miasta.
+ */
+export function omitRepeatedLocalityFromAddress(address: string): string {
+  const parts = address
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter((part) => part.length > 0);
+  if (parts.length < 2) {
+    return parts.join(' ');
+  }
+
+  let start = 0;
+  if (/^\d{2}-\d{3}$/.test(parts[0] ?? '')) {
+    start = 1;
+  }
+
+  const last = parts[parts.length - 1] ?? '';
+  if (parts.length - start >= 2 && /^\d+[a-zA-Z]?$/.test(last)) {
+    const prevIndex = parts.length - 2;
+    let prev = parts[prevIndex] ?? '';
+    if (prev.length > last.length && prev.toLowerCase().endsWith(last.toLowerCase())) {
+      const boundary = prev.charAt(prev.length - last.length - 1);
+      if (boundary && !/\d/.test(boundary)) {
+        prev = prev.slice(0, prev.length - last.length);
+        parts[prevIndex] = prev;
+      }
+    }
+    if ((parts[prevIndex] ?? '').toLowerCase() === last.toLowerCase()) {
+      parts.splice(prevIndex, 1);
+    }
+  }
+
+  let end = parts.length;
+  if (end > start && /^\d+[a-zA-Z]?$/.test(parts[end - 1] ?? '')) {
+    end -= 1;
+  }
+  const words = parts.slice(start, end);
+  for (let splitAt = 1; splitAt < words.length; splitAt += 1) {
+    const left = compactLocality(words.slice(0, splitAt).join(' '));
+    const right = compactLocality(words.slice(splitAt).join(' '));
+    if (left.length >= 3 && left === right) {
+      return [...parts.slice(0, start), ...words.slice(0, splitAt), ...parts.slice(end)].join(' ');
+    }
+  }
+  return parts.join(' ');
 }
 
 /** Drugi człon miejscowości (Zielona Góra, Środa Wielkopolska). Nie nazwy ulic. */

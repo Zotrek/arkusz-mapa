@@ -27,7 +27,10 @@
  *   To samo POST { action: settlementInvoices, … }.
  * POST { action: syncZestawienieHarmonogram, dataOd?, dataDo? }
  *   Agreguje odebrane + dni podjazdu z Bazy cen → „zestawienie z harmonogramu”.
- *   Domyślne okno: 1. bieżącego miesiąca → dziś. Rozliczony=tak nie nadpisuje.
+ *   Domyślne okno jak nocny przebieg: 1. miesiąca albo dziś − 7, oraz zamknięcie
+ *   worka wpadające na odbiór z ostatnich 7 dni — także 1.–7. dnia miesiąca.
+ *   Rozliczony=tak zostaje. Nadwyżka worków dopisuje drugi wiersz.
+ *   „transport się odbył = nie” zostaje i nie przyjmuje worków.
  * GET ?action=settlementStats&dataOd=dd.mm.yyyy&dataDo=dd.mm.yyyy&podwykonawca=…
  *   Oba krańce dat wymagane. podwykonawca opcjonalny (pusty = wszyscy). Nic nie zapisuje.
  *   Wiersze: rejestr (mode=report) + grupy worków z „odebrane z harmonogramu” (mode=schedule).
@@ -2613,12 +2616,48 @@ function listHarmonogramRateRows_(sheet) {
 }
 
 /**
+ * Para ma już dwa różne harmonogramy — zapis jednego okresu nie może przepisać dni drugiego.
+ */
+function harmonogramPeriodsKeepOwnDays_(rows, shopKey, contractor) {
+  var seen = {};
+  var count = 0;
+  var i;
+  for (i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (normalizeRateShopKey_(row.shop) !== shopKey || row.contractor !== contractor) {
+      continue;
+    }
+    var canonical = canonicalHarmonogramDays_(row.days);
+    if (!canonical || seen[canonical]) {
+      continue;
+    }
+    seen[canonical] = true;
+    count += 1;
+    if (count > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Przy istniejącym połączeniu sklep + podwykonawca aktualizuje „Dni odbiorów”
- * tylko gdy się zmieniły — na każdym wierszu tej pary (cen nie rusza).
+ * tylko gdy się zmieniły. Jeden harmonogram — na każdym wierszu tej pary.
+ * Okresy z różnymi dniami: tylko wiersze tego zapisu (onlyRows). Cen nie rusza.
  * Adres porównuje po normalizacji (al./pl./Św.); przy różnicy ustawia kanoniczny z mapy.
  */
-function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days) {
+function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days, onlyRows) {
   var shopKey = normalizeRateShopKey_(shop);
+  var keepOwn = harmonogramPeriodsKeepOwnDays_(rows, shopKey, contractor);
+  var limit = null;
+  if (keepOwn) {
+    limit = {};
+    var n;
+    var list = onlyRows || [];
+    for (n = 0; n < list.length; n++) {
+      limit[list[n]] = true;
+    }
+  }
   var updated = 0;
   var i;
   for (i = 0; i < rows.length; i++) {
@@ -2628,6 +2667,9 @@ function updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days) {
     }
     if (row.shop !== shop) {
       sheet.getRange(row.row, 1).setValue(shop);
+    }
+    if (limit && !limit[row.row]) {
+      continue;
     }
     if (row.days === days) {
       continue;
@@ -2821,7 +2863,8 @@ function handleSaveRateHarmonogramPost_(body) {
   var bagCell = rateAmountCell_(bag);
   var routeRateCell = rateAmountCell_(routeRate);
   var writeRoute = !!(routeName || !routeRate.empty);
-  var daysUpdated = updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days);
+  var dayRows = decision.action === 'overwrite' ? saveRateTargetRows_(decision) : [];
+  var daysUpdated = updateHarmonogramDaysIfChanged_(sheet, rows, shop, contractor, days, dayRows);
   if (decision.action === 'overwrite') {
     var targetRows = saveRateTargetRows_(decision);
     var ti;
@@ -4876,10 +4919,120 @@ function buildSettlementStats_(query, register, rates, odebrane, scheduleRegiste
 
 /**
  * Fold klucza sync/statystyk: al./pl./Św. jak w stawkach, potem ASCII (ogonki).
- * Surowy adres schodzi do Bazy cen: Gdańska→Gdańsk, Wrocław-Fabryczna, nawias, al. przyklejone.
+ * Surowy adres schodzi do Bazy cen: Gdańska→Gdańsk, Wrocław-Fabryczna, nawias, al. przyklejone,
+ * rondo / bulwar / wizawi na początku ulicy, numer doklejony do ulicy albo powtórzony na jej końcu
+ * (StaraBłotnica41a 41a → StaraBłotnica 41a), oraz wieś wpisana drugi raz w ulicy
+ * (Stara błotnica StaraBłotnica → Stara błotnica).
  */
 function settlementFoldPl_(text) {
-  return normalizeRateShopKey_(text)
+  return settlementCanonicalAddress_(
+    settlementFoldRepeatedHouseNumber_(
+    normalizeRateShopKey_(text)
+      .replace(/ą/g, 'a')
+      .replace(/ć/g, 'c')
+      .replace(/ę/g, 'e')
+      .replace(/ł/g, 'l')
+      .replace(/ń/g, 'n')
+      .replace(/ó/g, 'o')
+      .replace(/ś/g, 's')
+      .replace(/ź/g, 'z')
+      .replace(/ż/g, 'z')
+      .replace(/,/g, ' ')
+      .replace(/\s*\([^)]*\)/g, ' ')
+      .replace(/(^|\s)(?:ul\.|al\.|pl\.)(?=[a-z])/g, '$1')
+      .replace(/\bwroclaw-fabryczna\b/g, 'wroclaw')
+      .replace(/\bgdanska\b/g, 'gdansk')
+      .replace(/\b(?:rondo|bulwar|bulw|wizawi)\s+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    ),
+  );
+}
+
+/** Jak strip numeru w Bazie cen, na już sklejonym adresie. Kolejowa115 + 15 zostaje osobno. */
+function settlementFoldRepeatedHouseNumber_(folded) {
+  var parts = String(folded || '').split(' ');
+  if (parts.length < 2) {
+    return folded;
+  }
+  var last = parts[parts.length - 1];
+  var prev = parts[parts.length - 2];
+  if (!/^\d+[a-z]?$/.test(last) || !prev) {
+    return folded;
+  }
+  if (prev.length > last.length && prev.substring(prev.length - last.length) === last) {
+    var before = prev.charAt(prev.length - last.length - 1);
+    if (before && !/\d/.test(before)) {
+      prev = prev.substring(0, prev.length - last.length);
+      parts[parts.length - 2] = prev;
+    }
+  }
+  if (parts[parts.length - 2] === last) {
+    parts.splice(parts.length - 2, 1);
+  }
+  return parts.join(' ');
+}
+
+/** Wieś w mieście i jeszcze raz w ulicy. Zostaje miejscowość i numer. */
+function settlementCanonicalAddress_(address) {
+  var parts = String(address || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ');
+  var kept = [];
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    if (parts[i]) {
+      kept.push(parts[i]);
+    }
+  }
+  parts = kept;
+  if (parts.length < 2) {
+    return parts.join(' ');
+  }
+  var start = 0;
+  if (/^\d{2}-\d{3}$/.test(parts[0] || '')) {
+    start = 1;
+  }
+  var last = parts[parts.length - 1] || '';
+  if (parts.length - start >= 2 && /^\d+[a-zA-Z]?$/.test(last)) {
+    var prevIndex = parts.length - 2;
+    var prev = parts[prevIndex] || '';
+    if (
+      prev.length > last.length &&
+      prev.toLowerCase().substring(prev.length - last.length) === last.toLowerCase()
+    ) {
+      var boundary = prev.charAt(prev.length - last.length - 1);
+      if (boundary && !/\d/.test(boundary)) {
+        prev = prev.substring(0, prev.length - last.length);
+        parts[prevIndex] = prev;
+      }
+    }
+    if ((parts[prevIndex] || '').toLowerCase() === last.toLowerCase()) {
+      parts.splice(prevIndex, 1);
+    }
+  }
+  var end = parts.length;
+  if (end > start && /^\d+[a-zA-Z]?$/.test(parts[end - 1] || '')) {
+    end -= 1;
+  }
+  var splitAt;
+  for (splitAt = start + 1; splitAt < end; splitAt++) {
+    var left = settlementCompactLocality_(parts.slice(start, splitAt).join(' '));
+    var right = settlementCompactLocality_(parts.slice(splitAt, end).join(' '));
+    if (left.length >= 3 && left === right) {
+      return parts
+        .slice(0, splitAt)
+        .concat(parts.slice(end))
+        .join(' ');
+    }
+  }
+  return parts.join(' ');
+}
+
+function settlementCompactLocality_(text) {
+  return String(text || '')
+    .toLowerCase()
     .replace(/ą/g, 'a')
     .replace(/ć/g, 'c')
     .replace(/ę/g, 'e')
@@ -4889,13 +5042,7 @@ function settlementFoldPl_(text) {
     .replace(/ś/g, 's')
     .replace(/ź/g, 'z')
     .replace(/ż/g, 'z')
-    .replace(/,/g, ' ')
-    .replace(/\s*\([^)]*\)/g, ' ')
-    .replace(/(^|\s)(?:ul\.|al\.|pl\.)(?=[a-z])/g, '$1')
-    .replace(/\bwroclaw-fabryczna\b/g, 'wroclaw')
-    .replace(/\bgdanska\b/g, 'gdansk')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/[^a-z0-9]+/g, '');
 }
 
 function settlementNormalizeDayToken_(raw) {
@@ -5116,7 +5263,7 @@ function settlementBuildAddressParts_(kod, miasto, ulica, numer) {
       out.push(items[i]);
     }
   }
-  return out.join(' ').replace(/\s+/g, ' ').trim();
+  return settlementCanonicalAddress_(out.join(' ').replace(/\s+/g, ' ').trim());
 }
 
 /**
@@ -5255,11 +5402,155 @@ function settlementScheduleDateOnOrAfter_(closeDate, weekdays) {
   return '';
 }
 
+/** Okres ceny obowiązujący w tym dniu: najpóźniejsza „od kiedy” nie późniejsza niż dzień. */
+function settlementBestRate_(rateRows, address, contractor, day) {
+  var best = null;
+  var i;
+  var shopKey = settlementFoldPl_(address);
+  var whoKey = settlementFoldPl_(contractor);
+  for (i = 0; i < (rateRows || []).length; i++) {
+    var rate = rateRows[i];
+    if (settlementFoldPl_(rate.shop) !== shopKey || settlementFoldPl_(rate.contractor) !== whoKey) {
+      continue;
+    }
+    if (rate.validFrom && settlementCompareDate_(rate.validFrom, day) > 0) {
+      continue;
+    }
+    if (settlementRateEnded_(rate.validUntil, day)) {
+      continue;
+    }
+    if (
+      !best ||
+      settlementCompareDate_(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
+    ) {
+      best = rate;
+    }
+  }
+  return best;
+}
+
+/**
+ * Dni z okresu, który dnia obejmuje. Gdy cena już się skończyła i nic jej nie zastąpiło,
+ * zostają dni ostatniego rozpoczętego okresu — stawka i tak jest pusta.
+ */
+function settlementScheduleRate_(rateRows, address, contractor, day) {
+  var covering = settlementBestRate_(rateRows, address, contractor, day);
+  if (covering) {
+    return covering;
+  }
+  var best = null;
+  var i;
+  var shopKey = settlementFoldPl_(address);
+  var whoKey = settlementFoldPl_(contractor);
+  for (i = 0; i < (rateRows || []).length; i++) {
+    var rate = rateRows[i];
+    if (settlementFoldPl_(rate.shop) !== shopKey || settlementFoldPl_(rate.contractor) !== whoKey) {
+      continue;
+    }
+    if (rate.validFrom && settlementCompareDate_(rate.validFrom, day) > 0) {
+      continue;
+    }
+    if (
+      !best ||
+      settlementCompareDate_(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
+    ) {
+      best = rate;
+    }
+  }
+  return best;
+}
+
+function settlementWeekdaysOnDay_(rateRows, address, contractor, day) {
+  var best = settlementScheduleRate_(rateRows, address, contractor, day);
+  if (!best) {
+    return [];
+  }
+  return settlementParseWeekdays_(best.days);
+}
+
+function settlementAddOneDay_(date) {
+  var parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date || '');
+  if (!parts) {
+    return '';
+  }
+  var next = new Date(
+    Date.UTC(parseInt(parts[3], 10), parseInt(parts[2], 10) - 1, parseInt(parts[1], 10) + 1),
+  );
+  return settlementFormatDate_(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+}
+
+/**
+ * Dzień odbioru worka według okresu ceny w kolejnych dniach.
+ * Bez dni w okresie zamknięcia — data zamknięcia. Zmiana dni (pn do 30.09, pt od 1.10) idzie na nowy dzień.
+ */
+function settlementPickupForClose_(closeDate, rateRows, address, contractor) {
+  if (!closeDate) {
+    return '';
+  }
+  if (!settlementWeekdaysOnDay_(rateRows, address, contractor, closeDate).length) {
+    return closeDate;
+  }
+  var date = closeDate;
+  var i;
+  for (i = 0; i < 22; i++) {
+    var weekdays = settlementWeekdaysOnDay_(rateRows, address, contractor, date);
+    if (!weekdays.length) {
+      return date;
+    }
+    var parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+    if (!parts) {
+      return '';
+    }
+    var dayMs = Date.UTC(parseInt(parts[3], 10), parseInt(parts[2], 10) - 1, parseInt(parts[1], 10));
+    var weekday = new Date(dayMs).getUTCDay();
+    var match = false;
+    var w;
+    for (w = 0; w < weekdays.length; w++) {
+      if (weekdays[w] === weekday) {
+        match = true;
+      }
+    }
+    if (match && !settlementIsPolishPublicHolidayUtc_(dayMs)) {
+      return date;
+    }
+    date = settlementAddOneDay_(date);
+    if (!date) {
+      return '';
+    }
+  }
+  return '';
+}
+
+function settlementEachDate_(start, end) {
+  var out = [];
+  var parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(start || '');
+  if (!parts || !end || settlementCompareDate_(start, end) > 0) {
+    return out;
+  }
+  var y = parseInt(parts[3], 10);
+  var m = parseInt(parts[2], 10);
+  var d = parseInt(parts[1], 10);
+  var guard;
+  for (guard = 0; guard < 400; guard++) {
+    var text = settlementFormatDate_(y, m, d);
+    if (settlementCompareDate_(text, end) > 0) {
+      break;
+    }
+    out.push(text);
+    var next = new Date(Date.UTC(y, m - 1, d + 1));
+    y = next.getUTCFullYear();
+    m = next.getUTCMonth() + 1;
+    d = next.getUTCDate();
+  }
+  return out;
+}
+
 /**
  * Buduje oczekiwane wiersze sync (adres+data+firma).
+ * Dni biorą się z okresu ceny obowiązującego w tym dniu, nie z pierwszego wiersza pary.
  * Sklep z dniami odbiorów dostaje wiersz tylko w te dni. Święto ustawowe nie jest odbiorem.
  * Worki zamknięte w inny dzień doliczają się do najbliższego takiego odbioru, bez osobnego wiersza.
- * Sklep bez dni w Bazie cen zostaje na dacie zamknięcia worka.
+ * Sklep bez dni w okresie obejmującym zamknięcie zostaje na dacie zamknięcia worka.
  * Wiersz dopiero dzień po dacie odbioru (asOf = dataDo): odbiór 01.10 → zestawienie od 02.10.
  * Nazwy punktu/kontrahenta: z worków dnia, a przy 0 workach z dowolnego wiersza odebrane tego adresu.
  * Rodzaj zbiórki: z Tryb zbiórki na workach; przy 0 workach = „brak worków”.
@@ -5311,9 +5602,10 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane, untilInde
     });
     var shopKey = settlementFoldPl_(shop) + '\n' + settlementFoldPl_(contractor);
     if (!shops[shopKey]) {
-      shops[shopKey] = { address: shop, contractor: contractor, days: settlementText_(cells[7]) };
-    } else if (!shops[shopKey].days && cells[7]) {
-      shops[shopKey].days = settlementText_(cells[7]);
+      shops[shopKey] = {
+        address: settlementCanonicalAddress_(shop),
+        contractor: contractor,
+      };
     }
   }
 
@@ -5449,23 +5741,38 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane, untilInde
     row.rodzajZbiorki = scheduleAggregateRodzaj_(sealsByKey[row.key]);
   }
 
-  var weekdaysByShop = {};
   var sk;
   for (sk in shops) {
     if (!Object.prototype.hasOwnProperty.call(shops, sk)) {
       continue;
     }
     var meta = shops[sk];
-    var weekdays = settlementParseWeekdays_(meta.days);
-    if (!weekdays.length) {
-      continue;
-    }
-    weekdaysByShop[sk] = weekdays;
-    var dates = settlementDatesMatchingWeekdays_(start, end, weekdays);
+    var dates = settlementEachDate_(start, end);
     var di;
     for (di = 0; di < dates.length; di++) {
       var day = dates[di];
       if (!settlementPickupReadyForZestawienie_(day, end)) {
+        continue;
+      }
+      var weekdays = settlementWeekdaysOnDay_(rateRows, meta.address, meta.contractor, day);
+      if (!weekdays.length) {
+        continue;
+      }
+      var dayParts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(day);
+      var dayMs = Date.UTC(
+        parseInt(dayParts[3], 10),
+        parseInt(dayParts[2], 10) - 1,
+        parseInt(dayParts[1], 10),
+      );
+      var weekday = new Date(dayMs).getUTCDay();
+      var listed = false;
+      var wi;
+      for (wi = 0; wi < weekdays.length; wi++) {
+        if (weekdays[wi] === weekday) {
+          listed = true;
+        }
+      }
+      if (!listed || settlementIsPolishPublicHolidayUtc_(dayMs)) {
         continue;
       }
       var names = namesByAddress[settlementFoldPl_(meta.address)] || {};
@@ -5478,34 +5785,19 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane, untilInde
         0,
         'brak worków',
       );
-      var best = null;
-      var ri;
-      for (ri = 0; ri < rateRows.length; ri++) {
-        var rate = rateRows[ri];
-        if (
-          settlementFoldPl_(rate.shop) !== settlementFoldPl_(meta.address) ||
-          settlementFoldPl_(rate.contractor) !== settlementFoldPl_(meta.contractor)
-        ) {
-          continue;
-        }
-        if (rate.validFrom && settlementCompareDate_(rate.validFrom, day) > 0) {
-          continue;
-        }
-        if (settlementRateEnded_(rate.validUntil, day)) {
-          continue;
-        }
-        if (
-          !best ||
-          settlementCompareDate_(rate.validFrom || '01.01.1900', best.validFrom || '01.01.1900') > 0
-        ) {
-          best = rate;
-        }
-      }
+      var best = settlementBestRate_(rateRows, meta.address, meta.contractor, day);
       if (best) {
         row.routeName = best.routeName || '';
         row.routeRate = best.routeAmount != null && best.routeAmount !== '' ? best.routeAmount : '';
         row.pickupRate = best.pickupAmount != null && best.pickupAmount !== '' ? best.pickupAmount : '';
         row.bagRate = best.bagAmount != null && best.bagAmount !== '' ? best.bagAmount : '';
+        row.clearRates = false;
+      } else {
+        row.routeName = '';
+        row.routeRate = '';
+        row.pickupRate = '';
+        row.bagRate = '';
+        row.clearRates = true;
       }
     }
   }
@@ -5516,19 +5808,12 @@ function buildScheduleSyncExpected_(dataOd, dataDo, bazaCen, odebrane, untilInde
       continue;
     }
     var g = bagGroups[bk];
-    var shopKey = settlementFoldPl_(g.address) + '\n' + settlementFoldPl_(g.contractor);
-    var shopWeekdays = weekdaysByShop[shopKey] || [];
-    var pickupDate = g.pickupDate;
-    if (shopWeekdays.length) {
-      pickupDate = settlementScheduleDateOnOrAfter_(g.pickupDate, shopWeekdays);
-      if (
-        !pickupDate ||
-        !settlementDateInRange_(pickupDate, start, end) ||
-        !settlementPickupReadyForZestawienie_(pickupDate, end)
-      ) {
-        continue;
-      }
-    } else if (!settlementPickupReadyForZestawienie_(g.pickupDate, end)) {
+    var pickupDate = settlementPickupForClose_(g.pickupDate, rateRows, g.address, g.contractor);
+    if (
+      !pickupDate ||
+      !settlementDateInRange_(pickupDate, start, end) ||
+      !settlementPickupReadyForZestawienie_(pickupDate, end)
+    ) {
       continue;
     }
     var bagRow = ensureExpected(
@@ -5586,7 +5871,9 @@ function scheduleAggregateRodzaj_(seals) {
 }
 
 /**
- * To samo okno co defaultSyncWindow w syncZestawienieHarmonogram.ts.
+ * Okno ręcznego syncu z edytora arkusza. To samo co defaultSyncWindow
+ * (syncZestawienieHarmonogram.ts): także 1.–7. dnia miesiąca sięga zamknięcia
+ * worka, które wpada na odbiór z ostatnich 7 dni.
  * Cała arytmetyka jest w środku: test ładuje tylko tę funkcję oraz format daty.
  */
 function scheduleSyncDefaultWindow_() {
@@ -5673,11 +5960,9 @@ function scheduleSyncDefaultWindow_() {
   var todayUtc = Date.UTC(y, m - 1, d);
   var back = new Date(todayUtc - LOOKBACK * DAY);
   var dataOdUtc = d > LOOKBACK ? Date.UTC(y, m - 1, 1) : back.getTime();
-  if (d > LOOKBACK) {
-    var earliest = earliestCloseUtc_(todayUtc);
-    if (earliest < dataOdUtc) {
-      dataOdUtc = earliest;
-    }
+  var earliest = earliestCloseUtc_(todayUtc);
+  if (earliest < dataOdUtc) {
+    dataOdUtc = earliest;
   }
   var od = new Date(dataOdUtc);
   return {
@@ -5957,13 +6242,42 @@ function scheduleCleanupSourceRows_() {
   return out;
 }
 
+/** Ostatni otwarty wiersz pary. Rozliczony, faktura i transport „nie” nie są celem. */
+function scheduleCleanupOpen_(rows) {
+  var open = null;
+  var i;
+  for (i = 0; i < (rows || []).length; i++) {
+    var row = rows[i];
+    if (row.settled || settlementText_(row.invoice) !== '' || row.transport === 'nie') {
+      continue;
+    }
+    open = row;
+  }
+  return open;
+}
+
+function scheduleCleanupBlocked_(rows) {
+  var i;
+  for (i = 0; i < (rows || []).length; i++) {
+    var row = rows[i];
+    if (row.settled || settlementText_(row.invoice) !== '') {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Wiersze spoza dni Bazy cen. Worki doliczają się do najbliższego dnia odbioru.
  * Rozliczony i numer faktury zostają. „transport się odbył = nie” odpada bez worków.
  * scheduledByKey[klucz] = { bagCount, rodzajZbiorki } — to, co sync i tak zapisze z odebrane.
+ * Rozliczony dzień z nadwyżką: surowy wiersz schodzi, wiersz obok dostaje różnicę z odebranych.
+ * Bez nadwyżki surowy wiersz też schodzi, bez dopisywania worków.
+ * Cel to otwarty wiersz pary, nie ostatni rozliczony. Wiersz dopisany w tym przebiegu
+ * jest w scheduledByKey i w indeksie zapisu, nie w tej mapie.
  */
-function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
-  var weekdaysByShop = {};
+function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey, untilIndex) {
+  var rateRows = [];
   var sourceBaza = bazaCen || [];
   var bi;
   for (bi = 0; bi < sourceBaza.length; bi++) {
@@ -5973,21 +6287,38 @@ function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
     if (!shop || !contractor) {
       continue;
     }
-    var parsedDays = settlementParseWeekdays_(cells[7]);
-    if (!parsedDays.length) {
-      continue;
+    var rawFrom = cells[6];
+    var validFrom = '';
+    var hasFrom = rawFrom instanceof Date || settlementText_(rawFrom) !== '';
+    if (hasFrom) {
+      validFrom = settlementDateText_(rawFrom);
+      if (!validFrom) {
+        continue;
+      }
     }
-    var shopKey = settlementFoldPl_(shop) + '\n' + settlementFoldPl_(contractor);
-    if (!weekdaysByShop[shopKey]) {
-      weekdaysByShop[shopKey] = parsedDays;
+    var validUntil = '';
+    if (typeof untilIndex === 'number' && untilIndex >= 0) {
+      var parsedUntil = settlementOptionalDate_(cells, untilIndex);
+      validUntil = parsedUntil === null ? '\u0000' : parsedUntil;
     }
+    rateRows.push({
+      shop: shop,
+      contractor: contractor,
+      validFrom: validFrom,
+      validUntil: validUntil,
+      days: settlementText_(cells[7]),
+    });
   }
   var byKey = {};
   var existing = existingRows || [];
   var ei;
   for (ei = 0; ei < existing.length; ei++) {
     var known = existing[ei];
-    byKey[scheduleSyncRowKey_(known.address, known.pickupDate, known.contractor)] = known;
+    var knownKey = scheduleSyncRowKey_(known.address, known.pickupDate, known.contractor);
+    if (!byKey[knownKey]) {
+      byKey[knownKey] = [];
+    }
+    byKey[knownKey].push(known);
   }
   var buckets = {};
   var remove = [];
@@ -5995,9 +6326,8 @@ function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
   var skippedTargetSettled = 0;
   for (ei = 0; ei < existing.length; ei++) {
     var row = existing[ei];
-    var rowShop = settlementFoldPl_(row.address) + '\n' + settlementFoldPl_(row.contractor);
-    var weekdays = weekdaysByShop[rowShop];
-    if (!weekdays || !weekdays.length) {
+    var weekdays = settlementWeekdaysOnDay_(rateRows, row.address, row.contractor, row.pickupDate);
+    if (!weekdays.length) {
       continue;
     }
     var weekday = scheduleWeekdayOfDate_(row.pickupDate);
@@ -6013,14 +6343,43 @@ function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
       remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
       continue;
     }
-    var targetDate = settlementScheduleDateOnOrAfter_(row.pickupDate, weekdays);
-    if (!targetDate) {
+    var targetDate = settlementPickupForClose_(row.pickupDate, rateRows, row.address, row.contractor);
+    if (!targetDate || targetDate === row.pickupDate) {
       continue;
     }
     var targetKey = scheduleSyncRowKey_(row.address, targetDate, row.contractor);
-    var target = byKey[targetKey];
-    if ((target && target.settled) || (target && settlementText_(target.invoice) !== '')) {
-      skippedTargetSettled += 1;
+    var group = byKey[targetKey] || [];
+    var openTarget = scheduleCleanupOpen_(group);
+    if (!openTarget && scheduleCleanupBlocked_(group)) {
+      var scheduledHit = (scheduledByKey && scheduledByKey[targetKey]) || null;
+      if (!scheduledHit || !(scheduledHit.bagCount > 0)) {
+        remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
+        continue;
+      }
+      var settledBucket = buckets[targetKey];
+      if (!settledBucket) {
+        settledBucket = {
+          targetDate: targetDate,
+          address: row.address,
+          contractor: row.contractor,
+          shopName: row.shopName || '',
+          podmiot: row.podmiot || '',
+          rolledBags: 0,
+          rodzaje: [],
+          routeName: '',
+          routeRate: '',
+          pickupRate: '',
+          bagRate: '',
+          besideSettled: true,
+          open: null,
+        };
+        buckets[targetKey] = settledBucket;
+      }
+      settledBucket.rolledBags += row.bagCount || 0;
+      if (row.rodzajZbiorki) {
+        settledBucket.rodzaje.push(row.rodzajZbiorki);
+      }
+      remove.push({ sheetName: row.sheetName, sheetRow: row.sheetRow, key: sourceKey });
       continue;
     }
     var bucket = buckets[targetKey];
@@ -6037,6 +6396,8 @@ function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
         routeRate: '',
         pickupRate: '',
         bagRate: '',
+        besideSettled: false,
+        open: openTarget,
       };
       buckets[targetKey] = bucket;
     }
@@ -6068,12 +6429,19 @@ function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
     if (!(packed.rolledBags > 0)) {
       continue;
     }
-    var targetRow = byKey[targetKeyName];
+    var targetRow = packed.besideSettled ? null : packed.open || null;
     var scheduled = (scheduledByKey && scheduledByKey[targetKeyName]) || null;
     var base = targetRow ? targetRow.bagCount || 0 : 0;
     var planned = scheduled ? scheduled.bagCount : null;
-    var bagCount = planned == null ? base + packed.rolledBags : Math.max(planned, base + packed.rolledBags);
-    var rodzajParts = [scheduled ? scheduled.rodzajZbiorki : '', targetRow ? targetRow.rodzajZbiorki : ''];
+    var bagCount = packed.besideSettled
+      ? planned || 0
+      : planned == null
+        ? base + packed.rolledBags
+        : Math.max(planned, base + packed.rolledBags);
+    var rodzajParts = [
+      scheduled ? scheduled.rodzajZbiorki : '',
+      packed.besideSettled || !targetRow ? '' : targetRow.rodzajZbiorki,
+    ];
     var ri;
     for (ri = 0; ri < packed.rodzaje.length; ri++) {
       rodzajParts.push(packed.rodzaje[ri]);
@@ -6109,26 +6477,42 @@ function planOffScheduleCleanup_(bazaCen, existingRows, scheduledByKey) {
   };
 }
 
+/** Ostatni wiersz, na który sync może wpisać worki. Rozliczony i transport „nie” odpadają. */
+function scheduleWritableRow_(found) {
+  if (!found) {
+    return null;
+  }
+  var list = Array.isArray(found) ? found : [found];
+  var open = null;
+  var i;
+  for (i = 0; i < list.length; i++) {
+    if (!list[i].settled && list[i].transport !== 'nie') {
+      open = list[i];
+    }
+  }
+  return open;
+}
+
 function scheduleApplyOffDayCleanup_(cleanup, existingByKey) {
   var removed = 0;
   var absorb = (cleanup && cleanup.absorb) || [];
   var ai;
   for (ai = 0; ai < absorb.length; ai++) {
     var item = absorb[ai];
-    var found = existingByKey[item.targetKey];
-    if (found && !found.settled) {
-      var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(found.sheetName);
+    var open = scheduleWritableRow_(existingByKey[item.targetKey]);
+    if (open) {
+      var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(open.sheetName);
       if (!targetSheet) {
         continue;
       }
-      targetSheet.getRange(found.row, SCHEDULE_COL.iloscWorkow).setValue(item.bagCount);
+      targetSheet.getRange(open.row, SCHEDULE_COL.iloscWorkow).setValue(item.bagCount);
       if (item.rodzajZbiorki) {
-        targetSheet.getRange(found.row, SCHEDULE_COL.rodzajZbiorki).setValue(item.rodzajZbiorki);
+        targetSheet.getRange(open.row, SCHEDULE_COL.rodzajZbiorki).setValue(item.rodzajZbiorki);
       }
-      found.bagCount = item.bagCount;
+      open.bagCount = item.bagCount;
       continue;
     }
-    if (found && found.settled) {
+    if (item.sheetRow > 0) {
       continue;
     }
     var draft = item.draft;
@@ -6158,12 +6542,21 @@ function scheduleApplyOffDayCleanup_(cleanup, existingByKey) {
     line[SCHEDULE_COL.stawkaWorka - 1] = sheetRateWriteValue_(draft.bagRate);
     sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
     putScheduleDateCell_(sheet, newRow, draft.pickupDate);
-    existingByKey[item.targetKey] = {
+    var createdRef = {
       sheetName: sheet.getName(),
       row: newRow,
       settled: false,
       bagCount: draft.bagCount || 0,
+      transport: '',
     };
+    var prev = existingByKey[item.targetKey];
+    if (Array.isArray(prev)) {
+      prev.push(createdRef);
+    } else if (prev) {
+      existingByKey[item.targetKey] = [prev, createdRef];
+    } else {
+      existingByKey[item.targetKey] = [createdRef];
+    }
   }
   var drop = (cleanup && cleanup.remove) || [];
   var bySheet = {};
@@ -6453,6 +6846,102 @@ function expandHarmonogramTables() {
  * Sklep z dniami w Bazie: nierozliczony wiersz spoza tych dni oddaje worki na najbliższy odbiór i jest usuwany.
  * Po zapisie rozciąga tabelę Arkuszów na ostatni wiersz (nowe rekordy wchodzą do tabeli).
  */
+/**
+ * Jak planScheduleSync: rozliczony zostaje, nadwyżka dopisuje wiersz.
+ * „transport się odbył = nie” nie przyjmuje worków — powstaje obok wiersz do rozliczenia.
+ * existingByKey[klucz] = lista { sheetName, row, settled, bagCount, transport }.
+ */
+function planScheduleRegisterSync_(expected, existingByKey) {
+  var create = [];
+  var update = [];
+  var skippedSettled = 0;
+  var list = expected || [];
+  var i;
+  for (i = 0; i < list.length; i++) {
+    var row = list[i];
+    var rows = existingByKey && existingByKey[row.key];
+    if (!rows) {
+      rows = [];
+    } else if (!Array.isArray(rows)) {
+      rows = [rows];
+    }
+    var settledBags = 0;
+    var open = [];
+    var r;
+    for (r = 0; r < rows.length; r++) {
+      var item = rows[r];
+      if (item.settled) {
+        settledBags += item.bagCount || 0;
+      }
+      if (!item.settled && item.transport !== 'nie') {
+        open.push(item);
+      }
+    }
+    var uncovered = (row.bagCount || 0) - settledBags;
+    if (uncovered < 0) {
+      uncovered = 0;
+    }
+    var target = open.length ? open[open.length - 1] : null;
+    if (target) {
+      var held = target.bagCount || 0;
+      var bagCount = held > uncovered ? held : uncovered;
+      target.bagCount = bagCount;
+      update.push({
+        sheetName: target.sheetName,
+        row: target.row,
+        bagCount: bagCount,
+        exp: row,
+      });
+      continue;
+    }
+    if (rows.length > 0) {
+      if (uncovered <= 0) {
+        skippedSettled += 1;
+        continue;
+      }
+      create.push({
+        key: row.key,
+        address: row.address,
+        shopName: row.shopName,
+        podmiot: row.podmiot,
+        contractor: row.contractor,
+        pickupDate: row.pickupDate,
+        bagCount: uncovered,
+        rodzajZbiorki: row.rodzajZbiorki,
+        routeName: row.routeName,
+        routeRate: row.routeRate,
+        pickupRate: row.pickupRate,
+        bagRate: row.bagRate,
+      });
+      continue;
+    }
+    create.push(row);
+  }
+  return { create: create, update: update, skippedSettled: skippedSettled };
+}
+
+/**
+ * Cztery kolumny trasy i stawek na istniejącym wierszu.
+ * Pusta wartość schodzi tylko gdy cena się skończyła (clearRates).
+ * Brak stawki w bazie nie ściera wpisu ręcznego.
+ */
+function scheduleWriteRateCells_(sheet, row, exp) {
+  var cells = [
+    { col: SCHEDULE_COL.trasa, value: (exp && exp.routeName) || '' },
+    { col: SCHEDULE_COL.stawkaTrasy, value: sheetRateWriteValue_(exp && exp.routeRate) },
+    { col: SCHEDULE_COL.stawkaPodjazdu, value: sheetRateWriteValue_(exp && exp.pickupRate) },
+    { col: SCHEDULE_COL.stawkaWorka, value: sheetRateWriteValue_(exp && exp.bagRate) },
+  ];
+  var clearEnded = !!(exp && exp.clearRates);
+  var i;
+  for (i = 0; i < cells.length; i++) {
+    if (cells[i].value === '' && !clearEnded) {
+      continue;
+    }
+    sheet.getRange(row, cells[i].col).setValue(cells[i].value);
+  }
+}
+
 function syncZestawienieHarmonogram_(body) {
   var window = scheduleSyncDefaultWindow_();
   var dataOd = settlementDateText_(body && body.dataOd) || window.dataOd;
@@ -6476,43 +6965,35 @@ function syncZestawienieHarmonogram_(body) {
   var scheduledByKey = {};
   var created = 0;
   var updated = 0;
-  var skippedSettled = 0;
-  var ei;
-  for (ei = 0; ei < expected.length; ei++) {
-    var exp = expected[ei];
-    var found = existing.byKey[exp.key];
-    if (found) {
-      if (found.settled) {
-        skippedSettled += 1;
-        continue;
-      }
-      var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(found.sheetName);
-      if (!targetSheet) {
-        continue;
-      }
-      var existingBags = found.bagCount != null ? found.bagCount : 0;
-      var writeBags = Math.max(existingBags, exp.bagCount || 0);
-      scheduledByKey[exp.key] = { bagCount: writeBags, rodzajZbiorki: exp.rodzajZbiorki || '' };
-      targetSheet.getRange(found.row, SCHEDULE_COL.iloscWorkow).setValue(writeBags);
-      targetSheet.getRange(found.row, SCHEDULE_COL.rodzajZbiorki).setValue(exp.rodzajZbiorki || '');
-      targetSheet.getRange(found.row, SCHEDULE_COL.trasa, 1, 4).setValues([
-        [
-          exp.routeName || '',
-          sheetRateWriteValue_(exp.routeRate),
-          sheetRateWriteValue_(exp.pickupRate),
-          sheetRateWriteValue_(exp.bagRate),
-        ],
-      ]);
-      if (exp.shopName) {
-        targetSheet.getRange(found.row, SCHEDULE_COL.sklep).setValue(exp.shopName);
-      }
-      if (exp.podmiot) {
-        targetSheet.getRange(found.row, SCHEDULE_COL.podmiot).setValue(exp.podmiot);
-      }
-      updated += 1;
+  var planned = planScheduleRegisterSync_(expected, existing.byKey);
+  var skippedSettled = planned.skippedSettled;
+  var ui;
+  for (ui = 0; ui < planned.update.length; ui++) {
+    var upd = planned.update[ui];
+    var exp = upd.exp;
+    var targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(upd.sheetName);
+    if (!targetSheet) {
       continue;
     }
-    var sheet = getOrCreateMonthRegisterSheet_('schedule', exp.pickupDate);
+    scheduledByKey[exp.key] = { bagCount: upd.bagCount, rodzajZbiorki: exp.rodzajZbiorki || '' };
+    targetSheet.getRange(upd.row, SCHEDULE_COL.iloscWorkow).setValue(upd.bagCount);
+    targetSheet.getRange(upd.row, SCHEDULE_COL.rodzajZbiorki).setValue(exp.rodzajZbiorki || '');
+    scheduleWriteRateCells_(targetSheet, upd.row, exp);
+    if (exp.shopName) {
+      targetSheet.getRange(upd.row, SCHEDULE_COL.sklep).setValue(exp.shopName);
+    }
+    if (exp.podmiot) {
+      targetSheet.getRange(upd.row, SCHEDULE_COL.podmiot).setValue(exp.podmiot);
+    }
+    if (exp.address) {
+      targetSheet.getRange(upd.row, SCHEDULE_COL.adres).setValue(exp.address);
+    }
+    updated += 1;
+  }
+  var ei;
+  for (ei = 0; ei < planned.create.length; ei++) {
+    var createdRow = planned.create[ei];
+    var sheet = getOrCreateMonthRegisterSheet_('schedule', createdRow.pickupDate);
     var newRow = sheet.getLastRow() + 1;
     if (newRow < 2) {
       newRow = 2;
@@ -6522,29 +7003,41 @@ function syncZestawienieHarmonogram_(body) {
     for (c = 0; c < SCHEDULE_REGISTER_HEADERS.length; c++) {
       line.push('');
     }
-    line[SCHEDULE_COL.adres - 1] = exp.address;
-    line[SCHEDULE_COL.podmiot - 1] = exp.podmiot || '';
-    line[SCHEDULE_COL.sklep - 1] = exp.shopName || '';
-    line[SCHEDULE_COL.dataOdbioru - 1] = scheduleSheetDateText_(exp.pickupDate);
-    line[SCHEDULE_COL.ktoOdbiera - 1] = exp.contractor;
-    line[SCHEDULE_COL.rodzajZbiorki - 1] = exp.rodzajZbiorki || '';
-    line[SCHEDULE_COL.iloscWorkow - 1] = exp.bagCount;
-    line[SCHEDULE_COL.trasa - 1] = exp.routeName || '';
-    line[SCHEDULE_COL.stawkaTrasy - 1] = sheetRateWriteValue_(exp.routeRate);
-    line[SCHEDULE_COL.stawkaPodjazdu - 1] = sheetRateWriteValue_(exp.pickupRate);
-    line[SCHEDULE_COL.stawkaWorka - 1] = sheetRateWriteValue_(exp.bagRate);
+    line[SCHEDULE_COL.adres - 1] = createdRow.address;
+    line[SCHEDULE_COL.podmiot - 1] = createdRow.podmiot || '';
+    line[SCHEDULE_COL.sklep - 1] = createdRow.shopName || '';
+    line[SCHEDULE_COL.dataOdbioru - 1] = scheduleSheetDateText_(createdRow.pickupDate);
+    line[SCHEDULE_COL.ktoOdbiera - 1] = createdRow.contractor;
+    line[SCHEDULE_COL.rodzajZbiorki - 1] = createdRow.rodzajZbiorki || '';
+    line[SCHEDULE_COL.iloscWorkow - 1] = createdRow.bagCount;
+    line[SCHEDULE_COL.trasa - 1] = createdRow.routeName || '';
+    line[SCHEDULE_COL.stawkaTrasy - 1] = sheetRateWriteValue_(createdRow.routeRate);
+    line[SCHEDULE_COL.stawkaPodjazdu - 1] = sheetRateWriteValue_(createdRow.pickupRate);
+    line[SCHEDULE_COL.stawkaWorka - 1] = sheetRateWriteValue_(createdRow.bagRate);
     sheet.getRange(newRow, 1, 1, line.length).setValues([line]);
-    putScheduleDateCell_(sheet, newRow, exp.pickupDate);
+    putScheduleDateCell_(sheet, newRow, createdRow.pickupDate);
     created += 1;
-    scheduledByKey[exp.key] = { bagCount: exp.bagCount || 0, rodzajZbiorki: exp.rodzajZbiorki || '' };
-    existing.byKey[exp.key] = {
+    scheduledByKey[createdRow.key] = {
+      bagCount: createdRow.bagCount || 0,
+      rodzajZbiorki: createdRow.rodzajZbiorki || '',
+    };
+    if (!existing.byKey[createdRow.key]) {
+      existing.byKey[createdRow.key] = [];
+    }
+    existing.byKey[createdRow.key].push({
       sheetName: sheet.getName(),
       row: newRow,
       settled: false,
-      bagCount: exp.bagCount || 0,
-    };
+      bagCount: createdRow.bagCount || 0,
+      transport: '',
+    });
   }
-  var cleanup = planOffScheduleCleanup_(readSettlementCells_(baza, 8), cleanupRows, scheduledByKey);
+  var cleanup = planOffScheduleCleanup_(
+    packedRates.items,
+    cleanupRows,
+    scheduledByKey,
+    packedRates.untilIndex,
+  );
   var removed = scheduleApplyOffDayCleanup_(cleanup, existing.byKey);
   var tablesExpanded = 0;
   var tableExpandError = '';
@@ -6568,7 +7061,7 @@ function syncZestawienieHarmonogram_(body) {
   };
 }
 
-/** Indeks istniejących wierszy Harmonogram (legacy + miesięczne): klucz → lokalizacja. */
+/** Indeks istniejących wierszy Harmonogram (legacy + miesięczne): klucz → lista wierszy. */
 function scheduleRegisterIndexAll_() {
   var byKey = {};
   var sheets = listRegisterSheets_('schedule');
@@ -6588,12 +7081,16 @@ function scheduleRegisterIndexAll_() {
         continue;
       }
       var key = scheduleSyncRowKey_(mapped.address, mapped.pickupDate, mapped.contractor);
-      byKey[key] = {
+      if (!byKey[key]) {
+        byKey[key] = [];
+      }
+      byKey[key].push({
         sheetName: sheets[s].name,
         row: i + 2,
         settled: mapped.settled,
         bagCount: mapped.bagCount != null ? mapped.bagCount : 0,
-      };
+        transport: mapped.didNotHappen ? 'nie' : '',
+      });
     }
   }
   return { byKey: byKey };

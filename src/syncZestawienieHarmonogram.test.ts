@@ -80,12 +80,14 @@ describe('buildScheduleSyncExpected', () => {
       bagRate: '2',
       routeRate: '40',
       routeName: 'Trasa A',
+      clearRates: false,
     });
     expect(rows.find((item) => item.pickupDate === '22.09.2026')).toMatchObject({
       pickupRate: '',
       bagRate: '',
       routeRate: '',
       routeName: '',
+      clearRates: true,
     });
   });
 
@@ -260,6 +262,39 @@ describe('buildScheduleSyncExpected', () => {
     expect(rows[2]).toMatchObject({ rodzajZbiorki: 'ręczna' });
   });
 
+  it('test_buildScheduleSyncExpected_when_pickup_days_change_with_price_period_should_use_that_period', () => {
+    const address = '31-342 Kraków Radzikowskiego 138';
+    const rows = buildScheduleSyncExpected(
+      '01.10.2026',
+      '13.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [
+        [address, 'THOR', '', '40', '8', '', '01.01.2026', 'pn'],
+        [address, 'THOR', '', '50', '10', '', '01.10.2026', 'pt'],
+      ],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '02.10.2026', 'Numer plomby': 'P1' })],
+    );
+    expect(rows.map((r) => `${r.pickupDate}|${r.bagCount}`)).toEqual(['02.10.2026|1', '09.10.2026|0']);
+    expect(rows[0]).toMatchObject({ pickupRate: '50', bagRate: '10' });
+  });
+
+  it('test_buildScheduleSyncExpected_when_bag_closed_before_day_change_should_roll_onto_new_period', () => {
+    const address = '31-342 Kraków Radzikowskiego 138';
+    const rows = buildScheduleSyncExpected(
+      '28.09.2026',
+      '06.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [
+        [address, 'THOR', '', '40', '8', '', '01.01.2026', 'pn'],
+        [address, 'THOR', '', '50', '10', '', '01.10.2026', 'pt'],
+      ],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '30.09.2026', 'Numer plomby': 'P1' })],
+    );
+    expect(rows.map((r) => `${r.pickupDate}|${r.bagCount}`)).toEqual(['28.09.2026|0', '02.10.2026|1']);
+  });
+
   it('test_buildScheduleSyncExpected_when_next_pickup_is_after_window_should_omit_off_day_row', () => {
     const rows = buildScheduleSyncExpected(
       '01.10.2026',
@@ -305,6 +340,46 @@ describe('buildScheduleSyncExpected', () => {
     ]);
   }
 
+  it('test_buildScheduleSyncExpected_when_baza_street_normalization_should_join_friday', () => {
+    const cases: Array<{ canonical: string; raw: Record<string, string> }> = [
+      {
+        canonical: 'Kraków Mogilskie 1',
+        raw: { 'Kod pocztowy': '', Miasto: 'Kraków', Ulica: 'rondo Mogilskie', 'Numer budynku': '1' },
+      },
+      {
+        canonical: 'Kraków Kurlandzki 3',
+        raw: { 'Kod pocztowy': '', Miasto: 'Kraków', Ulica: 'bulw. Kurlandzki', 'Numer budynku': '3' },
+      },
+      {
+        canonical: 'Kraków Armii Kraków 4',
+        raw: { 'Kod pocztowy': '', Miasto: 'Kraków', Ulica: 'Amii Krakow', 'Numer budynku': '4' },
+      },
+      {
+        canonical: 'Chełm Rampa Brzeska 5',
+        raw: { 'Kod pocztowy': '', Miasto: 'Chełm', Ulica: 'Ramba Brzeska', 'Numer budynku': '5' },
+      },
+      {
+        canonical: 'Kraków Barbary Głowackiego 2',
+        raw: { 'Kod pocztowy': '', Miasto: 'Kraków', Ulica: 'B. Głowackiego', 'Numer budynku': '2' },
+      },
+      {
+        canonical: 'Kraków Dietla 8',
+        raw: { 'Kod pocztowy': '', Miasto: 'Kraków', Ulica: 'wizawi Dietla', 'Numer budynku': '8' },
+      },
+      {
+        canonical: 'Kraków Dietla 8',
+        raw: { 'Kod pocztowy': '', Miasto: 'Kraków', Ulica: 'ul. Dietla', 'Numer budynku': '8' },
+      },
+      {
+        canonical: 'Kraków os. Wysokie 9',
+        raw: { 'Kod pocztowy': '', Miasto: 'Kraków', Ulica: 'os. Wysokie', 'Numer budynku': '9' },
+      },
+    ];
+    for (const item of cases) {
+      expectRawBagOnCanonicalFriday(item.canonical, item.raw);
+    }
+  });
+
   it('test_buildScheduleSyncExpected_when_city_gdanska_should_join_gdansk_friday', () => {
     expectRawBagOnCanonicalFriday('80-001 Gdańsk Chmielna 1', {
       'Kod pocztowy': '80-001',
@@ -336,6 +411,103 @@ describe('buildScheduleSyncExpected', () => {
       Ulica: 'al.Chryzantem',
       'Numer budynku': '12',
     });
+  });
+
+  it('test_buildScheduleSyncExpected_when_house_number_glued_to_street_should_join_baza_address', () => {
+    const rows = buildScheduleSyncExpected(
+      '20.10.2026',
+      '22.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [['26-806 Stara błotnica StaraBłotnica 41a', 'GPW', '', '50', '10', '', '', 'śr']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({
+          'Podmiot handlowy': 'TKACZYK SC',
+          Sklep: 'Błotnica',
+          'Firma transportowa': 'GPW',
+          'Kod pocztowy': '26-806',
+          Miasto: 'Stara błotnica',
+          Ulica: 'StaraBłotnica41a',
+          'Numer budynku': '41a',
+          'Data zamknięcia worka': '20.10.2026',
+          'Tryb zbiórki': 'Maszyna',
+          'Numer plomby': 'P1',
+        }),
+      ],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      address: '26-806 Stara błotnica 41a',
+      pickupDate: '21.10.2026',
+      bagCount: 1,
+      podmiot: 'TKACZYK SC',
+      shopName: 'Błotnica',
+      rodzajZbiorki: 'automatyczna',
+    });
+  });
+
+  it('test_buildScheduleSyncExpected_when_no_bags_in_range_should_keep_names_from_village_shop', () => {
+    const rows = buildScheduleSyncExpected(
+      '21.10.2026',
+      '22.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [['26-806 Stara błotnica StaraBłotnica 41a', 'GPW', '', '50', '10', '', '', 'śr']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({
+          'Podmiot handlowy': 'TKACZYK SC',
+          Sklep: 'Błotnica',
+          'Firma transportowa': 'GPW',
+          'Kod pocztowy': '26-806',
+          Miasto: 'Stara błotnica',
+          Ulica: 'StaraBłotnica41a',
+          'Numer budynku': '41a',
+          'Data zamknięcia worka': '14.10.2026',
+        }),
+      ],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      address: '26-806 Stara błotnica 41a',
+      pickupDate: '21.10.2026',
+      bagCount: 0,
+      podmiot: 'TKACZYK SC',
+      shopName: 'Błotnica',
+      rodzajZbiorki: 'brak worków',
+    });
+  });
+
+  it('test_buildScheduleSyncExpected_when_house_number_repeated_on_street_should_join_baza_address', () => {
+    expectRawBagOnCanonicalFriday('38-200 Jasło Winne-Podbukowina 11', {
+      'Kod pocztowy': '38-200',
+      Miasto: 'Jasło',
+      Ulica: 'Winne-Podbukowina 11',
+      'Numer budynku': '11',
+    });
+  });
+
+  it('test_buildScheduleSyncExpected_when_longer_street_number_should_stay_separate', () => {
+    const rows = buildScheduleSyncExpected(
+      '02.10.2026',
+      '03.10.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Kolejowa 15', 'THOR', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({
+          'Firma transportowa': 'THOR',
+          'Kod pocztowy': '31-342',
+          Miasto: 'Kraków',
+          Ulica: 'Kolejowa115',
+          'Numer budynku': '15',
+          'Data zamknięcia worka': '02.10.2026',
+        }),
+      ],
+    );
+    expect(rows.map((r) => `${r.pickupDate}|${r.bagCount}|${r.address}`)).toEqual([
+      '02.10.2026|0|31-342 Kraków Kolejowa 15',
+      '02.10.2026|1|31-342 Kraków Kolejowa115 15',
+    ]);
   });
 
   it('test_scheduleDateOnOrAfter_when_friday_is_public_holiday_should_use_next_working_friday', () => {
@@ -450,7 +622,7 @@ describe('planOffScheduleCleanup', () => {
     expect(plan.skippedSettled).toBe(1);
   });
 
-  it('test_planOffScheduleCleanup_when_pickup_day_is_settled_should_keep_off_day_row', () => {
+  it('test_planOffScheduleCleanup_when_pickup_day_is_settled_without_surplus_should_drop_off_day_row', () => {
     const plan = planOffScheduleCleanup(
       [...BAZA_CEN_HEADERS],
       baza,
@@ -460,9 +632,178 @@ describe('planOffScheduleCleanup', () => {
       ],
       new Map(),
     );
-    expect(plan.remove).toHaveLength(0);
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([3]);
     expect(plan.absorb).toHaveLength(0);
-    expect(plan.skippedTargetSettled).toBe(1);
+    expect(plan.skippedTargetSettled).toBe(0);
+  });
+
+  it('test_planOffScheduleCleanup_when_rondo_row_should_absorb_into_baza_friday', () => {
+    const canonical = 'Kraków Mogilskie 1';
+    const friday = cleanupRow({
+      address: canonical,
+      contractor: 'THOR',
+      pickupDate: '09.10.2026',
+      bagCount: 0,
+      rodzajZbiorki: 'brak worków',
+      sheetRow: 5,
+    });
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      [[canonical, 'THOR', '', '50', '10', '', '', 'pt']],
+      [
+        friday,
+        cleanupRow({
+          address: 'Kraków rondo Mogilskie 1',
+          contractor: 'THOR',
+          pickupDate: '03.10.2026',
+          bagCount: 1,
+          rodzajZbiorki: 'ręczna',
+          sheetRow: 3,
+        }),
+      ],
+      new Map([
+        [scheduleRowKey(canonical, '09.10.2026', 'THOR'), { bagCount: 0, rodzajZbiorki: 'brak worków' }],
+      ]),
+    );
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([3]);
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 1,
+        existing: { sheetName: friday.sheetName, sheetRow: 5 },
+        targetKey: scheduleRowKey(canonical, '09.10.2026', 'THOR'),
+      }),
+    ]);
+  });
+
+  it('test_planOffScheduleCleanup_when_settled_friday_has_open_delta_should_drop_raw_row', () => {
+    const canonical = 'Kraków Mogilskie 1';
+    const friday = cleanupRow({
+      address: canonical,
+      contractor: 'THOR',
+      pickupDate: '09.10.2026',
+      bagCount: 0,
+      settled: true,
+      sheetRow: 5,
+    });
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      [[canonical, 'THOR', '', '50', '10', '', '', 'pt']],
+      [
+        friday,
+        cleanupRow({
+          address: 'Kraków rondo Mogilskie 1',
+          contractor: 'THOR',
+          pickupDate: '03.10.2026',
+          bagCount: 1,
+          rodzajZbiorki: 'ręczna',
+          sheetRow: 3,
+        }),
+      ],
+      new Map([[scheduleRowKey(canonical, '09.10.2026', 'THOR'), { bagCount: 1, rodzajZbiorki: 'ręczna' }]]),
+    );
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([3]);
+    expect(plan.skippedTargetSettled).toBe(0);
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 1,
+        existing: null,
+        targetKey: scheduleRowKey(canonical, '09.10.2026', 'THOR'),
+      }),
+    ]);
+  });
+
+  it('test_planOffScheduleCleanup_when_open_row_precedes_settled_should_absorb_into_open_row', () => {
+    const address = '38-242 Skołyszyn Skołyszyn 11B';
+    const fridayOpen = cleanupRow({ sheetRow: 4, pickupDate: '09.10.2026', bagCount: 1 });
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      baza,
+      [
+        fridayOpen,
+        cleanupRow({ sheetRow: 9, pickupDate: '09.10.2026', bagCount: 5, settled: true }),
+        cleanupRow({ sheetRow: 3, pickupDate: '03.10.2026', bagCount: 3 }),
+      ],
+      new Map([
+        [scheduleRowKey(address, '09.10.2026', 'Zagroda'), { bagCount: 1, rodzajZbiorki: '' }],
+      ]),
+    );
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([3]);
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 4,
+        existing: { sheetName: fridayOpen.sheetName, sheetRow: 4 },
+      }),
+    ]);
+  });
+
+  it('test_planOffScheduleCleanup_when_raw_bags_exceed_surplus_should_keep_only_the_difference', () => {
+    const canonical = 'Kraków Mogilskie 1';
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      [[canonical, 'THOR', '', '50', '10', '', '', 'pt']],
+      [
+        cleanupRow({
+          address: canonical,
+          contractor: 'THOR',
+          pickupDate: '09.10.2026',
+          bagCount: 5,
+          settled: true,
+          sheetRow: 5,
+        }),
+        cleanupRow({
+          address: canonical,
+          contractor: 'THOR',
+          pickupDate: '03.10.2026',
+          bagCount: 8,
+          rodzajZbiorki: 'ręczna',
+          sheetRow: 3,
+        }),
+      ],
+      new Map([[scheduleRowKey(canonical, '09.10.2026', 'THOR'), { bagCount: 2, rodzajZbiorki: 'ręczna' }]]),
+    );
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([3]);
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 2,
+        existing: null,
+        targetKey: scheduleRowKey(canonical, '09.10.2026', 'THOR'),
+      }),
+    ]);
+  });
+
+  it('test_planOffScheduleCleanup_when_raw_village_bags_exceed_surplus_should_keep_only_the_difference', () => {
+    const canonical = '26-806 Stara błotnica 41a';
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      [[canonical, 'GPW', '', '50', '10', '', '', 'śr']],
+      [
+        cleanupRow({
+          address: canonical,
+          contractor: 'GPW',
+          pickupDate: '21.10.2026',
+          bagCount: 5,
+          settled: true,
+          sheetRow: 5,
+        }),
+        cleanupRow({
+          address: '26-806 Stara błotnica StaraBłotnica 41a',
+          contractor: 'GPW',
+          pickupDate: '19.10.2026',
+          bagCount: 8,
+          rodzajZbiorki: 'ręczna',
+          sheetRow: 3,
+        }),
+      ],
+      new Map([[scheduleRowKey(canonical, '21.10.2026', 'GPW'), { bagCount: 2, rodzajZbiorki: 'ręczna' }]]),
+    );
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([3]);
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 2,
+        existing: null,
+        targetKey: scheduleRowKey(canonical, '21.10.2026', 'GPW'),
+      }),
+    ]);
   });
 
   it('test_planOffScheduleCleanup_when_raw_address_should_absorb_into_normalized_friday', () => {
@@ -521,6 +862,42 @@ describe('planOffScheduleCleanup', () => {
     expect(plan.absorb).toHaveLength(0);
   });
 
+  it('test_planOffScheduleCleanup_when_later_period_is_friday_should_keep_friday_and_move_monday', () => {
+    const address = '31-342 Kraków Radzikowskiego 138';
+    const friday = cleanupRow({
+      address,
+      contractor: 'THOR',
+      pickupDate: '09.10.2026',
+      bagCount: 0,
+      sheetRow: 5,
+    });
+    const plan = planOffScheduleCleanup(
+      [...BAZA_CEN_HEADERS],
+      [
+        [address, 'THOR', '', '40', '8', '', '01.01.2026', 'pn'],
+        [address, 'THOR', '', '50', '10', '', '01.10.2026', 'pt'],
+      ],
+      [
+        friday,
+        cleanupRow({
+          address,
+          contractor: 'THOR',
+          pickupDate: '05.10.2026',
+          bagCount: 3,
+          sheetRow: 4,
+        }),
+      ],
+      new Map([[scheduleRowKey(address, '09.10.2026', 'THOR'), { bagCount: 0, rodzajZbiorki: '' }]]),
+    );
+    expect(plan.remove.map((row) => row.sheetRow)).toEqual([4]);
+    expect(plan.absorb).toEqual([
+      expect.objectContaining({
+        bagCount: 3,
+        existing: { sheetName: friday.sheetName, sheetRow: 5 },
+      }),
+    ]);
+  });
+
   it('test_planOffScheduleCleanup_when_transport_did_not_happen_should_drop_row_without_bags', () => {
     const friday = cleanupRow({ sheetRow: 2, pickupDate: '02.10.2026', bagCount: 0 });
     const plan = planOffScheduleCleanup(
@@ -558,6 +935,143 @@ describe('planScheduleSync', () => {
     expect(plan.skippedSettled).toBe(1);
     expect(plan.create).toHaveLength(0);
     expect(plan.update).toHaveLength(0);
+  });
+
+  it('test_planScheduleSync_when_settled_row_gets_later_bags_should_append_unsettled_delta', () => {
+    const expected = buildScheduleSyncExpected(
+      '15.09.2026',
+      '16.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Numer plomby': 'P1' }), odebraneRow({ 'Numer plomby': 'P2' })],
+    );
+    expect(expected[0]!.bagCount).toBe(2);
+    const plan = planScheduleSync(expected, [
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 2,
+        key: expected[0]!.key,
+        settled: true,
+        bagCount: 1,
+      },
+    ]);
+    expect(plan.skippedSettled).toBe(0);
+    expect(plan.update).toHaveLength(0);
+    expect(plan.create).toEqual([
+      expect.objectContaining({
+        key: expected[0]!.key,
+        bagCount: 1,
+        pickupRate: '50',
+        bagRate: '10',
+      }),
+    ]);
+  });
+
+  it('test_planScheduleSync_when_transport_did_not_happen_should_append_settleable_row', () => {
+    const expected = buildScheduleSyncExpected(
+      '15.09.2026',
+      '16.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Numer plomby': 'P1' }), odebraneRow({ 'Numer plomby': 'P2' })],
+    );
+    expect(expected[0]!.bagCount).toBe(2);
+    const plan = planScheduleSync(expected, [
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 2,
+        key: expected[0]!.key,
+        settled: false,
+        bagCount: 2,
+        transport: 'nie',
+      },
+    ]);
+    expect(plan.update).toHaveLength(0);
+    expect(plan.skippedSettled).toBe(0);
+    expect(plan.create).toEqual([
+      expect.objectContaining({
+        key: expected[0]!.key,
+        bagCount: 2,
+      }),
+    ]);
+  });
+
+  it('test_planScheduleSync_when_open_row_beside_transport_nie_should_raise_only_the_open_count', () => {
+    const expected = buildScheduleSyncExpected(
+      '15.09.2026',
+      '16.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Numer plomby': 'P1' }), odebraneRow({ 'Numer plomby': 'P2' })],
+    );
+    const plan = planScheduleSync(expected, [
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 2,
+        key: expected[0]!.key,
+        settled: false,
+        bagCount: 2,
+        transport: 'nie',
+      },
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 8,
+        key: expected[0]!.key,
+        settled: false,
+        bagCount: 1,
+        transport: '',
+      },
+    ]);
+    expect(plan.create).toHaveLength(0);
+    expect(plan.update).toEqual([
+      expect.objectContaining({
+        sheetRow: 8,
+        row: expect.objectContaining({ bagCount: 2 }),
+      }),
+    ]);
+  });
+
+  it('test_planScheduleSync_when_open_row_beside_settled_should_raise_only_the_open_count', () => {
+    const expected = buildScheduleSyncExpected(
+      '15.09.2026',
+      '16.09.2026',
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'wt']],
+      ODEBRANE_HEADERS,
+      [
+        odebraneRow({ 'Numer plomby': 'P1' }),
+        odebraneRow({ 'Numer plomby': 'P2' }),
+        odebraneRow({ 'Numer plomby': 'P3' }),
+      ],
+    );
+    expect(expected[0]!.bagCount).toBe(3);
+    const plan = planScheduleSync(expected, [
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 2,
+        key: expected[0]!.key,
+        settled: true,
+        bagCount: 1,
+      },
+      {
+        sheetName: 'Harmonogram Wrzesień 2026',
+        sheetRow: 8,
+        key: expected[0]!.key,
+        settled: false,
+        bagCount: 1,
+      },
+    ]);
+    expect(plan.create).toHaveLength(0);
+    expect(plan.duplicates).toHaveLength(0);
+    expect(plan.update).toEqual([
+      expect.objectContaining({
+        sheetRow: 8,
+        row: expect.objectContaining({ bagCount: 2 }),
+      }),
+    ]);
   });
 
   it('test_planScheduleSync_when_odebrane_bags_drop_should_keep_existing_count', () => {
@@ -690,16 +1204,16 @@ describe('defaultSyncWindow', () => {
     });
   });
 
-  it('test_defaultSyncWindow_first_of_month_reaches_back_a_week', () => {
+  it('test_defaultSyncWindow_first_of_month_reaches_bags_of_recent_pickups', () => {
     expect(defaultSyncWindow(new Date(2026, 9, 1))).toEqual({
-      dataOd: '24.09.2026',
+      dataOd: '18.09.2026',
       dataDo: '01.10.2026',
     });
   });
 
   it('test_defaultSyncWindow_when_utc_evening_before_warsaw_midnight_should_use_warsaw_date', () => {
     expect(defaultSyncWindow(new Date('2026-09-30T22:30:00Z'))).toEqual({
-      dataOd: '24.09.2026',
+      dataOd: '18.09.2026',
       dataDo: '01.10.2026',
     });
   });
@@ -715,6 +1229,20 @@ describe('defaultSyncWindow', () => {
       [odebraneRow({ 'Data zamknięcia worka': '30.09.2026' })],
     );
     expect(rows.map((r) => r.pickupDate)).toEqual(['30.09.2026']);
+  });
+
+  it('test_defaultSyncWindow_when_november_1_missed_october_31_should_keep_bag_closed_24_10', () => {
+    const window = defaultSyncWindow(new Date('2026-11-01T12:00:00Z'));
+    expect(compareDdMmYyyy(window.dataOd, '24.10.2026') <= 0).toBe(true);
+    const rows = buildScheduleSyncExpected(
+      window.dataOd,
+      window.dataDo,
+      [...BAZA_CEN_HEADERS],
+      [['31-342 Kraków Radzikowskiego 138', 'THOR', '', '50', '10', '', '', 'pt']],
+      ODEBRANE_HEADERS,
+      [odebraneRow({ 'Data zamknięcia worka': '24.10.2026', 'Numer plomby': 'P1' })],
+    );
+    expect(rows.find((row) => row.pickupDate === '30.10.2026')?.bagCount).toBe(1);
   });
 
   it('test_defaultSyncWindow_when_run_after_day_7_should_keep_bag_closed_before_month', () => {
@@ -817,9 +1345,9 @@ describe('settlementDateText_ sheet script', () => {
 });
 
 describe('scheduleSyncDefaultWindow_ sheet script', () => {
-  it('test_scheduleSyncDefaultWindow_when_first_of_month_should_reach_back_a_week', () => {
+  it('test_scheduleSyncDefaultWindow_when_first_of_month_should_reach_bag_before_last_week', () => {
     expect(sheetSyncWindow('2026-11-01T12:00:00Z')).toEqual({
-      dataOd: '25.10.2026',
+      dataOd: '19.10.2026',
       dataDo: '01.11.2026',
     });
   });
@@ -834,6 +1362,64 @@ describe('scheduleSyncDefaultWindow_ sheet script', () => {
     const window = sheetSyncWindow('2027-01-09T12:00:00Z');
     expect(compareDdMmYyyy(window.dataOd, '24.12.2026') <= 0).toBe(true);
     expect(window.dataDo).toBe('09.01.2027');
+  });
+});
+
+function sheetPlanRegisterSync(
+  expected: Array<Record<string, unknown>>,
+  existingByKey: Record<string, Array<Record<string, unknown>>>,
+): {
+  create: Array<Record<string, unknown>>;
+  update: Array<Record<string, unknown>>;
+  skippedSettled: number;
+} {
+  const source = readFileSync(gasPath, 'utf8');
+  const code = gasFunctionBody(source, 'planScheduleRegisterSync_');
+  const sandbox: {
+    __api?: {
+      create: Array<Record<string, unknown>>;
+      update: Array<Record<string, unknown>>;
+      skippedSettled: number;
+    };
+  } = {};
+  runInNewContext(
+    `${code}\n__api = planScheduleRegisterSync_(${JSON.stringify(expected)}, ${JSON.stringify(existingByKey)});`,
+    sandbox,
+  );
+  return sandbox.__api!;
+}
+
+describe('planScheduleRegisterSync_ sheet script', () => {
+  const row = {
+    key: 'adres\n15.09.2026\nthor',
+    address: 'adres',
+    shopName: 'Sklep',
+    podmiot: 'Firma',
+    contractor: 'THOR',
+    pickupDate: '15.09.2026',
+    bagCount: 3,
+    rodzajZbiorki: 'ręczna',
+    routeName: '',
+    routeRate: '',
+    pickupRate: '50',
+    bagRate: '10',
+  };
+
+  it('test_planScheduleRegisterSync_when_settled_should_append_surplus_row', () => {
+    const plan = sheetPlanRegisterSync([row], {
+      [row.key]: [{ sheetName: 'Harmonogram Wrzesień 2026', row: 2, settled: true, bagCount: 1, transport: '' }],
+    });
+    expect(plan.skippedSettled).toBe(0);
+    expect(plan.update).toHaveLength(0);
+    expect(plan.create).toEqual([expect.objectContaining({ bagCount: 2, pickupRate: '50' })]);
+  });
+
+  it('test_planScheduleRegisterSync_when_transport_nie_should_append_settleable_row', () => {
+    const plan = sheetPlanRegisterSync([row], {
+      [row.key]: [{ sheetName: 'Harmonogram Wrzesień 2026', row: 2, settled: false, bagCount: 3, transport: 'nie' }],
+    });
+    expect(plan.update).toHaveLength(0);
+    expect(plan.create).toEqual([expect.objectContaining({ bagCount: 3 })]);
   });
 });
 
@@ -1124,6 +1710,55 @@ describe('syncZestawienieHarmonogram', () => {
     }
   });
 
+  it('test_syncZestawienieHarmonogram_when_price_ended_should_clear_rates_on_existing_row', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const untilAt = BAZA_CEN_HEADERS.indexOf('Do kiedy obowiązuje cena');
+    const bazaRow = Array.from({ length: BAZA_CEN_HEADERS.length }, () => '');
+    bazaRow[0] = '31-342 Kraków Radzikowskiego 138';
+    bazaRow[1] = 'THOR';
+    bazaRow[2] = 'Trasa A';
+    bazaRow[3] = '100';
+    bazaRow[4] = '2';
+    bazaRow[5] = '40';
+    bazaRow[6] = '01.01.2026';
+    bazaRow[7] = 'wt';
+    bazaRow[untilAt] = '08.09.2026';
+    const existing = ZESTAWIENIE_HARMONOGRAM_HEADERS.map((h) => {
+      const byHeader: Record<string, string> = {
+        'Adres odbioru': '31-342 Kraków Radzikowskiego 138',
+        'Data odbioru': '15.09.2026',
+        'Kto odbiera': 'THOR',
+        'Ilość worków': '1',
+        Trasa: 'THOR 1',
+        'Stawka za trasę': '300',
+        'Stawka za podjazd': '50',
+        'Stawka za worek': '10',
+      };
+      return byHeader[h] ?? '';
+    });
+    const sheets = new Map<string, string[][]>();
+    sheets.set('odebrane z harmonogramu', [ODEBRANE_HEADERS]);
+    sheets.set('Baza cen harmonogram', [[...BAZA_CEN_HEADERS], bazaRow]);
+    sheets.set(monthSheet, [[...ZESTAWIENIE_HARMONOGRAM_HEADERS], existing]);
+    const api = fakeSheetsApi(sheets);
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '14.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    expect(result.updatedCount).toBe(1);
+    const written = api.spreadsheets.values.batchUpdate.mock.calls.flatMap((c) => c[0].requestBody.data);
+    const col = (name: string) => String.fromCharCode(65 + ZESTAWIENIE_HARMONOGRAM_HEADERS.indexOf(name as never));
+    const valueAt = (name: string) =>
+      written.find((item) => item.range.endsWith(`${col(name)}2`))?.values?.[0]?.[0];
+    expect(valueAt('Trasa')).toBe('');
+    expect(valueAt('Stawka za trasę')).toBe('');
+    expect(valueAt('Stawka za podjazd')).toBe('');
+    expect(valueAt('Stawka za worek')).toBe('');
+  });
+
   it('test_syncZestawienieHarmonogram_when_row_moved_before_write_should_skip_update', async () => {
     const monthSheet = scheduleMonthSheetName('15.09.2026');
     const sheets = syncSourceSheets();
@@ -1173,6 +1808,34 @@ describe('syncZestawienieHarmonogram', () => {
       dataDo: '16.09.2026',
     });
 
+    expect(result.skippedChanged).toBe(1);
+    expect(api.spreadsheets.values.batchUpdate).not.toHaveBeenCalled();
+  });
+
+  it('test_syncZestawienieHarmonogram_when_transport_nie_before_write_should_skip_update', async () => {
+    const monthSheet = scheduleMonthSheetName('15.09.2026');
+    const sheets = syncSourceSheets();
+    sheets.set(monthSheet, [[...ZESTAWIENIE_HARMONOGRAM_HEADERS], registerRow()]);
+    const api = fakeSheetsApi(sheets);
+    const originalGet = api.spreadsheets.values.get.getMockImplementation()!;
+    let monthReads = 0;
+    api.spreadsheets.values.get.mockImplementation(async (args: { range: string }) => {
+      if (args.range.startsWith(`'${monthSheet}'`) && ++monthReads === 2) {
+        sheets.set(monthSheet, [
+          [...ZESTAWIENIE_HARMONOGRAM_HEADERS],
+          registerRow({ 'transport się odbył': 'nie' }),
+        ]);
+      }
+      return originalGet(args);
+    });
+
+    const result = await syncZestawienieHarmonogram(api, {
+      spreadsheetId: 'ewid-id',
+      dataOd: '15.09.2026',
+      dataDo: '16.09.2026',
+    });
+
+    expect(result.updatedCount).toBe(0);
     expect(result.skippedChanged).toBe(1);
     expect(api.spreadsheets.values.batchUpdate).not.toHaveBeenCalled();
   });
