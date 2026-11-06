@@ -1,6 +1,7 @@
 /** Skrypt mapy: start — granice województw, pinezki, panel wyszukiwania, legenda. */
 
 import { jsonForScript } from '../../jsonForScript.js';
+import { PIN_GAP_PX, PIN_ICON_PX } from '../geometry.js';
 
 /** Zoom przy dokładnie jednym wyniku wyszukiwania (skala okolicy / ulic). */
 export const MAP_SEARCH_SINGLE_MATCH_ZOOM = 16;
@@ -62,11 +63,12 @@ export function bootstrapBrowserScript({
         }
       });
 
+    var PIN_UNCLUSTER_ZOOM = 15;
     var markersCluster = L.markerClusterGroup({
       showCoverageOnHover: false,
       maxClusterRadius: 16,
       spiderfyOnMaxZoom: true,
-      disableClusteringAtZoom: 16,
+      disableClusteringAtZoom: PIN_UNCLUSTER_ZOOM,
       iconCreateFunction: function(cluster) {
         var children = cluster.getAllChildMarkers();
         var n = children.length;
@@ -128,11 +130,94 @@ export function bootstrapBrowserScript({
       });
     });
 
+    var PIN_ICON_PX = ${jsonForScript(PIN_ICON_PX)};
+    var PIN_GAP_PX = ${jsonForScript(PIN_GAP_PX)};
+
+    function layoutCoincidentPins() {
+      var zoom = map.getZoom();
+      var individualsVisible = !isClusteringEnabled() || zoom >= PIN_UNCLUSTER_ZOOM;
+      var minDist = PIN_ICON_PX + PIN_GAP_PX;
+      var n = markerEntries.length;
+      var pos = [];
+      for (var i = 0; i < n; i++) {
+        var projected = map.project([markerEntries[i].p.lat, markerEntries[i].p.lng], zoom);
+        pos.push({ x: projected.x, y: projected.y });
+      }
+      if (individualsVisible && n > 1) {
+        var cell = minDist;
+        for (var iter = 0; iter < 48; iter++) {
+          var grid = {};
+          for (var a = 0; a < n; a++) {
+            var key = Math.floor(pos[a].x / cell) + ':' + Math.floor(pos[a].y / cell);
+            if (!grid[key]) grid[key] = [];
+            grid[key].push(a);
+          }
+          var shiftX = [];
+          var shiftY = [];
+          for (var s = 0; s < n; s++) { shiftX.push(0); shiftY.push(0); }
+          var moved = false;
+          for (var i = 0; i < n; i++) {
+            var cellX = Math.floor(pos[i].x / cell);
+            var cellY = Math.floor(pos[i].y / cell);
+            for (var ox = -1; ox <= 1; ox++) {
+              for (var oy = -1; oy <= 1; oy++) {
+                var bucket = grid[(cellX + ox) + ':' + (cellY + oy)];
+                if (!bucket) continue;
+                for (var b = 0; b < bucket.length; b++) {
+                  var j = bucket[b];
+                  if (j <= i) continue;
+                  var dx = pos[j].x - pos[i].x;
+                  var dy = pos[j].y - pos[i].y;
+                  var dist = Math.sqrt(dx * dx + dy * dy);
+                  if (dist >= minDist) continue;
+                  var ux;
+                  var uy;
+                  var gap;
+                  if (dist < 0.5) {
+                    var angle = ((i * 13 + j * 7) % 360) * Math.PI / 180;
+                    ux = Math.cos(angle);
+                    uy = Math.sin(angle);
+                    gap = minDist;
+                  } else {
+                    ux = dx / dist;
+                    uy = dy / dist;
+                    gap = minDist - dist;
+                  }
+                  var shift = gap / 2;
+                  shiftX[i] -= ux * shift;
+                  shiftY[i] -= uy * shift;
+                  shiftX[j] += ux * shift;
+                  shiftY[j] += uy * shift;
+                  moved = true;
+                }
+              }
+            }
+          }
+          if (!moved) break;
+          for (var u = 0; u < n; u++) {
+            pos[u].x += shiftX[u];
+            pos[u].y += shiftY[u];
+          }
+        }
+      }
+      for (var m = 0; m < n; m++) {
+        var ll = map.unproject([pos[m].x, pos[m].y], zoom);
+        markerEntries[m].marker.setLatLng(ll);
+        markerEntries[m].p.markerLat = ll.lat;
+        markerEntries[m].p.markerLng = ll.lng;
+      }
+    }
+
+    map.on('zoomend', function() {
+      layoutCoincidentPins();
+      refreshClusterIcons();
+    });
+
     loadBulkTransportDates();
 
     var allPointsBounds = null;
     if (adresy.length > 0) {
-      allPointsBounds = L.latLngBounds(adresy.map(function(p) { return [p.markerLat, p.markerLng]; }));
+      allPointsBounds = L.latLngBounds(adresy.map(function(p) { return [p.lat, p.lng]; }));
       map.fitBounds(allPointsBounds, { padding: [40, 40] });
     }
 
@@ -413,10 +498,10 @@ export function bootstrapBrowserScript({
         if (matched.length === 0) return;
         if (matched.length === 1) {
           var one = matched[0].p;
-          map.setView([one.markerLat, one.markerLng], ${jsonForScript(MAP_SEARCH_SINGLE_MATCH_ZOOM)}, { animate: true });
+          map.setView([one.lat, one.lng], ${jsonForScript(MAP_SEARCH_SINGLE_MATCH_ZOOM)}, { animate: true });
           return;
         }
-        var pointBounds = L.latLngBounds(matched.map(function(e) { return [e.p.markerLat, e.p.markerLng]; }));
+        var pointBounds = L.latLngBounds(matched.map(function(e) { return [e.p.lat, e.p.lng]; }));
         if (pointBounds.isValid()) {
           map.fitBounds(pointBounds, {
             padding: ${jsonForScript(MAP_SEARCH_FIT_PADDING)},
@@ -428,6 +513,7 @@ export function bootstrapBrowserScript({
     }
 
     function applyAddressSearch() {
+      layoutCoincidentPins();
       var inputEl = document.getElementById('map-address-search');
       var statusEl = document.getElementById('map-search-status');
       var countEl = document.getElementById('map-filter-count');

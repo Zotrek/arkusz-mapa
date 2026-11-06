@@ -5,8 +5,101 @@ import type { GeocodedAddress } from '../phase5.js';
 /** Maks. odległość między punktami (m), aby uznać je za „nakładające się” na mapie. */
 export const MAP_MARKER_CLUSTER_MAX_M = 20;
 
-/** Promień rozsunięcia markerów wokół środka klastra (m) — widoczne osobne pinezki. */
+/** Promień rozsunięcia markerów wokół środka klastra (m) — pozycja zanim mapa dopasuje odstęp do zoomu. */
 export const MAP_MARKER_SPREAD_RADIUS_M = 18;
+
+/** Średnica ikony pinezki na mapie (px). Zgodna z `pinIcon` w skrypcie przeglądarki. */
+export const PIN_ICON_PX = 24;
+
+/** Odstęp między krawędziami sąsiednich ikon (px), żeby pinezki stały obok siebie i nie nachodziły. */
+export const PIN_GAP_PX = 8;
+
+export interface ScreenPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * Rozsuwa punkty na ekranie tak, żeby środki były co najmniej `minDistancePx` od siebie.
+ * Punkt, który już ma dość miejsca, zostaje na swoim miejscu.
+ */
+export function separateOverlappingPoints(
+  points: ScreenPoint[],
+  minDistancePx: number,
+  maxIterations = 48,
+): ScreenPoint[] {
+  const pos = points.map((point) => ({ x: point.x, y: point.y }));
+  const count = pos.length;
+  if (count < 2 || minDistancePx <= 0) {
+    return pos;
+  }
+  const cell = minDistancePx;
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    const grid = new Map<string, number[]>();
+    for (let index = 0; index < count; index++) {
+      const key = `${Math.floor(pos[index]!.x / cell)}:${Math.floor(pos[index]!.y / cell)}`;
+      const bucket = grid.get(key);
+      if (bucket) {
+        bucket.push(index);
+      } else {
+        grid.set(key, [index]);
+      }
+    }
+    const shiftX = new Array<number>(count).fill(0);
+    const shiftY = new Array<number>(count).fill(0);
+    let moved = false;
+    for (let index = 0; index < count; index++) {
+      const cellX = Math.floor(pos[index]!.x / cell);
+      const cellY = Math.floor(pos[index]!.y / cell);
+      for (let offsetX = -1; offsetX <= 1; offsetX++) {
+        for (let offsetY = -1; offsetY <= 1; offsetY++) {
+          const bucket = grid.get(`${cellX + offsetX}:${cellY + offsetY}`);
+          if (!bucket) {
+            continue;
+          }
+          for (const other of bucket) {
+            if (other <= index) {
+              continue;
+            }
+            let deltaX = pos[other]!.x - pos[index]!.x;
+            let deltaY = pos[other]!.y - pos[index]!.y;
+            const distance = Math.hypot(deltaX, deltaY);
+            if (distance >= minDistancePx) {
+              continue;
+            }
+            let unitX: number;
+            let unitY: number;
+            let gap: number;
+            if (distance < 0.5) {
+              const angle = ((index * 13 + other * 7) % 360) * (Math.PI / 180);
+              unitX = Math.cos(angle);
+              unitY = Math.sin(angle);
+              gap = minDistancePx;
+            } else {
+              unitX = deltaX / distance;
+              unitY = deltaY / distance;
+              gap = minDistancePx - distance;
+            }
+            const shift = gap / 2;
+            shiftX[index]! -= unitX * shift;
+            shiftY[index]! -= unitY * shift;
+            shiftX[other]! += unitX * shift;
+            shiftY[other]! += unitY * shift;
+            moved = true;
+          }
+        }
+      }
+    }
+    if (!moved) {
+      break;
+    }
+    for (let index = 0; index < count; index++) {
+      pos[index]!.x += shiftX[index]!;
+      pos[index]!.y += shiftY[index]!;
+    }
+  }
+  return pos;
+}
 
 export interface MapPointCoords {
   lat: number;

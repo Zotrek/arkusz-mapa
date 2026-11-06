@@ -30,9 +30,12 @@ import {
 } from './map/browser/bootstrap';
 import {
   MAP_MARKER_CLUSTER_MAX_M,
+  PIN_GAP_PX,
+  PIN_ICON_PX,
   buildCloseGeocodedAddressPairs,
   findCloseMapPointPairs,
   haversineMeters,
+  separateOverlappingPoints,
   spreadCloseMarkerPositions,
 } from './map/geometry';
 import { uniquePodmiotyHandloweFromRows } from './map/mapPoint';
@@ -139,6 +142,59 @@ describe('phase6', () => {
       expect(haversineMeters(spread[0]!.markerLat, spread[0]!.markerLng, spread[1]!.markerLat, spread[1]!.markerLng)).toBeGreaterThan(
         30,
       );
+    });
+
+    it('test_separateOverlappingPoints_when_two_pins_share_a_pixel_should_leave_a_gap', () => {
+      const minDistance = PIN_ICON_PX + PIN_GAP_PX;
+      const placed = separateOverlappingPoints(
+        [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+        ],
+        minDistance,
+      );
+      expect(Math.hypot(placed[1]!.x - placed[0]!.x, placed[1]!.y - placed[0]!.y)).toBeGreaterThanOrEqual(minDistance - 0.01);
+    });
+
+    it('test_separateOverlappingPoints_when_icons_already_overlap_should_push_them_apart', () => {
+      const minDistance = PIN_ICON_PX + PIN_GAP_PX;
+      const placed = separateOverlappingPoints(
+        [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+        ],
+        minDistance,
+      );
+      expect(Math.hypot(placed[1]!.x - placed[0]!.x, placed[1]!.y - placed[0]!.y)).toBeGreaterThanOrEqual(minDistance - 0.01);
+    });
+
+    it('test_separateOverlappingPoints_when_pins_are_far_apart_should_keep_positions', () => {
+      const placed = separateOverlappingPoints(
+        [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+        ],
+        PIN_ICON_PX + PIN_GAP_PX,
+      );
+      expect(placed).toEqual([
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+      ]);
+    });
+
+    it('test_separateOverlappingPoints_when_several_pins_share_a_pixel_should_keep_every_pair_apart', () => {
+      const minDistance = PIN_ICON_PX + PIN_GAP_PX;
+      const placed = separateOverlappingPoints(
+        Array.from({ length: 8 }, () => ({ x: 20, y: 20 })),
+        minDistance,
+      );
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = i + 1; j < placed.length; j++) {
+          expect(Math.hypot(placed[j]!.x - placed[i]!.x, placed[j]!.y - placed[i]!.y)).toBeGreaterThanOrEqual(
+            minDistance - 0.01,
+          );
+        }
+      }
     });
 
     it('test_spreadCloseMarkerPositions_when_points_far_apart_should_keep_marker_coords', () => {
@@ -677,7 +733,8 @@ describe('phase6', () => {
       expect(html).toContain('applyClusteringMode');
       expect(html).toContain('isClusteringEnabled');
       expect(html).toContain('maxClusterRadius: 16');
-      expect(html).toContain('disableClusteringAtZoom: 16');
+      expect(html).toContain('var PIN_UNCLUSTER_ZOOM = 15');
+      expect(html).toContain('disableClusteringAtZoom: PIN_UNCLUSTER_ZOOM');
       expect(html).toContain('dominantPinKolor');
       expect(html).toContain('pinKolor');
       expect(html).toContain('https://example.com/woj.json');
@@ -688,7 +745,7 @@ describe('phase6', () => {
       expect(html).toContain('mapPointMatchesSearchMap');
       expect(html).toContain('wojBoundsByKey');
       expect(html).toContain('scheduleSearchViewport');
-      expect(html).toContain('map.setView([one.markerLat, one.markerLng]');
+      expect(html).toContain('map.setView([one.lat, one.lng]');
       expect(html).toContain(String(MAP_SEARCH_SINGLE_MATCH_ZOOM));
       expect(html).toContain(JSON.stringify(MAP_SEARCH_FIT_PADDING));
       expect(html).toContain('zoomControl: false');
@@ -777,6 +834,9 @@ describe('phase6', () => {
       expect(html).toContain('"markerLat"');
       expect(html).toContain('"markerLng"');
       expect(html).toContain('p.markerLat, p.markerLng');
+      expect(html).toContain('function layoutCoincidentPins()');
+      expect(html).toContain(`var PIN_ICON_PX = ${PIN_ICON_PX}`);
+      expect(html).toContain(`var PIN_GAP_PX = ${PIN_GAP_PX}`);
     });
 
     it('test_buildMapHtml_when_geocoded_data_given_should_embed_addresses_and_counts', () => {

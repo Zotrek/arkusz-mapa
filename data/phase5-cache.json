@@ -12471,6 +12471,97 @@
       "lng": 17.0284495,
       "wojewodztwo": "Dolnośląskie",
       "updatedAt": "2026-10-29T14:08:25.876Z"
+    },
+    "35-301 Rzeszów Lwowska 5": {
+      "status": "ok",
+      "lat": 50.0387441,
+      "lng": 22.0193452,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-11-06T15:21:35.862Z"
+    },
+    "21-500 Biała Podlaska Sidorska 61A": {
+      "status": "ok",
+      "lat": 52.0235935,
+      "lng": 23.1439233,
+      "wojewodztwo": "Lubelskie",
+      "updatedAt": "2026-11-06T15:21:38.596Z"
+    },
+    "40-683 KATOWICE BARCELOŃSKA 82": {
+      "status": "ok",
+      "lat": 50.1980496,
+      "lng": 18.9635889,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-11-06T15:21:44.581Z"
+    },
+    "26-600 Radom Żółkiewskiego 126": {
+      "status": "ok",
+      "lat": 51.4195838,
+      "lng": 21.1864917,
+      "wojewodztwo": "Mazowieckie",
+      "updatedAt": "2026-11-06T15:21:46.027Z"
+    },
+    "40-084 Katowice Opolska 22": {
+      "status": "ok",
+      "lat": 50.2621794,
+      "lng": 19.0113744,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-11-06T15:21:47.541Z"
+    },
+    "62-500 Konin Świętojańska 20": {
+      "status": "ok",
+      "lat": 52.1971011,
+      "lng": 18.2605184,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-11-06T15:21:50.807Z"
+    },
+    "55-330 Wilkszyn - średzki Marszowicka 12": {
+      "status": "uncertain",
+      "lat": 51.1837384,
+      "lng": 16.8719267,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-11-06T15:22:26.144Z"
+    },
+    "59-700 Wykroty Wąska 1": {
+      "status": "ok",
+      "lat": 51.2382058,
+      "lng": 15.2804577,
+      "wojewodztwo": "Dolnośląskie",
+      "updatedAt": "2026-11-06T15:22:28.967Z"
+    },
+    "37-700 Przemyśl 29 listopada 6": {
+      "status": "ok",
+      "lat": 49.7922284,
+      "lng": 22.7683607,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-11-06T15:22:32.488Z"
+    },
+    "37-400 Nisko sandomierska 20": {
+      "status": "ok",
+      "lat": 50.5239991,
+      "lng": 22.127516,
+      "wojewodztwo": "Podkarpackie",
+      "updatedAt": "2026-11-06T15:22:35.354Z"
+    },
+    "32-700 Bochnia Księdza Józefa Skwiruta 9": {
+      "status": "ok",
+      "lat": 49.9901751,
+      "lng": 20.461978,
+      "wojewodztwo": "Małopolskie",
+      "updatedAt": "2026-11-06T15:22:38.431Z"
+    },
+    "43-150 Bieruń Pszenna 1": {
+      "status": "ok",
+      "lat": 50.0857345,
+      "lng": 19.1354419,
+      "wojewodztwo": "Śląskie",
+      "updatedAt": "2026-11-06T15:22:41.400Z"
+    },
+    "62-010 POBIEDZISKA ARMII POZNAŃ 2": {
+      "status": "ok",
+      "lat": 52.47221,
+      "lng": 17.28477,
+      "wojewodztwo": "Wielkopolskie",
+      "updatedAt": "2026-11-06T15:22:48.056Z"
     }
   }
 }
