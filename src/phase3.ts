@@ -46,12 +46,23 @@ export function partitionRowsBySealDuplicates(rows: SheetRow[]): {
   return { rowsDuplikatyPlomb, rowsBezDuplikatow };
 }
 
+function normalizeGroupingPart(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * Pinezka = adres + sklep + podmiot handlowy.
+ * Pusty sklep nie rozdziela wierszy; różny podmiot na tym samym adresie i sklepie — tak.
+ */
 export function groupRowsByAddress(rows: SheetRow[]): Map<string, AddressGroup> {
   const grouped = new Map<string, AddressGroup>();
 
   rows.forEach((row) => {
-    const sklepKey = row.sklep.trim().replace(/\s+/g, ' ').toLowerCase();
-    const groupingKey = sklepKey.length > 0 ? `${row.address}\u0000${sklepKey}` : row.address;
+    const groupingKey = [
+      row.address,
+      normalizeGroupingPart(row.sklep),
+      normalizeGroupingPart(row.podmiotHandlowy),
+    ].join('\u0000');
     const existing = grouped.get(groupingKey);
     if (!existing) {
       grouped.set(groupingKey, {

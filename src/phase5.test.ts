@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { SheetRow } from './sheets';
-import type { AddressGroup } from './phase3';
+import { groupRowsByAddress, type AddressGroup } from './phase3';
 import {
   buildGeocodingQuery,
   buildGeocodingQueries,
@@ -60,19 +60,7 @@ function makeRow(params: Partial<SheetRow> = {}): SheetRow {
 }
 
 function asGrouped(rows: SheetRow[]): Map<string, AddressGroup> {
-  const grouped = new Map<string, AddressGroup>();
-  rows.forEach((row) => {
-    const sklepKey = row.sklep.trim().replace(/\s+/g, ' ').toLowerCase();
-    const groupingKey = sklepKey.length > 0 ? `${row.address}\u0000${sklepKey}` : row.address;
-    const current = grouped.get(groupingKey);
-    if (!current) {
-      grouped.set(groupingKey, { address: row.address, count: 1, rows: [row] });
-      return;
-    }
-    current.count += 1;
-    current.rows.push(row);
-  });
-  return grouped;
+  return groupRowsByAddress(rows);
 }
 
 describe('phase5', () => {
