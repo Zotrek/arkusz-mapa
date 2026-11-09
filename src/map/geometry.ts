@@ -22,82 +22,189 @@ export interface ScreenPoint {
 /**
  * Rozsuwa punkty na ekranie tak, żeby środki były co najmniej `minDistancePx` od siebie.
  * Punkt, który już ma dość miejsca, zostaje na swoim miejscu.
+ * Skupiska lądują na siatce sześciokątnej — odpychanie z limitem kroków nie kończyło
+ * rozsuwania przy przybliżeniu i pinezki zostawały jedna na drugiej.
  */
-export function separateOverlappingPoints(
-  points: ScreenPoint[],
-  minDistancePx: number,
-  maxIterations = 48,
-): ScreenPoint[] {
-  const pos = points.map((point) => ({ x: point.x, y: point.y }));
-  const count = pos.length;
+export function separateOverlappingPoints(points: ScreenPoint[], minDistancePx: number): ScreenPoint[] {
+  const count = points.length;
+  const pos: ScreenPoint[] = [];
+  for (let index = 0; index < count; index++) {
+    const point = points[index]!;
+    pos.push({ x: point.x, y: point.y });
+  }
   if (count < 2 || minDistancePx <= 0) {
     return pos;
   }
-  const cell = minDistancePx;
-  for (let iteration = 0; iteration < maxIterations; iteration++) {
-    const grid = new Map<string, number[]>();
-    for (let index = 0; index < count; index++) {
-      const key = `${Math.floor(pos[index]!.x / cell)}:${Math.floor(pos[index]!.y / cell)}`;
-      const bucket = grid.get(key);
-      if (bucket) {
-        bucket.push(index);
-      } else {
-        grid.set(key, [index]);
-      }
+
+  const hexY = Math.sqrt(3) / 2;
+  const dirs: ReadonlyArray<readonly [number, number]> = [
+    [1, 0],
+    [1, -1],
+    [0, -1],
+    [-1, 0],
+    [-1, 1],
+    [0, 1],
+  ];
+  function hexRound(qf: number, rf: number): readonly [number, number] {
+    const sf = -qf - rf;
+    let q = Math.round(qf);
+    let r = Math.round(rf);
+    let s = Math.round(sf);
+    const dq = Math.abs(q - qf);
+    const dr = Math.abs(r - rf);
+    const ds = Math.abs(s - sf);
+    if (dq > dr && dq > ds) {
+      q = -r - s;
+    } else if (dr > ds) {
+      r = -q - s;
     }
-    const shiftX = new Array<number>(count).fill(0);
-    const shiftY = new Array<number>(count).fill(0);
-    let moved = false;
-    for (let index = 0; index < count; index++) {
-      const cellX = Math.floor(pos[index]!.x / cell);
-      const cellY = Math.floor(pos[index]!.y / cell);
-      for (let offsetX = -1; offsetX <= 1; offsetX++) {
-        for (let offsetY = -1; offsetY <= 1; offsetY++) {
-          const bucket = grid.get(`${cellX + offsetX}:${cellY + offsetY}`);
-          if (!bucket) {
-            continue;
-          }
-          for (const other of bucket) {
-            if (other <= index) {
-              continue;
-            }
-            let deltaX = pos[other]!.x - pos[index]!.x;
-            let deltaY = pos[other]!.y - pos[index]!.y;
-            const distance = Math.hypot(deltaX, deltaY);
-            if (distance >= minDistancePx) {
-              continue;
-            }
-            let unitX: number;
-            let unitY: number;
-            let gap: number;
-            if (distance < 0.5) {
-              const angle = ((index * 13 + other * 7) % 360) * (Math.PI / 180);
-              unitX = Math.cos(angle);
-              unitY = Math.sin(angle);
-              gap = minDistancePx;
-            } else {
-              unitX = deltaX / distance;
-              unitY = deltaY / distance;
-              gap = minDistancePx - distance;
-            }
-            const shift = gap / 2;
-            shiftX[index]! -= unitX * shift;
-            shiftY[index]! -= unitY * shift;
-            shiftX[other]! += unitX * shift;
-            shiftY[other]! += unitY * shift;
-            moved = true;
+    return [q, r];
+  }
+  function hexOf(x: number, y: number): readonly [number, number] {
+    const r = y / (minDistancePx * hexY);
+    const q = x / minDistancePx - r / 2;
+    return hexRound(q, r);
+  }
+
+  const cell = minDistancePx;
+  const gap = minDistancePx - 0.01;
+  const occupiedHex = new Set<string>();
+  const offGrid = new Map<string, ScreenPoint[]>();
+  function offGridHits(x: number, y: number): boolean {
+    const cellX = Math.floor(x / cell);
+    const cellY = Math.floor(y / cell);
+    for (let offsetX = -1; offsetX <= 1; offsetX++) {
+      for (let offsetY = -1; offsetY <= 1; offsetY++) {
+        const bucket = offGrid.get(`${cellX + offsetX}:${cellY + offsetY}`);
+        if (!bucket) {
+          continue;
+        }
+        for (const other of bucket) {
+          if (Math.hypot(other.x - x, other.y - y) < gap) {
+            return true;
           }
         }
       }
     }
-    if (!moved) {
-      break;
-    }
-    for (let index = 0; index < count; index++) {
-      pos[index]!.x += shiftX[index]!;
-      pos[index]!.y += shiftY[index]!;
+    return false;
+  }
+  function rememberOffGrid(x: number, y: number): void {
+    const key = `${Math.floor(x / cell)}:${Math.floor(y / cell)}`;
+    const bucket = offGrid.get(key);
+    if (bucket) {
+      bucket.push({ x, y });
+    } else {
+      offGrid.set(key, [{ x, y }]);
     }
   }
+
+  const crowded = new Array<boolean>(count).fill(false);
+  const originGrid = new Map<string, number[]>();
+  for (let index = 0; index < count; index++) {
+    const key = `${Math.floor(pos[index]!.x / cell)}:${Math.floor(pos[index]!.y / cell)}`;
+    const bucket = originGrid.get(key);
+    if (bucket) {
+      bucket.push(index);
+    } else {
+      originGrid.set(key, [index]);
+    }
+  }
+  for (let index = 0; index < count; index++) {
+    const cellX = Math.floor(pos[index]!.x / cell);
+    const cellY = Math.floor(pos[index]!.y / cell);
+    for (let offsetX = -1; offsetX <= 1; offsetX++) {
+      for (let offsetY = -1; offsetY <= 1; offsetY++) {
+        const bucket = originGrid.get(`${cellX + offsetX}:${cellY + offsetY}`);
+        if (!bucket) {
+          continue;
+        }
+        for (const other of bucket) {
+          if (other <= index) {
+            continue;
+          }
+          if (Math.hypot(pos[other]!.x - pos[index]!.x, pos[other]!.y - pos[index]!.y) < minDistancePx) {
+            crowded[index] = true;
+            crowded[other] = true;
+          }
+        }
+      }
+    }
+  }
+
+  for (let index = 0; index < count; index++) {
+    if (!crowded[index]) {
+      rememberOffGrid(pos[index]!.x, pos[index]!.y);
+    }
+  }
+
+  let fallbackId = 0;
+  function nearestFree(x: number, y: number): { x: number; y: number; key: string } {
+    const origin = hexOf(x, y);
+    const originQ = origin[0];
+    const originR = origin[1];
+    const maxRing = count + 1;
+    for (let ring = 0; ring <= maxRing; ring++) {
+      let bestX = 0;
+      let bestY = 0;
+      let bestKey = '';
+      let bestDist = Infinity;
+      function visit(q: number, r: number): void {
+        const key = `${q}:${r}`;
+        if (occupiedHex.has(key)) {
+          return;
+        }
+        const px = minDistancePx * (q + r / 2);
+        const py = minDistancePx * hexY * r;
+        if (offGridHits(px, py)) {
+          return;
+        }
+        const dist = Math.hypot(px - x, py - y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestX = px;
+          bestY = py;
+          bestKey = key;
+        }
+      }
+      if (ring === 0) {
+        visit(originQ, originR);
+      } else {
+        let q = originQ + dirs[4]![0] * ring;
+        let r = originR + dirs[4]![1] * ring;
+        for (let side = 0; side < 6; side++) {
+          const dir = dirs[side]!;
+          for (let step = 0; step < ring; step++) {
+            visit(q, r);
+            q += dir[0];
+            r += dir[1];
+          }
+        }
+      }
+      if (bestKey) {
+        return { x: bestX, y: bestY, key: bestKey };
+      }
+    }
+    fallbackId += 1;
+    return {
+      x,
+      y: y + minDistancePx * (count + fallbackId),
+      key: `fb:${fallbackId}`,
+    };
+  }
+
+  for (let index = 0; index < count; index++) {
+    if (!crowded[index]) {
+      continue;
+    }
+    const free = nearestFree(pos[index]!.x, pos[index]!.y);
+    if (free.key.startsWith('fb:')) {
+      rememberOffGrid(free.x, free.y);
+    } else {
+      occupiedHex.add(free.key);
+    }
+    pos[index] = { x: free.x, y: free.y };
+  }
+
   return pos;
 }
 

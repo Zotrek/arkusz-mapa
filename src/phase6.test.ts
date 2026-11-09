@@ -197,6 +197,24 @@ describe('phase6', () => {
       }
     });
 
+    it('test_separateOverlappingPoints_when_dense_grid_would_stop_early_should_separate_every_pin', () => {
+      const minDistance = PIN_ICON_PX + PIN_GAP_PX;
+      const packed = Array.from({ length: 80 }, (_, index) => ({
+        x: (index % 10) * 6,
+        y: Math.floor(index / 10) * 6,
+      }));
+      packed.push({ x: 5000, y: 5000 });
+      const placed = separateOverlappingPoints(packed, minDistance);
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = i + 1; j < placed.length; j++) {
+          expect(Math.hypot(placed[j]!.x - placed[i]!.x, placed[j]!.y - placed[i]!.y)).toBeGreaterThanOrEqual(
+            minDistance - 0.01,
+          );
+        }
+      }
+      expect(placed[80]).toEqual({ x: 5000, y: 5000 });
+    });
+
     it('test_spreadCloseMarkerPositions_when_points_far_apart_should_keep_marker_coords', () => {
       const spread = spreadCloseMarkerPositions([
         { lat: 52.2, lng: 21.0 },
@@ -835,8 +853,28 @@ describe('phase6', () => {
       expect(html).toContain('"markerLng"');
       expect(html).toContain('p.markerLat, p.markerLng');
       expect(html).toContain('function layoutCoincidentPins()');
+      expect(html).toContain('pos = separateOverlappingPoints(pos, minDist)');
+      expect(html).not.toMatch(/__name\s*\(/);
       expect(html).toContain(`var PIN_ICON_PX = ${PIN_ICON_PX}`);
       expect(html).toContain(`var PIN_GAP_PX = ${PIN_GAP_PX}`);
+      const src = html.slice(
+        html.indexOf('function separateOverlappingPoints'),
+        html.indexOf('function layoutCoincidentPins'),
+      );
+      const separate = runInNewContext(`${src}\nseparateOverlappingPoints;`) as typeof separateOverlappingPoints;
+      const minDistance = PIN_ICON_PX + PIN_GAP_PX;
+      const packed = Array.from({ length: 40 }, (_, index) => ({
+        x: (index % 8) * 4,
+        y: Math.floor(index / 8) * 4,
+      }));
+      const placed = separate(packed, minDistance);
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = i + 1; j < placed.length; j++) {
+          expect(Math.hypot(placed[j]!.x - placed[i]!.x, placed[j]!.y - placed[i]!.y)).toBeGreaterThanOrEqual(
+            minDistance - 0.01,
+          );
+        }
+      }
     });
 
     it('test_buildMapHtml_when_geocoded_data_given_should_embed_addresses_and_counts', () => {
