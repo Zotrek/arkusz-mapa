@@ -7,6 +7,13 @@ import { PIN_GAP_PX, PIN_ICON_PX, separateOverlappingPoints } from '../geometry.
 /** Zoom przy dokładnie jednym wyniku wyszukiwania (skala okolicy / ulic). */
 export const MAP_SEARCH_SINGLE_MATCH_ZOOM = 16;
 
+/**
+ * Rozsuwanie nakładających się pinezek dopiero na skali ulic.
+ * Przy mniejszym zoomie punkty zostają na współrzędnych adresu — inaczej cała Polska
+ * układa się w siatkę ikon.
+ */
+export const PIN_SEPARATE_ZOOM = 16;
+
 /** Opóźnienie filtrowania po wpisaniu znaku — każde przeliczenie dotyka wszystkich pinezek. */
 export const MAP_SEARCH_INPUT_DEBOUNCE_MS = 200;
 
@@ -133,12 +140,13 @@ export function bootstrapBrowserScript({
 
     var PIN_ICON_PX = ${jsonForScript(PIN_ICON_PX)};
     var PIN_GAP_PX = ${jsonForScript(PIN_GAP_PX)};
+    var PIN_SEPARATE_ZOOM = ${jsonForScript(PIN_SEPARATE_ZOOM)};
 
     ${functionSourceForBrowser(separateOverlappingPoints)}
 
     function layoutCoincidentPins() {
       var zoom = map.getZoom();
-      var individualsVisible = !isClusteringEnabled() || zoom >= PIN_UNCLUSTER_ZOOM;
+      var separateAtStreetZoom = zoom >= PIN_SEPARATE_ZOOM;
       var minDist = PIN_ICON_PX + PIN_GAP_PX;
       var n = markerEntries.length;
       var pos = [];
@@ -146,7 +154,7 @@ export function bootstrapBrowserScript({
         var projected = map.project([markerEntries[i].p.lat, markerEntries[i].p.lng], zoom);
         pos.push({ x: projected.x, y: projected.y });
       }
-      if (individualsVisible && n > 1) {
+      if (separateAtStreetZoom && n > 1) {
         pos = separateOverlappingPoints(pos, minDist);
       }
       for (var m = 0; m < n; m++) {

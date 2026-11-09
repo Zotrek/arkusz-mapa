@@ -27,6 +27,7 @@ import {
   MAP_SEARCH_FIT_PADDING,
   MAP_SEARCH_INPUT_DEBOUNCE_MS,
   MAP_SEARCH_SINGLE_MATCH_ZOOM,
+  PIN_SEPARATE_ZOOM,
 } from './map/browser/bootstrap';
 import {
   MAP_MARKER_CLUSTER_MAX_M,
@@ -853,6 +854,10 @@ describe('phase6', () => {
       expect(html).toContain('"markerLng"');
       expect(html).toContain('p.markerLat, p.markerLng');
       expect(html).toContain('function layoutCoincidentPins()');
+      expect(html).toContain(`var PIN_SEPARATE_ZOOM = ${PIN_SEPARATE_ZOOM}`);
+      expect(html).toContain('var separateAtStreetZoom = zoom >= PIN_SEPARATE_ZOOM');
+      expect(html).toContain('if (separateAtStreetZoom && n > 1)');
+      expect(html).not.toContain('individualsVisible');
       expect(html).toContain('pos = separateOverlappingPoints(pos, minDist)');
       expect(html).not.toMatch(/__name\s*\(/);
       expect(html).toContain(`var PIN_ICON_PX = ${PIN_ICON_PX}`);
