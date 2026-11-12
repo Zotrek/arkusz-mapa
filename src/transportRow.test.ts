@@ -282,8 +282,12 @@ const gsPath = join(
 );
 const sheetDocPath = join(dirname(fileURLToPath(import.meta.url)), '../docs/TRANSPORT_SHEET.md');
 
-function loadGas(sheet: FakeSheet, rateSheet: FakeSheet | null = null): GasFns {
-  const store = new Map<string, string>();
+function loadGas(
+  sheet: FakeSheet,
+  rateSheet: FakeSheet | null = null,
+  props?: Map<string, string>,
+): GasFns {
+  const store = props ?? new Map<string, string>();
   const extras: FakeSheet[] = [];
   const context: Record<string, unknown> = {
     SpreadsheetApp: {
@@ -911,17 +915,27 @@ describe('listOccupiedRouteNames_', () => {
     expect(loadGas(sheet).listOccupiedRouteNames_()).toEqual(['Papirus-21.09.26-01']);
   });
 
-  it('test_listOccupiedRouteNames_when_cache_was_filled_should_ignore_a_later_sheet_name', () => {
+  it('test_listOccupiedRouteNames_when_sheet_gains_a_name_should_return_it', () => {
     const sheet = new FakeSheet();
     seedRouteRow(sheet, 2, 'trasa-a');
     const gas = loadGas(sheet);
 
     expect(gas.listOccupiedRouteNames_()).toEqual(['trasa-a']);
     seedRouteRow(sheet, 3, 'trasa-b');
-    expect(gas.listOccupiedRouteNames_()).toEqual(['trasa-a']);
+    expect(gas.listOccupiedRouteNames_()).toEqual(['trasa-a', 'trasa-b']);
   });
 
-  it('test_appendTransportRow_when_route_names_are_cached_should_keep_the_new_name', () => {
+  it('test_listOccupiedRouteNames_when_old_property_remains_should_read_the_sheet', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-z-arkusza');
+    const store = new Map<string, string>([
+      ['transportRouteNames', JSON.stringify(['stara-z-cache'])],
+    ]);
+
+    expect(loadGas(sheet, null, store).listOccupiedRouteNames_()).toEqual(['trasa-z-arkusza']);
+  });
+
+  it('test_appendTransportRow_when_route_is_saved_should_list_the_new_name', () => {
     const sheet = new FakeSheet();
     seedRouteRow(sheet, 2, 'trasa-a');
     const gas = loadGas(sheet);
@@ -933,17 +947,27 @@ describe('listOccupiedRouteNames_', () => {
 });
 
 describe('routeRateByName_', () => {
-  it('test_routeRateByName_when_cached_should_ignore_a_later_sheet_rate', () => {
+  it('test_routeRateByName_when_sheet_rate_changes_should_return_the_new_rate', () => {
     const sheet = new FakeSheet();
     seedRouteRow(sheet, 2, 'trasa-a', '10', '');
     const gas = loadGas(sheet);
 
     expect(gas.routeRateByName_('trasa-a')).toBe('10');
     sheet.put(2, 12, '99');
-    expect(gas.routeRateByName_('trasa-a')).toBe('10');
+    expect(gas.routeRateByName_('trasa-a')).toBe('99');
   });
 
-  it('test_appendTransportRow_when_route_rate_is_cached_should_keep_the_new_rate', () => {
+  it('test_routeRateByName_when_old_property_remains_should_read_the_sheet', () => {
+    const sheet = new FakeSheet();
+    seedRouteRow(sheet, 2, 'trasa-a', '25', '');
+    const store = new Map<string, string>([
+      ['transportRouteRates', JSON.stringify({ 'trasa-a': '1' })],
+    ]);
+
+    expect(loadGas(sheet, null, store).routeRateByName_('trasa-a')).toBe('25');
+  });
+
+  it('test_appendTransportRow_when_route_rate_is_saved_should_return_the_new_rate', () => {
     const sheet = new FakeSheet();
     seedRouteRow(sheet, 2, 'trasa-a', '10', '');
     const gas = loadGas(sheet);

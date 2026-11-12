@@ -557,7 +557,7 @@ describe('doGet reference and list actions', () => {
     expect(shops[0].lastTransportDateYmd).toBe('2026-06-01');
   });
 
-  it('test_bulkLastTransportDates_when_cache_is_set_should_ignore_sheet', () => {
+  it('test_bulkLastTransportDates_when_old_properties_remain_should_read_the_sheet', () => {
     reset();
     seedRegisterRow(2, {
       2: 'Adres 1',
@@ -577,14 +577,15 @@ describe('doGet reference and list actions', () => {
 
     const result = get('bulkLastTransportDates');
     const shops = result.shops as { lastKtoOdbiera: string; lastTransportDateYmd: string }[];
-    expect(shops).toEqual([
-      {
-        key: 'firma\0adres 1',
-        lastTransportDateMs: Date.UTC(2026, 0, 2),
-        lastTransportDateYmd: '2026-01-02',
-        lastKtoOdbiera: 'z-cache',
-      },
-    ]);
+    expect(shops.some((shop) => shop.lastKtoOdbiera === 'z-cache')).toBe(false);
+    expect(shops).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lastTransportDateYmd: '2026-06-01',
+          lastKtoOdbiera: 'arkusz',
+        }),
+      ]),
+    );
   });
 
   it('test_routeRateByName_via_doGet', () => {

@@ -103,9 +103,9 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 | GET | `action=previewNumber` | Podgląd następnego numeru (cache Script Properties) |
 
-| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres**. Wiersz z kolumną 10 = `nie` nie wchodzi |
+| GET | `action=lastTransportDate&podmiot=…&adres=…` | Ostatnia data odbioru (kolumna E) + **Kto odbiera** (kolumna F) dla klucza **podmiot + adres**. Wiersz z kolumną 10 = `nie` nie wchodzi. Każdy odczyt skanuje rejestr |
 
-| GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 10 = `nie` nie wchodzi |
+| GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 10 = `nie` nie wchodzi. Każdy odczyt skanuje rejestr |
 
 | GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia (legacy + `Harmonogram …`); każdy wiersz ma `sheetName`. Zapis stawek tylko na wierszach tego zestawienia. Brak pary czyści kolumny 12 i 13. Ta sama data zostawia pierwszy wiersz. Transport `nie` i rozliczone są pomijane. Trasa zostaje. Reszta: specyfikacja, sekcja „Harmonogram — stawki i liczba worków” |
 
@@ -270,6 +270,10 @@ Klucz wiersza Bolęcin zostaje trójką adres + data + kto. Dwa wpisy z pustym a
 Darmowe konto Google — dzienne limity czasu wykonania i liczby wywołań. Przy typowej pracy kilku osób dziennie wystarcza. Szczegóły: [Google Apps Script quotas](https://developers.google.com/apps-script/guides/services/quotas).
 
 
+
+## Odczyt rejestru
+
+Ostatni odbiór (`modalData`, `lastTransportDate`, `bulkLastTransportDates`), lista zajętych nazw tras (`routeNameProposal`) i stawka trasy (`routeRateByName`) czytają arkusz przy każdym żądaniu. Nie ma kopii w Script Properties. Mapa już otwarta trzyma daty z momentu załadowania strony — zmiana w arkuszu widać po odświeżeniu.
 
 ## Numeracja (cache)
 

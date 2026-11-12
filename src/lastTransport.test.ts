@@ -234,7 +234,7 @@ describe('findLastTransportInfo_', () => {
     expect(loadGas(sheet).findLastTransportInfo_(PODMIOT, ADRES)).toBeNull();
   });
 
-  it('test_findLastTransportInfo_when_sheet_changes_after_first_read_should_keep_cache', () => {
+  it('test_findLastTransportInfo_when_sheet_changes_after_first_read_should_return_the_new_row', () => {
     const sheet = new FakeSheet();
     seed(sheet, 2, '10.06.2026', 'Janex');
     const gas = loadGas(sheet);
@@ -245,63 +245,18 @@ describe('findLastTransportInfo_', () => {
     });
     seed(sheet, 3, '20.06.2026', 'Nowy');
     expect(gas.findLastTransportInfo_(PODMIOT, ADRES)).toEqual({
-      ms: OLDER,
-      ktoOdbiera: 'Janex',
-    });
-  });
-
-  it('test_findLastTransportInfo_when_shop_is_missing_from_cache_should_not_read_the_sheet', () => {
-    const sheet = new FakeSheet();
-    seed(sheet, 2, '20.06.2026', 'Nowy');
-    const store = new Map<string, string>([
-      ['transportLastPickupReady', '1'],
-      ['transportLastPickupCount', '1'],
-      ['transportLastPickupAt', String(Date.now())],
-      ['transportLastPickup.0', '{}'],
-    ]);
-
-    expect(loadGas(sheet, undefined, store).findLastTransportInfo_(PODMIOT, ADRES)).toBeNull();
-  });
-
-  it('test_findLastTransportInfo_when_cache_is_split_should_merge_chunks', () => {
-    const sheet = new FakeSheet();
-    seed(sheet, 2, '20.06.2026', 'Arkusz');
-    const store = new Map<string, string>([
-      ['transportLastPickupReady', '1'],
-      ['transportLastPickupCount', '2'],
-      ['transportLastPickupAt', String(Date.now())],
-      ['transportLastPickup.0', JSON.stringify({ 'inna\0ulica': { ms: OLDER, ktoOdbiera: 'Inny' } })],
-      ['transportLastPickup.1', JSON.stringify({ [KEY]: { ms: OLDER, ktoOdbiera: 'Zcache' } })],
-    ]);
-
-    expect(loadGas(sheet, undefined, store).findLastTransportInfo_(PODMIOT, ADRES)).toEqual({
-      ms: OLDER,
-      ktoOdbiera: 'Zcache',
-    });
-  });
-
-  it('test_findLastTransportInfo_when_cache_is_older_than_30_minutes_should_read_the_sheet', () => {
-    const sheet = new FakeSheet();
-    seed(sheet, 2, '20.06.2026', 'Arkusz');
-    const store = new Map<string, string>([
-      ['transportLastPickupReady', '1'],
-      ['transportLastPickupCount', '1'],
-      ['transportLastPickupAt', String(Date.now() - 30 * 60 * 1000)],
-      ['transportLastPickup.0', JSON.stringify({ [KEY]: { ms: OLDER, ktoOdbiera: 'Zcache' } })],
-    ]);
-
-    expect(loadGas(sheet, undefined, store).findLastTransportInfo_(PODMIOT, ADRES)).toEqual({
       ms: NEWER,
-      ktoOdbiera: 'Arkusz',
+      ktoOdbiera: 'Nowy',
     });
   });
 
-  it('test_findLastTransportInfo_when_cache_has_no_timestamp_should_read_the_sheet', () => {
+  it('test_findLastTransportInfo_when_old_properties_remain_should_read_the_sheet', () => {
     const sheet = new FakeSheet();
     seed(sheet, 2, '20.06.2026', 'Arkusz');
     const store = new Map<string, string>([
       ['transportLastPickupReady', '1'],
       ['transportLastPickupCount', '1'],
+      ['transportLastPickupAt', String(Date.now())],
       ['transportLastPickup.0', JSON.stringify({ [KEY]: { ms: OLDER, ktoOdbiera: 'Zcache' } })],
     ]);
 
