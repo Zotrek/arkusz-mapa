@@ -140,6 +140,10 @@ class FakeSheet {
     return this.maxRows;
   }
 
+  getMaxColumns(): number {
+    return 26;
+  }
+
   getRange(row: number, col: number, numRows?: number, numCols?: number): FakeRange {
     return new FakeRange(this, row, col, numRows ?? 1, numCols ?? 1);
   }
@@ -445,6 +449,64 @@ describe('doGet reference and list actions', () => {
         wojewodztwo: 'mazowieckie',
       }),
     ]);
+  });
+
+  it('test_listReferenceData_when_przewoznicy_used_range_is_wide_should_read_only_header_columns', () => {
+    reset();
+    const prz = ensureSheet('Przewoźnicy', [
+      'Nazwa wyświetlana',
+      'Nazwa do protokołu',
+      'Adres',
+      'NIP',
+      'nr BDO',
+    ]);
+    prz.put(2, 1, 'Beta');
+    prz.put(2, 2, 'Beta Proto');
+    prz.put(2, 40, 'daleko');
+    const widths: number[] = [];
+    const orig = prz.getRange.bind(prz);
+    prz.getRange = (row: number, col: number, numRows?: number, numCols?: number) => {
+      widths.push(numCols ?? 1);
+      return orig(row, col, numRows, numCols);
+    };
+    const result = get('listReferenceData');
+    expect(result.ok).toBe(true);
+    expect(widths.length).toBeGreaterThan(0);
+    expect(Math.max(...widths)).toBe(5);
+    const data = result.data as { podwykoLista: { nazwa: string }[] };
+    expect(data.podwykoLista.map((e) => e.nazwa)).toEqual(['Beta']);
+  });
+
+  it('test_listReferenceData_when_legacy_sheet_throws_should_keep_podwyko_lista', () => {
+    reset();
+    const podwyko = ensureSheet('Lista podwykonawców', ['Nazwa', 'Dane do Worda']);
+    podwyko.put(2, 1, 'Alpha');
+    podwyko.put(2, 2, 'Alpha Dane');
+    const prz = ensureSheet('Przewoźnicy', ['Nazwa wyświetlana']);
+    prz.getRange = () => {
+      throw new Error('grid');
+    };
+    const result = get('listReferenceData');
+    expect(result.ok).toBe(true);
+    const data = result.data as { podwykoLista: { nazwa: string }[] };
+    expect(data.podwykoLista.map((e) => e.nazwa)).toEqual(['Alpha']);
+  });
+
+  it('test_listReferenceData_when_last_row_is_past_the_cap_should_read_at_most_5000_rows', () => {
+    reset();
+    const podwyko = ensureSheet('Lista podwykonawców', ['Nazwa', 'Dane do Worda']);
+    podwyko.put(2, 1, 'Alpha');
+    podwyko.put(2, 2, 'Alpha Dane');
+    podwyko.getLastRow = () => 8002;
+    const heights: number[] = [];
+    const heightsOrig = podwyko.getRange.bind(podwyko);
+    podwyko.getRange = (row: number, col: number, numRows?: number, numCols?: number) => {
+      heights.push(numRows ?? 1);
+      return heightsOrig(row, col, numRows, numCols);
+    };
+    const result = get('listReferenceData');
+    expect(result.ok).toBe(true);
+    expect(heights).toEqual([5000]);
   });
 
   it('test_listContractors_matches_merged_podwyko_lista', () => {

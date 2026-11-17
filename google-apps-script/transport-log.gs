@@ -331,6 +331,8 @@ var REF_POPRAW_HEADER = [
 
 var REF_PRZ_NIP_COL = 4;
 var REF_PRZ_BDO_COL = 5;
+/** getLastRow() na tabeli bywa dnem siatki. Szerszy odczyt kończy się HTML 500 INTERNAL. */
+var REF_LIST_MAX_DATA_ROWS = 5000;
 
 function doGet(e) {
   try {
@@ -1746,19 +1748,47 @@ function refPoprawKey_(adres, podmiot, sklep) {
   );
 }
 
+function refDataRowCount_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return 0;
+  }
+  var count = lastRow - 1;
+  if (count > REF_LIST_MAX_DATA_ROWS) {
+    return REF_LIST_MAX_DATA_ROWS;
+  }
+  return count;
+}
+
+function refReadWidth_(sheet, headerLength) {
+  var maxCols = sheet.getMaxColumns();
+  if (!maxCols || maxCols < 1) {
+    return headerLength;
+  }
+  return Math.min(headerLength, maxCols);
+}
+
+/** Legacy zakładka nie może wyzerować listy z „Lista podwykonawców”. */
+function refListQuiet_(read) {
+  try {
+    return read();
+  } catch (err) {
+    return [];
+  }
+}
+
 function listReferencePrzewoznicy_() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(REF_PRZ_SHEET_NAME);
   if (!sheet) {
     return [];
   }
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
+  var numDataRows = refDataRowCount_(sheet);
+  if (!numDataRows) {
     return [];
   }
-  var numDataRows = lastRow - 1;
-  var lastCol = Math.max(sheet.getLastColumn(), REF_PRZ_HEADER.length);
-  var values = sheet.getRange(2, 1, numDataRows, lastCol).getValues();
-  var display = sheet.getRange(2, 1, numDataRows, lastCol).getDisplayValues();
+  var width = refReadWidth_(sheet, REF_PRZ_HEADER.length);
+  var values = sheet.getRange(2, 1, numDataRows, width).getValues();
+  var display = sheet.getRange(2, 1, numDataRows, width).getDisplayValues();
   var out = [];
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
@@ -1798,12 +1828,11 @@ function listReferencePodwykoSheet_(sheetName) {
   if (!sheet) {
     return [];
   }
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
+  var numDataRows = refDataRowCount_(sheet);
+  if (!numDataRows) {
     return [];
   }
-  var numDataRows = lastRow - 1;
-  var values = sheet.getRange(2, 1, numDataRows, REF_PODWYKO_HEADER.length).getValues();
+  var values = sheet.getRange(2, 1, numDataRows, refReadWidth_(sheet, REF_PODWYKO_HEADER.length)).getValues();
   var out = [];
   for (var i = 0; i < values.length; i++) {
     var entry = normalizePodwykoEntry_(values[i][0], values[i][1]);
@@ -1837,10 +1866,10 @@ function mergeReferencePodwykoLista_() {
   listReferencePodwykoSheet_(REF_PODWYKO_SHEET_NAME).forEach(function(item) {
     pushEntry(item.nazwa, item.dane);
   });
-  listReferencePrzewoznicy_().forEach(function(item) {
+  refListQuiet_(listReferencePrzewoznicy_).forEach(function(item) {
     pushEntry(item.nazwaWyswietlana, item.nazwaDoProtokolu || item.nazwaWyswietlana);
   });
-  listReferenceDostawa_().forEach(function(item) {
+  refListQuiet_(listReferenceDostawa_).forEach(function(item) {
     pushEntry(item.nazwa, item.dane);
   });
   return out;
@@ -1851,12 +1880,11 @@ function listReferencePoprawAdres_() {
   if (!sheet) {
     return [];
   }
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
+  var numDataRows = refDataRowCount_(sheet);
+  if (!numDataRows) {
     return [];
   }
-  var numDataRows = lastRow - 1;
-  var values = sheet.getRange(2, 1, numDataRows, REF_POPRAW_HEADER.length).getValues();
+  var values = sheet.getRange(2, 1, numDataRows, refReadWidth_(sheet, REF_POPRAW_HEADER.length)).getValues();
   var out = [];
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
@@ -1884,7 +1912,7 @@ function listReferencePoprawAdres_() {
 function listReferenceData_() {
   return {
     podwykoLista: mergeReferencePodwykoLista_(),
-    poprawAdres: listReferencePoprawAdres_(),
+    poprawAdres: refListQuiet_(listReferencePoprawAdres_),
   };
 }
 

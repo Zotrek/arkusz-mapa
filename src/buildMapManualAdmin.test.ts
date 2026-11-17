@@ -103,7 +103,8 @@ describe('buildMapManualAdmin', () => {
     expect(body).toContain('Lista podwykonawców zostaje ta z mapy.');
     expect(body).toContain("place: 'buildMapManualAdmin.ts loadReferenceDataFromWebApp'");
     expect(body).toContain('String(err && err.message || err)');
-    expect(body).toContain('return readMapJson_(r)');
+    expect(body).toContain("fetchTransportGetRetry_({ action: 'listReferenceData' })");
+    expect(body).not.toContain('action=listReferenceData');
   });
 
   it('test_manualAdminSave_when_response_has_error_should_show_dismissible_error_card', () => {

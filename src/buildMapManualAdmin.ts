@@ -319,10 +319,8 @@ ${referenceFormatsBrowserScript()}
 
     function loadReferenceDataFromWebApp() {
       if (!TRANSPORT_WEBAPP_URL) return Promise.resolve();
-      var sep = TRANSPORT_WEBAPP_URL.indexOf('?') >= 0 ? '&' : '?';
       setManualAdminBusy(null, true, 'Ładowanie słowników…');
-      return fetch(TRANSPORT_WEBAPP_URL + sep + 'action=listReferenceData')
-        .then(function(r) { return readMapJson_(r); })
+      return fetchTransportGetRetry_({ action: 'listReferenceData' })
         .then(function(resp) {
           if (!resp || !resp.ok) {
             mapApiErrorCard_({
