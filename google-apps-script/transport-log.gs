@@ -422,7 +422,13 @@ function doPost(e) {
     }
   }
   var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  var held = false;
+  try {
+    lock.waitLock(30000);
+    held = true;
+  } catch (lockErr) {
+    return jsonResponse({ ok: false, error: 'busy' });
+  }
   try {
     var writeAction = body && body.action ? String(body.action) : '';
     if (writeAction === 'syncZestawienieHarmonogram') {
@@ -477,7 +483,12 @@ function doPost(e) {
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) }, 500);
   } finally {
-    lock.releaseLock();
+    if (held) {
+      try {
+        SpreadsheetApp.flush();
+      } catch (flushErr) {}
+      lock.releaseLock();
+    }
   }
 }
 
@@ -7250,12 +7261,302 @@ function approveSaved_(sheet, row, schedule) {
 }
 
 /**
+ * Odczyt zakładek zatwierdzenia: jeden prostokąt na zakładkę, nie komórka po komórce.
+ * Brak nazwy albo wiersz poza ostatnim wierszem zostaje do odrzucenia jako `key`.
+ */
+function approveReadSheets_(items, schedule) {
+  var width = (schedule ? SCHEDULE_COL : COL).dataZatwierdzenia;
+  var kind = schedule ? 'schedule' : 'report';
+  var names = [];
+  var span = {};
+  var i;
+  for (i = 0; i < items.length; i++) {
+    var item = items[i] || {};
+    var name = item.sheetName != null ? settlementText_(item.sheetName) : '';
+    var row = Number(item.sheetRow);
+    if (!name || !isFinite(row) || row < 2) {
+      continue;
+    }
+    if (!span[name]) {
+      span[name] = { min: row, max: row };
+      names.push(name);
+    } else {
+      if (row < span[name].min) {
+        span[name].min = row;
+      }
+      if (row > span[name].max) {
+        span[name].max = row;
+      }
+    }
+  }
+  var out = {};
+  for (i = 0; i < names.length; i++) {
+    var sheetName = names[i];
+    var sheet = getRegisterSheetByName_(sheetName, kind);
+    if (!sheet) {
+      out[sheetName] = { error: 'key' };
+      continue;
+    }
+    var last = sheet.getLastRow();
+    var box = span[sheetName];
+    var start = box.min;
+    var end = box.max > last ? last : box.max;
+    var values = [];
+    if (end >= start && start <= last) {
+      values = sheet.getRange(start, 1, end - start + 1, width).getValues();
+    }
+    out[sheetName] = {
+      sheet: sheet,
+      last: last,
+      start: start,
+      values: values,
+      header: sheet.getRange(1, 1, 1, width).getValues()[0],
+    };
+  }
+  return out;
+}
+
+/** Ten sam klucz co registerWriteTarget_, tylko z odczytanego prostokąta. */
+function approveTargetFromCache_(cache, item, schedule) {
+  if (!item || item.sheetRow == null) {
+    return { error: 'key' };
+  }
+  var name = item.sheetName != null ? settlementText_(item.sheetName) : '';
+  var pack = name ? cache[name] : null;
+  if (!pack || pack.error) {
+    return { error: 'key' };
+  }
+  var row = Number(item.sheetRow);
+  if (!isFinite(row) || Math.floor(row) !== row || row < 2 || row > pack.last) {
+    return { error: 'key' };
+  }
+  var offset = row - pack.start;
+  if (offset < 0 || offset >= pack.values.length) {
+    return { error: 'key' };
+  }
+  var cells = pack.values[offset];
+  var settledCol = (schedule ? SCHEDULE_COL : COL).rozliczony;
+  if (!schedule) {
+    if (item.transportNumber == null) {
+      return { error: 'key' };
+    }
+    if (settlementTransportNumber_(cells[COL.numer - 1]) !== settlementTransportNumber_(item.transportNumber)) {
+      return { error: 'key' };
+    }
+  }
+  if (settlementFlag_(cells[settledCol - 1]) === 'tak') {
+    return { error: 'settled' };
+  }
+  return { sheet: pack.sheet, row: row, cells: cells, pack: pack };
+}
+
+function approveSavedFromCache_(sheet, row, schedule, cells) {
+  return {
+    sheetName: sheet ? sheet.getName() : '',
+    sheetRow: row,
+    transportNumber: schedule ? '' : settlementTransportNumber_(cells[COL.numer - 1]),
+  };
+}
+
+/** Sąsiednie wiersze tej samej kolumny idą jednym setValues. Nagłówek daty nie łączy się z datą. */
+function approveRects_(ops) {
+  var buckets = {};
+  var order = [];
+  var i;
+  for (i = 0; i < ops.length; i++) {
+    var op = ops[i];
+    var width = op.values.length;
+    var key =
+      op.sheet.getName() + '\n' + String(op.col) + '\n' + String(width) + '\n' + (op.textDate ? 'd' : 'v');
+    if (!buckets[key]) {
+      buckets[key] = [];
+      order.push(key);
+    }
+    buckets[key].push(op);
+  }
+  var rects = [];
+  for (i = 0; i < order.length; i++) {
+    var list = buckets[order[i]];
+    list.sort(function (a, b) {
+      return a.row - b.row;
+    });
+    var current = null;
+    var j;
+    for (j = 0; j < list.length; j++) {
+      var item = list[j];
+      if (current && item.sheet === current.sheet && item.row === current.row + current.numRows) {
+        current.values.push(item.values);
+        current.numRows += 1;
+      } else {
+        if (current) {
+          rects.push(current);
+        }
+        current = {
+          sheet: item.sheet,
+          row: item.row,
+          col: item.col,
+          numRows: 1,
+          values: [item.values.slice()],
+          textDate: !!item.textDate,
+        };
+      }
+    }
+    if (current) {
+      rects.push(current);
+    }
+  }
+  return rects;
+}
+
+function approveBatchValues_(rect) {
+  if (!rect.textDate) {
+    return rect.values;
+  }
+  var out = [];
+  var r;
+  for (r = 0; r < rect.values.length; r++) {
+    var line = [];
+    var c;
+    for (c = 0; c < rect.values[r].length; c++) {
+      line.push(scheduleSheetDateText_(rect.values[r][c]));
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function approveBatchRanges_(rects) {
+  var data = [];
+  var i;
+  for (i = 0; i < rects.length; i++) {
+    var rect = rects[i];
+    var values = approveBatchValues_(rect);
+    var width = values[0].length;
+    var start = harmonogramColumnLetter_(rect.col);
+    var end = harmonogramColumnLetter_(rect.col + width - 1);
+    var bottom = rect.row + rect.numRows - 1;
+    data.push({
+      range:
+        harmonogramQuoteSheet_(rect.sheet.getName()) +
+        '!' +
+        start +
+        rect.row +
+        ':' +
+        end +
+        bottom,
+      values: values,
+    });
+  }
+  return data;
+}
+
+/**
+ * Jeden values.batchUpdate na cały zapis. Przy błędzie wracamy do setValues.
+ * Kawałki po 400 zakresów: przerwany kawałek i tak nadpisze pętla zapasowa.
+ */
+function approveTryBatch_(rects) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss || typeof ss.getId !== 'function') {
+    return false;
+  }
+  var id = String(ss.getId() || '');
+  if (!id) {
+    return false;
+  }
+  var data = approveBatchRanges_(rects);
+  var offset = 0;
+  while (offset < data.length) {
+    var slice = data.slice(offset, offset + 400);
+    var posted = false;
+    try {
+      posted = postHarmonogramSearchRates_(id, slice);
+    } catch (batchErr) {
+      posted = false;
+    }
+    if (!posted) {
+      return false;
+    }
+    offset += 400;
+  }
+  approvePostDateFormats_(rects);
+  return true;
+}
+
+/** Format @ na datach zatwierdzenia, ten sam skutek co putSheetDateCell_. Błąd formatu nie cofa wartości. */
+function approvePostDateFormats_(rects) {
+  var requests = [];
+  var i;
+  for (i = 0; i < rects.length; i++) {
+    var rect = rects[i];
+    if (!rect.textDate || typeof rect.sheet.getSheetId !== 'function') {
+      continue;
+    }
+    var width = rect.values[0].length;
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId: rect.sheet.getSheetId(),
+          startRowIndex: rect.row - 1,
+          endRowIndex: rect.row - 1 + rect.numRows,
+          startColumnIndex: rect.col - 1,
+          endColumnIndex: rect.col - 1 + width,
+        },
+        cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
+        fields: 'userEnteredFormat.numberFormat',
+      },
+    });
+  }
+  if (!requests.length) {
+    return;
+  }
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    UrlFetchApp.fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' +
+        encodeURIComponent(ss.getId()) +
+        ':batchUpdate',
+      {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+        payload: JSON.stringify({ requests: requests }),
+        muteHttpExceptions: true,
+      },
+    );
+  } catch (formatErr) {}
+}
+
+function approveWriteRect_(rect) {
+  var values = approveBatchValues_(rect);
+  var range = rect.sheet.getRange(rect.row, rect.col, rect.numRows, values[0].length);
+  if (rect.textDate) {
+    range.setNumberFormat('@');
+  }
+  range.setValues(values);
+}
+
+function approveApplyOps_(ops) {
+  if (!ops.length) {
+    return;
+  }
+  var rects = approveRects_(ops);
+  if (approveTryBatch_(rects)) {
+    return;
+  }
+  var i;
+  for (i = 0; i < rects.length; i++) {
+    approveWriteRect_(rects[i]);
+  }
+}
+
+/**
  * Jedyny zapis kolumn rozliczenia. Koszt jest już policzony (`koszt` w groszach).
  * tryb=harmonogram → kolumny SCHEDULE_COL; inaczej Na zgłoszenie COL.
  * Każdy wiersz z body.wiersze[].sheetName — zakładka po nazwie.
  * Bez flagi nieOdbył: transport się odbył = tak + Rozliczony = tak (i koszty).
  * Harmonogram dopisuje wtedy stawki z body. Brak wymaganego klucza pomija wiersz.
  * Z flagą nieOdbył: tylko transport się odbył = nie (bez kolumn rozliczenia).
+ * Odczyt i zapis są blokowe: duża faktura nie trzyma blokady skryptu przez minutę na wiersz.
  */
 function approve_(body) {
   var invoice = cellStr_(body && body.numerFaktury);
@@ -7269,35 +7570,40 @@ function approve_(body) {
   var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
   var schedule = tryb === 'harmonogram' || tryb === 'schedule';
   var c = schedule ? SCHEDULE_COL : COL;
-  var saved = [];
-  var skipped = [];
+  var items = [];
   var i;
   for (i = 0; i < rows.length; i++) {
-    var item = rows[i] || {};
+    var source = rows[i] || {};
     if (schedule) {
-      item.tryb = 'harmonogram';
+      source.tryb = 'harmonogram';
     }
-    var target = registerWriteTarget_(null, item);
+    items.push(source);
+  }
+  var cache = approveReadSheets_(items, schedule);
+  var saved = [];
+  var skipped = [];
+  var ops = [];
+  var today = approvedAtToday_();
+  for (i = 0; i < items.length; i++) {
+    var item = items[i];
+    var target = approveTargetFromCache_(cache, item, schedule);
     if (target.error) {
       skipped.push(approveSkip_(item, target.error));
       continue;
     }
-    var sheet = target.sheet;
+    var cells = target.cells;
     var markedNie = approveDidNotHappen_(item && item.nieOdbył);
-    var alreadyNie =
-      settlementFlag_(sheet.getRange(target.row, c.transportOdbył).getValue()) === 'nie';
-    if (alreadyNie && !markedNie) {
+    if (settlementFlag_(cells[c.transportOdbył - 1]) === 'nie' && !markedNie) {
       skipped.push(approveSkip_(item, 'nie'));
       continue;
     }
-    var pickupDate = settlementDateText_(sheet.getRange(target.row, c.dataOdbioru).getValue());
-    if (!pickupDate) {
+    if (!settlementDateText_(cells[c.dataOdbioru - 1])) {
       skipped.push(approveSkip_(item, 'date'));
       continue;
     }
     if (markedNie) {
-      sheet.getRange(target.row, c.transportOdbył).setValue('nie');
-      saved.push(approveSaved_(sheet, target.row, schedule));
+      ops.push({ sheet: target.sheet, row: target.row, col: c.transportOdbył, values: ['nie'] });
+      saved.push(approveSavedFromCache_(target.sheet, target.row, schedule, cells));
       continue;
     }
     var cost = approveCostGrosze_(item && item.koszt);
@@ -7305,30 +7611,62 @@ function approve_(body) {
       skipped.push(approveSkip_(item, 'cost'));
       continue;
     }
-    var bags = settlementBagCount_(sheet.getRange(target.row, c.iloscWorkow).getValue());
-    var perBag = approvePerBagGrosze_(cost, bags);
     var scheduleRates = null;
     if (schedule) {
-      var onRoute = settlementText_(sheet.getRange(target.row, SCHEDULE_COL.trasa).getValue()) !== '';
+      var onRoute = settlementText_(cells[SCHEDULE_COL.trasa - 1]) !== '';
       scheduleRates = approveScheduleRates_(item, onRoute);
       if (!scheduleRates) {
         skipped.push(approveSkip_(item, 'rate'));
         continue;
       }
     }
-    sheet.getRange(target.row, c.transportOdbył).setValue('tak');
-    sheet.getRange(target.row, c.rozliczony, 1, 4).setValues([
-      ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(perBag)],
-    ]);
-    writeApprovedAtIfEmpty_(sheet, target.row, c.dataZatwierdzenia);
+    ops.push({ sheet: target.sheet, row: target.row, col: c.transportOdbył, values: ['tak'] });
+    ops.push({
+      sheet: target.sheet,
+      row: target.row,
+      col: c.rozliczony,
+      values: ['tak', invoice, approveZlotyFromGrosze_(cost), approveZlotyFromGrosze_(approvePerBagGrosze_(cost, settlementBagCount_(cells[c.iloscWorkow - 1])))],
+    });
+    var approvedCol = c.dataZatwierdzenia;
+    if (cellIsEmpty_(cells[approvedCol - 1])) {
+      if (cellIsEmpty_(target.pack.header[approvedCol - 1])) {
+        ops.push({
+          sheet: target.sheet,
+          row: 1,
+          col: approvedCol,
+          values: [APPROVED_AT_HEADER],
+        });
+        target.pack.header[approvedCol - 1] = APPROVED_AT_HEADER;
+      }
+      if (/^\d{2}-\d{2}-\d{4}$/.test(scheduleSheetDateText_(today))) {
+        ops.push({
+          sheet: target.sheet,
+          row: target.row,
+          col: approvedCol,
+          values: [today],
+          textDate: true,
+        });
+      }
+    }
     if (scheduleRates) {
       if (!scheduleRates.route) {
-        sheet.getRange(target.row, SCHEDULE_COL.stawkaPodjazdu).setValue(scheduleRates.pickup);
+        ops.push({
+          sheet: target.sheet,
+          row: target.row,
+          col: SCHEDULE_COL.stawkaPodjazdu,
+          values: [scheduleRates.pickup],
+        });
       }
-      sheet.getRange(target.row, SCHEDULE_COL.stawkaWorka).setValue(scheduleRates.bag);
+      ops.push({
+        sheet: target.sheet,
+        row: target.row,
+        col: SCHEDULE_COL.stawkaWorka,
+        values: [scheduleRates.bag],
+      });
     }
-    saved.push(approveSaved_(sheet, target.row, schedule));
+    saved.push(approveSavedFromCache_(target.sheet, target.row, schedule, cells));
   }
+  approveApplyOps_(ops);
   return { ok: true, zapisane: saved, pominiete: skipped };
 }
 

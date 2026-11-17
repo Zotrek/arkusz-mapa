@@ -171,6 +171,14 @@ const gs = readFileSync(gsPath, "utf8");
 let lockDepth = 0;
 let maxLock = 0;
 let lastBody = "";
+let lockThrows = false;
+let rawDoPost: (e: { postData: { contents: string } }) => void = () => {
+  throw new Error("doPost niepodpięty");
+};
+const gasHooks: { spreadsheetId: string; fetches: string[] } = {
+  spreadsheetId: "",
+  fetches: [],
+};
 const scriptProps = new Map<string, string>();
 
 const holder: {
@@ -222,6 +230,9 @@ beforeAll(() => {
             const extra = holder.extra.find((s) => s.name === name);
             return extra ?? null;
           },
+          getId() {
+            return gasHooks.spreadsheetId;
+          },
           insertSheet(name: string) {
             if (name === "zestawienie z harmonogramu" || name.startsWith("Harmonogram ")) {
               const sheet = new FakeSheet(name);
@@ -258,6 +269,9 @@ beforeAll(() => {
       getScriptLock() {
         return {
           waitLock() {
+            if (lockThrows) {
+              throw new Error("Przekroczenie limitu czasu blokady");
+            }
             lockDepth += 1;
             if (lockDepth > maxLock) {
               maxLock = lockDepth;
@@ -278,6 +292,25 @@ beforeAll(() => {
             return this;
           },
         };
+      },
+    },
+    ScriptApp: {
+      getOAuthToken() {
+        return "token";
+      },
+    },
+    UrlFetchApp: {
+      fetch(url: string, opts: { payload?: string }) {
+        gasHooks.fetches.push(String(url));
+        if (String(url).indexOf("values:batchUpdate") >= 0) {
+          const payload = JSON.parse(String(opts.payload || "{}")) as {
+            data?: { range: string; values: Cell[][] }[];
+          };
+          for (const item of payload.data || []) {
+            applyValuesBatch(item.range, item.values);
+          }
+        }
+        return { getResponseCode: () => 200 };
       },
     },
     PropertiesService: {
@@ -305,6 +338,7 @@ beforeAll(() => {
   if (typeof doPost !== "function") {
     throw new Error("transport-log.gs nie wystawił doPost");
   }
+  rawDoPost = doPost as typeof rawDoPost;
   postToSheet = (body) => {
     maxLock = 0;
     const tryb = String(body.tryb || body.mode || "").toLowerCase();
@@ -338,7 +372,51 @@ function fresh(): { register: FakeSheet; rates: FakeSheet; schedule: FakeSheet }
   holder.rates = rates;
   holder.schedule = schedule;
   holder.extra = [];
+  lockThrows = false;
+  gasHooks.spreadsheetId = "";
+  gasHooks.fetches = [];
   return { register, rates, schedule };
+}
+
+function sheetByName(name: string): FakeSheet | null {
+  if (name === holder.register.name) {
+    return holder.register;
+  }
+  if (holder.schedule && name === holder.schedule.name) {
+    return holder.schedule;
+  }
+  return holder.extra.find((sheet) => sheet.name === name) ?? null;
+}
+
+function columnIndex(letters: string): number {
+  let col = 0;
+  for (const ch of letters) {
+    col = col * 26 + (ch.charCodeAt(0) - 64);
+  }
+  return col;
+}
+
+/** Ten sam zapis, który values.batchUpdate robi w arkuszu. */
+function applyValuesBatch(range: string, values: Cell[][]): void {
+  const bang = range.lastIndexOf("!");
+  const quoted = range.slice(0, bang);
+  const sheetName = quoted.replace(/^'/, "").replace(/'$/, "").replace(/''/g, "'");
+  const sheet = sheetByName(sheetName);
+  if (!sheet) {
+    throw new Error(`brak zakładki ${sheetName}`);
+  }
+  const a1 = range.slice(bang + 1).split(":");
+  const start = /^([A-Z]+)(\d+)$/.exec(a1[0]);
+  if (!start) {
+    throw new Error(`zły zakres ${range}`);
+  }
+  const row = Number(start[2]);
+  const col = columnIndex(start[1]);
+  for (let r = 0; r < values.length; r += 1) {
+    for (let c = 0; c < values[r].length; c += 1) {
+      sheet.put(row + r, col + c, values[r][c]);
+    }
+  }
 }
 
 function seedRegister(sheet: FakeSheet, row: number, over: Partial<Record<number, Cell>> = {}): void {
@@ -938,10 +1016,7 @@ describe("approve", () => {
     expect(register.cell(2, 18)).toBe("111");
     expect(register.cell(3, 10)).toBe("nie");
     expect(register.cell(3, 15)).toBe("");
-    expect(register.writes).toEqual([
-      { row: 2, col: 10, numRows: 1, numCols: 1 },
-      { row: 3, col: 10, numRows: 1, numCols: 1 },
-    ]);
+    expect(register.writes).toEqual([{ row: 2, col: 10, numRows: 2, numCols: 1 }]);
   });
 
   it("test_approve_route_writes_each_selected_shop_and_leaves_the_rest", () => {
@@ -1334,6 +1409,96 @@ describe("approve", () => {
     expect(schedule.cell(2, 16)).toBe("");
   });
 
+  it("test_approve_consecutive_rows_share_one_write_per_column", () => {
+    const { register } = fresh();
+    seedRegister(register, 2);
+    seedRegister(register, 3, { 1: 16 });
+    seedRegister(register, 4, { 1: 17 });
+
+    const result = postToSheet({
+      action: "approve",
+      numerFaktury: "FV/BIG",
+      wiersze: [
+        { sheetRow: 2, transportNumber: "15", koszt: 3000 },
+        { sheetRow: 3, transportNumber: "16", koszt: 2000 },
+        { sheetRow: 4, transportNumber: "17", koszt: 1000 },
+      ],
+    });
+
+    expect(result.pominiete).toEqual([]);
+    expect(result.zapisane).toEqual([
+      { sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15" },
+      { sheetName: "Arkusz1", sheetRow: 3, transportNumber: "16" },
+      { sheetName: "Arkusz1", sheetRow: 4, transportNumber: "17" },
+    ]);
+    expect(register.cell(2, 16)).toBe("FV/BIG");
+    expect(register.cell(3, 17)).toBe(20);
+    expect(register.cell(4, 17)).toBe(10);
+    expect(register.cell(4, 10)).toBe("tak");
+    expect(register.cell(4, 18)).toBe(5);
+    expect(register.cell(1, 22)).toBe("Data zatwierdzenia");
+    expect(register.writes).toEqual([
+      { row: 2, col: 10, numRows: 3, numCols: 1 },
+      { row: 2, col: 15, numRows: 3, numCols: 4 },
+      { row: 1, col: 22, numRows: 1, numCols: 1 },
+      { row: 2, col: 22, numRows: 3, numCols: 1 },
+    ]);
+  });
+
+  it("test_approve_scattered_rows_go_out_in_one_batch", () => {
+    const { register } = fresh();
+    const wiersze: { sheetRow: number; transportNumber: string; koszt: number }[] = [];
+    for (let row = 2; row <= 24; row += 2) {
+      seedRegister(register, row, { 1: 100 + row });
+      wiersze.push({ sheetRow: row, transportNumber: String(100 + row), koszt: 1000 });
+    }
+    gasHooks.spreadsheetId = "sheet-1";
+
+    const result = postToSheet({
+      action: "approve",
+      numerFaktury: "FV/DUZA",
+      wiersze,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.pominiete).toEqual([]);
+    expect(result.zapisane).toHaveLength(12);
+    expect(gasHooks.fetches.filter((url) => url.indexOf("values:batchUpdate") >= 0)).toHaveLength(1);
+    expect(register.writes).toEqual([]);
+    expect(register.cell(2, 15)).toBe("tak");
+    expect(register.cell(2, 16)).toBe("FV/DUZA");
+    expect(register.cell(24, 17)).toBe(10);
+    expect(register.cell(24, 10)).toBe("tak");
+    expect(register.cell(3, 15)).toBe("");
+    expect(register.cell(1, 22)).toBe("Data zatwierdzenia");
+    expect(register.cell(24, 22)).toMatch(/^\d{2}-\d{2}-\d{4}$/);
+  });
+
+  it("test_doPost_lock_timeout_returns_busy_and_writes_nothing", () => {
+    const { register } = fresh();
+    seedRegister(register, 2);
+    lockThrows = true;
+    try {
+      rawDoPost({
+        postData: {
+          contents: JSON.stringify({
+            action: "approve",
+            secret: "test-gas-secret",
+            numerFaktury: "FV/1",
+            sheetName: "Arkusz1",
+            wiersze: [{ sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15", koszt: 3000 }],
+          }),
+        },
+      });
+    } finally {
+      lockThrows = false;
+    }
+    expect(lockDepth).toBe(0);
+    expect(JSON.parse(lastBody)).toEqual({ ok: false, error: "busy" });
+    expect(register.cell(2, 15)).toBe("");
+    expect(register.writes).toEqual([]);
+  });
+
   it("test_patchBags_schedule_tryb_writes_zestawienie", () => {
     const { register, schedule } = fresh();
     seedRegister(register, 2);
@@ -1548,6 +1713,10 @@ describe("zapis w transport-log.gs", () => {
     expect(approve).not.toContain("ensureTransportRegisterColumns_");
     expect(approve).not.toContain("getOrCreateRateSheet_");
     expect(approve).not.toContain("REGISTER_HEADERS");
+    expect(approve).not.toContain("registerWriteTarget_");
+    expect(approve).toContain("approveApplyOps_(");
+    expect(postFn).toContain("error: 'busy'");
+    expect(postFn.indexOf("flush")).toBeGreaterThan(lockAt);
   });
 });
 
