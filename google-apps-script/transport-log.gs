@@ -17,9 +17,10 @@
  *   Unikalny adres (po normalizacji al./pl./Św.) z kolumny 2. Nazwa z kolumny 4 (Sklep), pierwsza niepusta.
  * GET ?action=settlementSearch&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
  *   dataOd opcjonalna. tryb=harmonogram → zakładki Harmonogram (+ rates z Bazy cen)
- *   i zapis kolumn 12–13 na wierszach tego zestawienia, pod lockiem skryptu.
+ *   i zapis pustych kolumn 12–13 na wierszach tego zestawienia, pod lockiem skryptu.
+ *   Wypełniona Stawka za podjazd / Stawka za worek zostaje i idzie do odpowiedzi. Brak pary jej nie czyści.
  *   Tuż przed zapisem pomija wiersz już rozliczony, z transportem „nie” albo ze zmienionym kluczem.
- *   Inaczej nic nie zapisuje.
+ *   Inaczej nic nie zapisuje. Na zgłoszenie czyta wypełnione stawki z kolumn i ich nie rusza.
  *   To samo POST { action: settlementSearch, … }.
  * GET ?action=settlementInvoices&podwykonawca=…&dataDo=dd.mm.yyyy&dataOd=…
  *   Ten sam zakres co Szukaj. Tylko wiersze Rozliczony=tak, z numerem faktury i kosztem z arkusza.
@@ -3676,9 +3677,9 @@ function uniqueStoreAddresses_(rows) {
 
 /**
  * Odczyt zestawienia.
- * tryb=harmonogram: legacy + miesięczne Harmonogram + rates z Bazy cen,
- * i zapis Stawka za podjazd / Stawka za worek na wierszach tego zestawienia.
- * Ten zapis bierze lock skryptu. Inaczej: Arkusz1 + Na zgłoszenie + Baza stawek, bez zapisu i bez locka.
+ * tryb=harmonogram: legacy + miesięczne Harmonogram + rates z Bazy cen.
+ * Puste Stawka za podjazd / Stawka za worek dostają stawkę z bazy i są zapisywane pod lockiem.
+ * Wypełniona komórka zostaje w arkuszu i w odpowiedzi. Inaczej: Arkusz1 + Na zgłoszenie + Baza stawek, bez zapisu i bez locka.
  */
 function readRateCells_(sheet, minWidth, untilHeader) {
   var untilIndex = -1;
@@ -3708,8 +3709,8 @@ function settlementSearch_(query) {
 }
 
 /**
- * Harmonogram: wiersze z legacy + miesięcznych; rates z Bazy cen.
- * Przed odpowiedzią zapisuje kolumny 12 i 13 na wierszach tego zestawienia.
+ * Harmonogram: wiersze z legacy + miesięcznych; puste stawki z Bazy cen.
+ * Przed odpowiedzią zapisuje tylko puste kolumny 12 i 13 na wierszach tego zestawienia.
  */
 function settlementSearchHarmonogram_(query) {
   var baza = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HARMONOGRAM_RATE_SHEET_NAME);
@@ -5053,7 +5054,8 @@ function settlementBuildAddressParts_(kod, miasto, ulica, numer) {
  * Odczyt Harmonogram z rejestru „zestawienie z harmonogramu”.
  * register = cells zestawienia (do kolumny kosztu na worek).
  * bazaCen = cells Bazy cen (8 kolumn).
- * Wiersz zestawienia dostaje stawkę podjazdu i worka z bazy. Brak pary czyści obie.
+ * Wypełniona Stawka za trasę, Stawka za podjazd albo Stawka za worek zostaje.
+ * Pusta stawka podjazdu albo worka dostaje kwotę z bazy. Brak pary zostawia pustą komórkę.
  * Rozliczony i transport `nie` są pomijane wcześniej i stawek nie dostają.
  */
 function buildSettlementHarmonogramRead_(query, register, bazaCen, untilIndex) {
@@ -5096,6 +5098,7 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen, untilIndex) {
       contractor: contractor,
       pickupAmount: settlementAmountToGrosze_(rateCells[3]),
       bagAmount: settlementAmountToGrosze_(rateCells[4]),
+      routeAmount: settlementAmountToGrosze_(rateCells[5]),
       validFrom: validFrom,
       validUntil: validUntil,
     });
@@ -5124,18 +5127,19 @@ function buildSettlementHarmonogramRead_(query, register, bazaCen, untilIndex) {
     if (!settlementDateInRange_(mapped.pickupDate, dataOd, dataDo)) {
       continue;
     }
+    var sheetPickup = mapped.pickupRate;
+    var sheetBag = mapped.bagRate;
     var best = harmonogramRateOnDate_(
       searchRates,
       mapped.address,
       mapped.contractor,
       mapped.pickupDate,
     );
-    if (!best) {
-      mapped.pickupRate = null;
-      mapped.bagRate = null;
-    } else {
-      mapped.pickupRate = settlementAmountToGrosze_(best.pickup);
-      mapped.bagRate = settlementAmountToGrosze_(best.bag);
+    if (sheetPickup == null) {
+      mapped.pickupRate = best ? settlementAmountToGrosze_(best.pickup) : null;
+    }
+    if (sheetBag == null) {
+      mapped.bagRate = best ? settlementAmountToGrosze_(best.bag) : null;
     }
     rows.push(settlementPublicRow_(mapped));
   }

@@ -107,7 +107,7 @@ Rejestr transportów (osobny arkusz Google Sheets) synchronizuje się z mapą HT
 
 | GET | `action=bulkLastTransportDates` | Ostatnie daty + kto odbiera dla wszystkich sklepów (mapa / popup). Wiersz z kolumną 10 = `nie` nie wchodzi. Każdy odczyt skanuje rejestr |
 
-| GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia (legacy + `Harmonogram …`); każdy wiersz ma `sheetName`. Zapis stawek tylko na wierszach tego zestawienia. Brak pary czyści kolumny 12 i 13. Ta sama data zostawia pierwszy wiersz. Transport `nie` i rozliczone są pomijane. Trasa zostaje. Reszta: specyfikacja, sekcja „Harmonogram — stawki i liczba worków” |
+| GET/POST | `action=settlementSearch&tryb=harmonogram` | Odczyt zestawienia (legacy + `Harmonogram …`); każdy wiersz ma `sheetName`. Wypełniona stawka trasy, podjazdu albo worka zostaje i idzie do odpowiedzi. Puste kolumny 12–13 dostają stawkę z Bazy cen, tylko na wierszach tego zestawienia. Brak pary nie czyści wypełnionej komórki. Ta sama data zostawia pierwszy wiersz. Transport `nie` i rozliczone są pomijane. Trasa zostaje. Reszta: specyfikacja, sekcja „Harmonogram — stawki i liczba worków” |
 
 | POST | `action=syncZestawienieHarmonogram` | Agregacja odebrane + dni Bazy cen → zakładki `Harmonogram {miesiąc} {rok}` (domyślnie bieżący miesiąc → dziś) |
 | GET | `action=listHarmonogramy` | Wspólne harmonogramy + kubełki „do zgrupowania” (te same dni + ten sam podwykonawca) |

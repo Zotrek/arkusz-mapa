@@ -617,6 +617,9 @@ describe('settlementSearch_', () => {
         validUntil: '',
       },
     ]);
+    expect(register.cell(2, 12)).toBe(100);
+    expect(register.cell(2, 13)).toBe(50);
+    expect(register.cell(2, 14)).toBe(20);
   });
 
   it('test_settlementSearch_reads_valid_until_from_named_column', () => {
@@ -1150,10 +1153,11 @@ describe('buildSettlementHarmonogramRead_', () => {
     });
     expect(result.rows[1]).toMatchObject({
       bagCount: 2,
-      pickupRate: null,
-      bagRate: null,
+      pickupRate: 10000,
+      bagRate: 1000,
     });
     expect(result.rates).toHaveLength(1);
+    expect(result.rates[0]).toMatchObject({ pickupAmount: 10000, bagAmount: 0, routeAmount: null });
   });
 
   it('test_buildSettlementHarmonogramRead_skips_settled_and_nie', () => {
@@ -1275,10 +1279,10 @@ describe('settlementSearch_ harmonogram stawki', () => {
 
   it('test_settlementSearchHarmonogram_writes_rates_only_inside_this_statement', () => {
     const { schedule, baza, month } = openSearch();
-    seedScheduleRow(schedule, 2);
+    seedScheduleRow(schedule, 2, { 12: '', 13: '' });
     seedScheduleRow(schedule, 3, { 1: 'Adres B', 5: 'INNY' });
     seedScheduleRow(schedule, 4, { 1: 'Adres C', 4: '01.08.2026' });
-    seedScheduleRow(month, 2, { 1: 'Adres D', 4: '16.09.2026' });
+    seedScheduleRow(month, 2, { 1: 'Adres D', 4: '16.09.2026', 12: '', 13: '' });
     seedBazaCen(baza, 2, 'Adres A', 'THOR', 30, 3, '01.06.2026');
     seedBazaCen(baza, 3, 'Adres B', 'INNY', 70, 7, '01.01.2026');
     seedBazaCen(baza, 4, 'Adres C', 'THOR', 90, 9, '01.01.2026');
@@ -1321,12 +1325,16 @@ describe('settlementSearch_ harmonogram stawki', () => {
     ]);
   });
 
-  it('test_settlementSearchHarmonogram_clears_rates_when_pair_missing_or_only_later', () => {
+  it('test_settlementSearchHarmonogram_keeps_filled_rates_and_leaves_empty_when_pair_missing', () => {
     const { schedule, baza } = openSearch();
-    seedScheduleRow(schedule, 2, { 1: 'Bez pary' });
-    seedScheduleRow(schedule, 3, { 1: 'Tylko pozniej' });
+    seedScheduleRow(schedule, 2, { 1: 'Bez pary', 12: '', 13: '' });
+    seedScheduleRow(schedule, 3, { 1: 'Tylko pozniej', 12: '', 13: '' });
+    seedScheduleRow(schedule, 4, { 1: 'Reczne', 11: 300, 12: 175, 13: 10 });
+    seedScheduleRow(schedule, 5, { 1: 'Tylko podjazd', 12: 40, 13: '' });
     seedBazaCen(baza, 2, 'Tylko pozniej', 'THOR', 90, 9, '01.12.2026');
     seedBazaCen(baza, 3, 'Tylko pozniej', 'THOR', 80, 8, '20.09.2026');
+    seedBazaCen(baza, 4, 'Reczne', 'THOR', 1, 1, '01.01.2026');
+    seedBazaCen(baza, 5, 'Tylko podjazd', 'THOR', 99, 7, '01.01.2026');
 
     const result = gas.settlementSearch_({
       tryb: 'harmonogram',
@@ -1339,18 +1347,36 @@ describe('settlementSearch_ harmonogram stawki', () => {
     if (!result.ok) {
       return;
     }
-    expect(result.rows).toHaveLength(2);
-    expect(result.rows.every((row) => row.pickupRate === null && row.bagRate === null)).toBe(true);
+    expect(result.rows).toHaveLength(4);
+    const empty = result.rows.filter((row) => row.address === 'Bez pary' || row.address === 'Tylko pozniej');
+    expect(empty.every((row) => row.pickupRate === null && row.bagRate === null)).toBe(true);
+    expect(result.rows.find((row) => row.address === 'Reczne')).toMatchObject({
+      routeRate: 30000,
+      pickupRate: 17500,
+      bagRate: 1000,
+    });
+    expect(result.rows.find((row) => row.address === 'Tylko podjazd')).toMatchObject({
+      pickupRate: 4000,
+      bagRate: 700,
+    });
     expect(schedule.cell(2, 12)).toBe('');
     expect(schedule.cell(2, 13)).toBe('');
     expect(schedule.cell(3, 12)).toBe('');
     expect(schedule.cell(3, 13)).toBe('');
+    expect(schedule.cell(4, 11)).toBe(300);
+    expect(schedule.cell(4, 12)).toBe(175);
+    expect(schedule.cell(4, 13)).toBe(10);
+    expect(schedule.cell(5, 12)).toBe(40);
+    expect(schedule.cell(5, 13)).toBe(7);
+    expect(holder.lastBatch?.body.data?.map((item) => item.range)).toEqual([
+      "'zestawienie z harmonogramu'!L5:M5",
+    ]);
   });
 
   it('test_settlementSearchHarmonogram_empty_date_is_oldest_and_tie_keeps_first_row', () => {
     const { schedule, baza } = openSearch();
-    seedScheduleRow(schedule, 2, { 1: 'Pusta data' });
-    seedScheduleRow(schedule, 3, { 1: 'Remis' });
+    seedScheduleRow(schedule, 2, { 1: 'Pusta data', 12: '', 13: '' });
+    seedScheduleRow(schedule, 3, { 1: 'Remis', 12: '', 13: '' });
     seedBazaCen(baza, 2, 'Pusta data', 'THOR', 5, 1, '');
     seedBazaCen(baza, 3, 'Pusta data', 'THOR', 30, 3, '01.06.2026');
     seedBazaCen(baza, 4, 'Pusta data', 'THOR', 90, 9, '01.12.2026');
@@ -1380,7 +1406,7 @@ describe('settlementSearch_ harmonogram stawki', () => {
 
   it('test_settlementSearchHarmonogram_skips_nie_and_settled_and_leaves_route_columns', () => {
     const { schedule, baza } = openSearch();
-    seedScheduleRow(schedule, 2);
+    seedScheduleRow(schedule, 2, { 12: '', 13: '' });
     seedScheduleRow(schedule, 3, { 1: 'Odbyte nie', 9: 'nie' });
     seedScheduleRow(schedule, 4, { 1: 'Juz tak', 14: 'tak', 15: 'FV/1', 16: 50, 17: 25 });
     seedBazaCen(baza, 2, 'Adres A', 'THOR', 30, 3, '01.01.2026');
@@ -1467,7 +1493,7 @@ describe('settlementSearch_ harmonogram stawki', () => {
 
   it('test_settlementSearchHarmonogram_setValues_when_batch_is_not_2xx', () => {
     const { schedule, baza } = openSearch();
-    seedScheduleRow(schedule, 2);
+    seedScheduleRow(schedule, 2, { 12: '', 13: '' });
     seedBazaCen(baza, 2, 'Adres A', 'THOR', 30, 3, '01.01.2026');
     holder.batchCode = 500;
 
@@ -1491,7 +1517,7 @@ describe('settlementSearch_ harmonogram stawki', () => {
 
   it('test_settlementSearchHarmonogram_setValues_when_batch_throws', () => {
     const { schedule, baza } = openSearch();
-    seedScheduleRow(schedule, 2);
+    seedScheduleRow(schedule, 2, { 12: '', 13: '' });
     seedBazaCen(baza, 2, 'Adres A', 'THOR', 30, 3, '01.01.2026');
     holder.batchThrow = true;
 
