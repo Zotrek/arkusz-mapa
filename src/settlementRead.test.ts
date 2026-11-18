@@ -1160,6 +1160,25 @@ describe('buildSettlementHarmonogramRead_', () => {
     expect(result.rates[0]).toMatchObject({ pickupAmount: 10000, bagAmount: 0, routeAmount: null });
   });
 
+  it('test_buildSettlementHarmonogramRead_returns_written_route_price_in_grosze', () => {
+    const result = gas.buildSettlementHarmonogramRead_(
+      { podwykonawca: 'THOR', dataOd: '15.09.2026', dataDo: '15.09.2026' },
+      [],
+      [
+        {
+          sheetRow: 2,
+          cells: ['31-342 Kraków Radzikowskiego 138', 'THOR', 'trasa', 100, 0, 30, '01.01.2026', 'wt'],
+        },
+      ],
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.rates).toHaveLength(1);
+    expect(result.rates[0]).toMatchObject({ pickupAmount: 10000, bagAmount: 0, routeAmount: 3000 });
+  });
+
   it('test_buildSettlementHarmonogramRead_skips_settled_and_nie', () => {
     const result = gas.buildSettlementHarmonogramRead_(
       { podwykonawca: 'THOR', dataOd: '15.09.2026', dataDo: '15.09.2026' },
