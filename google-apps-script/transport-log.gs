@@ -7834,6 +7834,7 @@ function runSettlementWrite_(action, body) {
  * Wiersz musi być Rozliczony tak i mieć ten sam numer faktury.
  * odepnij czyści rozliczenie: sklep wraca do nierozliczonych, worki i stawki zostają.
  * Inaczej wpisuje worki, stawki i koszt policzony na ekranie. Bazy stawek nie rusza.
+ * nowyNumer zmienia numer na pozycjach, które zostają. tylkoNumer rusza sam numer.
  * Stawka trasy idzie tylko na wiersze z tej faktury, które są w body.
  */
 function patchInvoiceEdit_(body) {
@@ -7842,6 +7843,11 @@ function patchInvoiceEdit_(body) {
     return { ok: false, error: 'selection' };
   }
   var invoice = cellStr_(body && body.numerFaktury);
+  var nextInvoice = cellStr_(body && body.nowyNumer);
+  var rename = nextInvoice !== '' && nextInvoice !== invoice;
+  if (rename && /^[=+@]/.test(nextInvoice)) {
+    return { ok: false, error: 'invoice' };
+  }
   var tryb = settlementText_(body && (body.tryb || body.mode)).toLowerCase();
   var schedule = tryb === 'harmonogram' || tryb === 'schedule';
   var c = schedule ? SCHEDULE_COL : COL;
@@ -7869,6 +7875,15 @@ function patchInvoiceEdit_(body) {
     }
     if (item.odepnij === true || settlementFlag_(item.odepnij) === 'tak') {
       sheet.getRange(target.row, c.rozliczony, 1, 4).setValues([['', '', '', '']]);
+      saved.push(approveSaved_(sheet, target.row, schedule));
+      continue;
+    }
+    if (item.tylkoNumer === true) {
+      if (!rename) {
+        skipped.push(approveSkip_(item, 'invoice'));
+        continue;
+      }
+      sheet.getRange(target.row, c.numerFaktury).setValue(nextInvoice);
       saved.push(approveSaved_(sheet, target.row, schedule));
       continue;
     }
@@ -7908,6 +7923,9 @@ function patchInvoiceEdit_(body) {
     sheet
       .getRange(target.row, c.kosztPerWorek)
       .setValue(approveZlotyFromGrosze_(approvePerBagGrosze_(cost, count)));
+    if (rename) {
+      sheet.getRange(target.row, c.numerFaktury).setValue(nextInvoice);
+    }
     saved.push(approveSaved_(sheet, target.row, schedule));
   }
   return { ok: true, zapisane: saved, pominiete: skipped };
