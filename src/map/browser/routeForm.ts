@@ -100,16 +100,25 @@ export function routeFormBrowserScript(): string {
       if (!trimmed || !transportApiEnabled) return;
       routeRateRequest += 1;
       var ticket = routeRateRequest;
+      var triedAgain = false;
       setTransportDatesLoading(true, 'Pobieranie stawki trasy…');
-      // Strona HTML 5xx od Google (np. DEADLINE_EXCEEDED) bywa chwilowa. Odczyt, więc jedna powtórka.
+      // HTML 5xx (DEADLINE_EXCEEDED) i zerwane połączenie (Failed to fetch) bywają chwilowe. Odczyt, więc jedna powtórka.
       function fetchRate() {
         return fetchTransportGet({ action: 'routeRateByName', name: trimmed });
       }
-      fetchRate().then(function (resp) {
-        if (!resp || !resp.notJson || !(resp.status >= 500) || ticket !== routeRateRequest) return resp;
+      function retryRateOnce() {
+        triedAgain = true;
         return delayMs(1500).then(function () {
-          return ticket === routeRateRequest ? fetchRate() : resp;
+          return ticket === routeRateRequest ? fetchRate() : null;
         });
+      }
+      fetchRate().then(function (resp) {
+        var html5xx = !!(resp && resp.notJson && resp.status >= 500);
+        if (!html5xx || triedAgain || ticket !== routeRateRequest) return resp;
+        return retryRateOnce();
+      }, function () {
+        if (triedAgain || ticket !== routeRateRequest) return null;
+        return retryRateOnce();
       }).then(function (resp) {
         if (ticket !== routeRateRequest) return;
         var current = document.getElementById('doc-inp-trasa');

@@ -278,6 +278,7 @@ describe('harmonogramGroup gas parity', () => {
     expect(appendAt).toBeGreaterThan(-1);
     expect(upsertAt).toBeGreaterThan(appendAt);
     expect(post).not.toContain('getBolecinSheetsId_()');
-    expect(post).toContain('response.bolecinError = bolecinError');
+    expect(post).toContain('protocolWriteResponse_');
+    expect(source).toContain('response.bolecinError = saved.bolecinError');
   });
 });

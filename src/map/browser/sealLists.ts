@@ -78,7 +78,7 @@ export function sealListsBrowserScript(): string {
     function fetchTransportGet(params) {
       return fetch(transportApiUrl(params)).then(function (res) { return readMapJson_(res); });
     }
-    /** HTML 5xx (DEADLINE_EXCEEDED, Cloudflare 524) bywa chwilowe. Odczyt, więc jedna powtórka. */
+    /** HTML 5xx (DEADLINE_EXCEEDED, Cloudflare 524) i zerwane połączenie (Failed to fetch) bywają chwilowe. Odczyt, więc jedna powtórka. */
     function fetchTransportGetRetry_(params) {
       function once() {
         return fetchTransportGet(params);
@@ -86,14 +86,57 @@ export function sealListsBrowserScript(): string {
       return once().then(function (resp) {
         if (!resp || !resp.notJson || !(resp.status >= 500)) return resp;
         return delayMs(1500).then(once);
+      }, function () {
+        return delayMs(1500).then(once);
       });
     }
+    function newProtocolWriteId_() {
+      return 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    }
+    /**
+     * Jedna powtórka po Failed to fetch albo HTML 5xx.
+     * Najpierw GET protocolWrite z tym samym writeId. Drugi POST tylko gdy Web App
+     * potwierdzi, że wiersza nie ma (albo zapis jest w toku). Inaczej nie ponawiamy:
+     * stary skrypt albo drugi urwany odczyt zostawiłby ryzyko dwóch wierszy.
+     */
     function appendTransportRow(payload) {
-      return fetch(TRANSPORT_WEBAPP_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      }).then(function (res) { return readMapJson_(res); });
+      if (payload && !payload.writeId) {
+        payload.writeId = newProtocolWriteId_();
+      }
+      function postOnce() {
+        return fetch(TRANSPORT_WEBAPP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        }).then(function (res) { return readMapJson_(res); });
+      }
+      function transientResponse_(resp) {
+        return !!(resp && resp.notJson && resp.status >= 500);
+      }
+      function recover_(originalErr, originalResp) {
+        return delayMs(1500).then(function () {
+          return fetchTransportGet({ action: 'protocolWrite', writeId: payload.writeId });
+        }).then(function (lookup) {
+          if (lookup && lookup.ok && lookup.found && lookup.done && lookup.numer) {
+            var recovered = { ok: true, numer: String(lookup.numer), replay: true };
+            if (lookup.bolecinError) recovered.bolecinError = String(lookup.bolecinError);
+            return recovered;
+          }
+          if (lookup && lookup.ok && lookup.found === false) return postOnce();
+          if (lookup && lookup.ok && lookup.found && !lookup.done) return postOnce();
+          if (originalErr) throw originalErr;
+          return originalResp;
+        }, function () {
+          if (originalErr) throw originalErr;
+          return originalResp;
+        });
+      }
+      return postOnce().then(function (resp) {
+        if (!transientResponse_(resp)) return resp;
+        return recover_(null, resp);
+      }, function (err) {
+        return recover_(err, null);
+      });
     }
 `;
 }

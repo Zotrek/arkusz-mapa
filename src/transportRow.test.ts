@@ -274,6 +274,9 @@ type GasFns = {
   patchRouteRate_: (body: Record<string, unknown>) => SettlementResult;
   detachRoute_: (body: Record<string, unknown>) => SettlementResult;
   attachRoute_: (body: Record<string, unknown>) => SettlementResult;
+  doPost: (e: { postData: { contents: string } }) => void;
+  doGet: (e: { parameter: Record<string, string> }) => void;
+  responseBody: () => Record<string, unknown>;
 };
 
 const gsPath = join(
@@ -289,8 +292,11 @@ function loadGas(
 ): GasFns {
   const store = props ?? new Map<string, string>();
   const extras: FakeSheet[] = [];
+  const writeCache = new Map<string, string>();
+  let lastBody = '';
   const context: Record<string, unknown> = {
     SpreadsheetApp: {
+      flush() {},
       getActiveSpreadsheet() {
         return {
           getSheets() {
@@ -414,6 +420,29 @@ function loadGas(
         };
       },
     },
+    CacheService: {
+      getScriptCache() {
+        return {
+          get(key: string) {
+            return writeCache.has(key) ? writeCache.get(key)! : null;
+          },
+          put(key: string, value: string) {
+            writeCache.set(key, value);
+          },
+        };
+      },
+    },
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput(text: string) {
+        lastBody = text;
+        return {
+          setMimeType() {
+            return this;
+          },
+        };
+      },
+    },
     // Po dopisaniu wiersza skrypt rozciąga tabelę Arkuszów przez Sheets API.
     ScriptApp: {
       getOAuthToken() {
@@ -461,6 +490,11 @@ function loadGas(
   if (typeof attachRoute !== 'function') {
     throw new Error('transport-log.gs nie wystawił attachRoute_');
   }
+  const doPost = context.doPost;
+  const doGet = context.doGet;
+  if (typeof doPost !== 'function' || typeof doGet !== 'function') {
+    throw new Error('transport-log.gs nie wystawił doPost/doGet');
+  }
   return {
     appendTransportRow_: append as GasFns['appendTransportRow_'],
     listOccupiedRouteNames_: occupied as GasFns['listOccupiedRouteNames_'],
@@ -468,6 +502,9 @@ function loadGas(
     patchRouteRate_: patchRouteRate as GasFns['patchRouteRate_'],
     detachRoute_: detachRoute as GasFns['detachRoute_'],
     attachRoute_: attachRoute as GasFns['attachRoute_'],
+    doPost: doPost as GasFns['doPost'],
+    doGet: doGet as GasFns['doGet'],
+    responseBody: () => JSON.parse(lastBody) as Record<string, unknown>,
   };
 }
 
@@ -1269,5 +1306,82 @@ describe('attachRoute_', () => {
     ).toEqual({ ok: false, error: 'key' });
     expect(sheet.writes).toEqual([]);
     expect(sheet.cell(2, 11)).toBe('');
+  });
+});
+
+const PROTOCOL_SECRET = 'test-gas-secret';
+
+function protocolPostBody(writeId?: string): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    secret: PROTOCOL_SECRET,
+    adresSklepu: '34-236 SIDZINA SIDZINA 1230',
+    podmiotHandlowy: 'Firma',
+    sklep: 'SIDZINA',
+    dataOdbioru: '19.11.2026',
+    ktoOdbiera: 'gpw',
+    miejsceZrzutu: 'Inne',
+    rodzajZbiorki: 'ręczna',
+    iloscWorkow: 2,
+  };
+  if (writeId) body.writeId = writeId;
+  return body;
+}
+
+function loadProtocolGas(): { gas: GasFns; sheet: FakeSheet } {
+  const sheet = new FakeSheet();
+  const props = new Map<string, string>([['GAS_SHARED_SECRET', PROTOCOL_SECRET]]);
+  return { gas: loadGas(sheet, null, props), sheet };
+}
+
+describe('protocol writeId', () => {
+  it('test_doPost_when_same_writeId_should_append_one_row_and_return_same_numer', () => {
+    const { gas, sheet } = loadProtocolGas();
+    gas.doPost({ postData: { contents: JSON.stringify(protocolPostBody('sidzina-1')) } });
+    const first = gas.responseBody();
+    gas.doPost({ postData: { contents: JSON.stringify(protocolPostBody('sidzina-1')) } });
+    const second = gas.responseBody();
+
+    expect(first.ok).toBe(true);
+    expect(second).toEqual({ ok: true, numer: first.numer });
+    expect(sheet.getLastRow()).toBe(2);
+    expect(String(sheet.cell(2, 1))).toBe(String(first.numer));
+    expect(sheet.cell(2, 2)).toBe('34-236 SIDZINA SIDZINA 1230');
+    expect(sheet.cell(3, 1)).toBe('');
+  });
+
+  it('test_doPost_when_writeId_missing_should_append_two_rows', () => {
+    const { gas, sheet } = loadProtocolGas();
+    gas.doPost({ postData: { contents: JSON.stringify(protocolPostBody()) } });
+    const first = gas.responseBody();
+    gas.doPost({ postData: { contents: JSON.stringify(protocolPostBody()) } });
+    const second = gas.responseBody();
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(second.numer).not.toBe(first.numer);
+    expect(sheet.getLastRow()).toBe(3);
+    expect(String(sheet.cell(2, 1))).toBe(String(first.numer));
+    expect(String(sheet.cell(3, 1))).toBe(String(second.numer));
+  });
+
+  it('test_doGet_protocolWrite_when_unknown_id_should_say_not_found', () => {
+    const { gas } = loadProtocolGas();
+    gas.doGet({ parameter: { action: 'protocolWrite', writeId: 'brak', secret: PROTOCOL_SECRET } });
+    expect(gas.responseBody()).toEqual({ ok: true, found: false });
+  });
+
+  it('test_doGet_protocolWrite_after_post_should_return_the_numer', () => {
+    const { gas } = loadProtocolGas();
+    gas.doPost({ postData: { contents: JSON.stringify(protocolPostBody('sidzina-1')) } });
+    const saved = gas.responseBody();
+    gas.doGet({
+      parameter: { action: 'protocolWrite', writeId: 'sidzina-1', secret: PROTOCOL_SECRET },
+    });
+    expect(gas.responseBody()).toEqual({
+      ok: true,
+      found: true,
+      done: true,
+      numer: saved.numer,
+    });
   });
 });

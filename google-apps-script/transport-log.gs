@@ -99,6 +99,13 @@
  *   i bolecinWorki (suma) — wtedy jeden wspólny wiersz, nie osobny na protokół.
  *   Ta sama trójka adres+data+kto nadpisuje istniejący wiersz.
  *   Błąd zapisu Bolęcina nie cofa wiersza rejestru: odpowiedź ma numer i bolecinError.
+ *   Opcjonalne writeId (krótki identyfikator z mapy, [A-Za-z0-9_-], do 80 znaków).
+ *   Ten sam writeId przez 10 minut zwraca już nadany numer i nie dopisuje drugiego wiersza.
+ *   Pamięć jest w cache skryptu, nie w arkuszu. GET ?action=protocolWrite&writeId=
+ *   → { ok, found, done?, numer?, bolecinError? }. Mapa po urwanym POST (Failed to fetch,
+ *   HTML 5xx) najpierw pyta o writeId. Drugi POST tylko gdy found:false albo zapis jest
+ *   w toku (found && !done). Stary Web App bez tej akcji zwraca unknown action — mapa
+ *   wtedy nie ponawia, żeby nie zdublować wiersza.
  * migrateRegisterLayoutRates_ — V1→V3 (wywołanie ręczne). V2→V3: migrateRegisterLayoutTransportOdbył.
  *
  * Bezpieczeństwo: doGet/doPost wymagają Script property GAS_SHARED_SECRET
@@ -332,8 +339,12 @@ var REF_POPRAW_HEADER = [
 
 var REF_PRZ_NIP_COL = 4;
 var REF_PRZ_BDO_COL = 5;
-/** getLastRow() na tabeli bywa dnem siatki. Szerszy odczyt kończy się HTML 500 INTERNAL. */
+/**
+ * getLastRow() na tabeli bywa dnem siatki i ubija Web App (HTML 500 INTERNAL),
+ * zanim doGet zwróci JSON. Słowniki czytamy od góry, kawałkami, bez getLastRow.
+ */
 var REF_LIST_MAX_DATA_ROWS = 5000;
+var REF_LIST_CHUNK_ROWS = 100;
 
 function doGet(e) {
   try {
@@ -390,6 +401,9 @@ function doGet(e) {
     }
     if (action === 'settlementStats') {
       return jsonResponse(settlementStats_(e.parameter));
+    }
+    if (action === 'protocolWrite') {
+      return jsonResponse(lookupProtocolWrite_(e.parameter && e.parameter.writeId));
     }
     return jsonResponse({ ok: false, error: 'unknown action' }, 400);
   } catch (err) {
@@ -468,8 +482,16 @@ function doPost(e) {
     if (mode === 'awizujBolecin') {
       return handleAwizujBolecinPost_(body);
     }
-    var numer = resolveTransportNumber_(body);
-    appendTransportRow_(numer, body);
+    var writeId = normalizeProtocolWriteId_(body && body.writeId);
+    var saved = readProtocolWrite_(writeId);
+    if (saved && saved.done) {
+      return jsonResponse(protocolWriteResponse_(saved));
+    }
+    var numer = saved ? saved.numer : resolveTransportNumber_(body);
+    if (!saved) {
+      appendTransportRow_(numer, body);
+      rememberProtocolWrite_(writeId, numer, false, '');
+    }
     var bolecinError = '';
     if (wantsProtocolBolecin_(body)) {
       try {
@@ -478,11 +500,8 @@ function doPost(e) {
         bolecinError = String(bolecinErr);
       }
     }
-    var response = { ok: true, numer: String(numer) };
-    if (bolecinError) {
-      response.bolecinError = bolecinError;
-    }
-    return jsonResponse(response);
+    rememberProtocolWrite_(writeId, numer, true, bolecinError);
+    return jsonResponse(protocolWriteResponse_({ numer: String(numer), bolecinError: bolecinError }));
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) }, 500);
   } finally {
@@ -1057,6 +1076,95 @@ function getPreviewNumber_() {
 
 function allocateNextNumber_() {
   return resolveNextTransportNumber_(true);
+}
+
+/** Cache zapisu protokołu. 10 minut wystarcza na jedną powtórkę po urwanym POST. */
+var PROTOCOL_WRITE_CACHE_PREFIX = 'protocolWrite:';
+var PROTOCOL_WRITE_CACHE_SECONDS = 600;
+
+function normalizeProtocolWriteId_(value) {
+  var raw = value == null ? '' : String(value).trim();
+  raw = raw.replace(/[^A-Za-z0-9_-]/g, '');
+  if (raw.length > 80) {
+    return raw.slice(0, 80);
+  }
+  return raw;
+}
+
+function protocolWriteCacheKey_(writeId) {
+  return PROTOCOL_WRITE_CACHE_PREFIX + writeId;
+}
+
+/** @returns {{ numer: string, done: boolean, bolecinError: string }|null} */
+function readProtocolWrite_(writeId) {
+  if (!writeId) {
+    return null;
+  }
+  var raw = '';
+  try {
+    raw = CacheService.getScriptCache().get(protocolWriteCacheKey_(writeId)) || '';
+  } catch (err) {
+    return null;
+  }
+  if (!raw) {
+    return null;
+  }
+  try {
+    var parsed = JSON.parse(raw);
+    if (!parsed || parsed.numer == null || String(parsed.numer) === '') {
+      return null;
+    }
+    return {
+      numer: String(parsed.numer),
+      done: !!parsed.done,
+      bolecinError: parsed.bolecinError ? String(parsed.bolecinError) : '',
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+function rememberProtocolWrite_(writeId, numer, done, bolecinError) {
+  if (!writeId || numer == null || String(numer) === '') {
+    return;
+  }
+  var payload = JSON.stringify({
+    numer: String(numer),
+    done: !!done,
+    bolecinError: bolecinError ? String(bolecinError) : '',
+  });
+  try {
+    CacheService.getScriptCache().put(
+      protocolWriteCacheKey_(writeId),
+      payload,
+      PROTOCOL_WRITE_CACHE_SECONDS,
+    );
+  } catch (err) {}
+}
+
+function protocolWriteResponse_(saved) {
+  var response = { ok: true, numer: String(saved.numer) };
+  if (saved.bolecinError) {
+    response.bolecinError = saved.bolecinError;
+  }
+  return response;
+}
+
+function lookupProtocolWrite_(writeId) {
+  var saved = readProtocolWrite_(normalizeProtocolWriteId_(writeId));
+  if (!saved) {
+    return { ok: true, found: false };
+  }
+  var lookup = {
+    ok: true,
+    found: true,
+    done: saved.done,
+    numer: saved.numer,
+  };
+  if (saved.bolecinError) {
+    lookup.bolecinError = saved.bolecinError;
+  }
+  return lookup;
 }
 
 /** Ręczny numer z POST (body.numer) ma pierwszeństwo; pusty → kolejny automatyczny. */
@@ -1749,16 +1857,62 @@ function refPoprawKey_(adres, podmiot, sklep) {
   );
 }
 
-function refDataRowCount_(sheet) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return 0;
+function refRowHasText_(row) {
+  var c;
+  for (c = 0; c < row.length; c++) {
+    if (cellStr_(row[c])) {
+      return true;
+    }
   }
-  var count = lastRow - 1;
-  if (count > REF_LIST_MAX_DATA_ROWS) {
-    return REF_LIST_MAX_DATA_ROWS;
+  return false;
+}
+
+/** Wiersze od 2. w dół. Pusty kawałek kończy odczyt. Nie woła getLastRow(). */
+function refReadRows_(sheet, width, withDisplay) {
+  var grid = sheet.getMaxRows();
+  if (!grid || grid < 2 || !width) {
+    return { values: [], display: [] };
   }
-  return count;
+  var limit = grid - 1;
+  if (limit > REF_LIST_MAX_DATA_ROWS) {
+    limit = REF_LIST_MAX_DATA_ROWS;
+  }
+  var values = [];
+  var display = [];
+  var offset = 0;
+  while (offset < limit) {
+    var n = REF_LIST_CHUNK_ROWS;
+    if (n > limit - offset) {
+      n = limit - offset;
+    }
+    var range = sheet.getRange(offset + 2, 1, n, width);
+    var chunk = range.getValues();
+    var shown = withDisplay ? range.getDisplayValues() : null;
+    var any = false;
+    var i;
+    for (i = 0; i < chunk.length; i++) {
+      if (refRowHasText_(chunk[i])) {
+        any = true;
+      }
+    }
+    if (!any) {
+      break;
+    }
+    for (i = 0; i < chunk.length; i++) {
+      values.push(chunk[i]);
+      if (shown) {
+        display.push(shown[i]);
+      }
+    }
+    offset += n;
+  }
+  while (values.length && !refRowHasText_(values[values.length - 1])) {
+    values.pop();
+    if (withDisplay) {
+      display.pop();
+    }
+  }
+  return { values: values, display: display };
 }
 
 function refReadWidth_(sheet, headerLength) {
@@ -1783,13 +1937,10 @@ function listReferencePrzewoznicy_() {
   if (!sheet) {
     return [];
   }
-  var numDataRows = refDataRowCount_(sheet);
-  if (!numDataRows) {
-    return [];
-  }
   var width = refReadWidth_(sheet, REF_PRZ_HEADER.length);
-  var values = sheet.getRange(2, 1, numDataRows, width).getValues();
-  var display = sheet.getRange(2, 1, numDataRows, width).getDisplayValues();
+  var read = refReadRows_(sheet, width, true);
+  var values = read.values;
+  var display = read.display;
   var out = [];
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
@@ -1829,11 +1980,7 @@ function listReferencePodwykoSheet_(sheetName) {
   if (!sheet) {
     return [];
   }
-  var numDataRows = refDataRowCount_(sheet);
-  if (!numDataRows) {
-    return [];
-  }
-  var values = sheet.getRange(2, 1, numDataRows, refReadWidth_(sheet, REF_PODWYKO_HEADER.length)).getValues();
+  var values = refReadRows_(sheet, refReadWidth_(sheet, REF_PODWYKO_HEADER.length), false).values;
   var out = [];
   for (var i = 0; i < values.length; i++) {
     var entry = normalizePodwykoEntry_(values[i][0], values[i][1]);
@@ -1881,11 +2028,7 @@ function listReferencePoprawAdres_() {
   if (!sheet) {
     return [];
   }
-  var numDataRows = refDataRowCount_(sheet);
-  if (!numDataRows) {
-    return [];
-  }
-  var values = sheet.getRange(2, 1, numDataRows, refReadWidth_(sheet, REF_POPRAW_HEADER.length)).getValues();
+  var values = refReadRows_(sheet, refReadWidth_(sheet, REF_POPRAW_HEADER.length), false).values;
   var out = [];
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
@@ -7169,27 +7312,52 @@ function approveDidNotHappen_(value) {
   return settlementFlag_(value) === 'nie';
 }
 
-/** Grosze, liczba całkowita >= 0. Złote z ekranu tu nie wchodzą — silnik liczy w groszach. */
+/** Grosze, liczba całkowita. Złote z ekranu tu nie wchodzą — silnik liczy w groszach. Ujemna kwota zostaje. */
 function approveCostGrosze_(value) {
   var n = value;
   if (typeof n === 'string') {
     var s = settlementText_(n);
-    if (!/^\d+$/.test(s)) {
+    if (!/^-?\d+$/.test(s)) {
       return null;
     }
     n = Number(s);
   }
-  if (typeof n !== 'number' || !isFinite(n) || Math.floor(n) !== n || n < 0) {
+  if (typeof n !== 'number' || !isFinite(n)) {
     return null;
   }
-  return n;
+  var rounded = Math.round(n);
+  if (Math.abs(n - rounded) > 1e-6 || Math.abs(rounded) > 9007199254740991) {
+    return null;
+  }
+  return rounded;
+}
+
+function approveCostTechnical_(skipped) {
+  var lines = ['Koszt jest niepoprawny. Nic nie zapisano.'];
+  var i;
+  for (i = 0; i < skipped.length; i++) {
+    var item = skipped[i];
+    var numer = item.transportNumber ? 'Transport ' + item.transportNumber : 'Pozycja';
+    var row = item.sheetRow ? ' (wiersz ' + item.sheetRow + ')' : '';
+    var why = 'koszt nie jest w groszach';
+    if (typeof item.koszt === 'number' && isFinite(item.koszt) && item.koszt < 0) {
+      why = 'koszt ujemny';
+    } else if (item.koszt == null || item.koszt === '') {
+      why = 'brak kwoty';
+    }
+    lines.push('• ' + numer + row + ' — ' + why);
+  }
+  return lines.join('\n');
 }
 
 function approveZlotyFromGrosze_(grosze) {
-  var whole = Math.floor(grosze / 100);
-  var frac = grosze % 100;
+  var negative = grosze < 0;
+  var abs = Math.abs(grosze);
+  var whole = Math.floor(abs / 100);
+  var frac = abs % 100;
   var text = String(whole) + '.' + (frac < 10 ? '0' : '') + String(frac);
-  return Number(text);
+  var zloty = Number(text);
+  return negative ? -zloty : zloty;
 }
 
 function approveRoundInteger_(numerator, divisor) {
@@ -7206,11 +7374,16 @@ function approveRoundReal_(value) {
 
 /** Koszt / ilość worków. Pusta ilość albo 0 dzieli przez 1. To nie jest drugie liczenie kosztu. */
 function approvePerBagGrosze_(costGrosze, bagCount) {
+  var negative = costGrosze < 0;
+  var amount = Math.abs(costGrosze);
   var divisor = bagCount != null && bagCount > 0 ? bagCount : 1;
+  var rounded;
   if (Math.floor(divisor) === divisor) {
-    return approveRoundInteger_(costGrosze, divisor);
+    rounded = approveRoundInteger_(amount, divisor);
+  } else {
+    rounded = approveRoundReal_(amount / divisor);
   }
-  return approveRoundReal_(costGrosze / divisor);
+  return negative ? -rounded : rounded;
 }
 
 function approveCompareFrom_(a, b) {
@@ -7640,7 +7813,9 @@ function approve_(body) {
     }
     var cost = approveCostGrosze_(item && item.koszt);
     if (cost == null) {
-      skipped.push(approveSkip_(item, 'cost'));
+      var costSkip = approveSkip_(item, 'cost');
+      costSkip.koszt = item && item.koszt != null ? item.koszt : null;
+      skipped.push(costSkip);
       continue;
     }
     var scheduleRates = null;
@@ -7697,6 +7872,20 @@ function approve_(body) {
       });
     }
     saved.push(approveSavedFromCache_(target.sheet, target.row, schedule, cells));
+  }
+  var costSkipped = [];
+  for (i = 0; i < skipped.length; i++) {
+    if (skipped[i].reason === 'cost') {
+      costSkipped.push(skipped[i]);
+    }
+  }
+  if (costSkipped.length) {
+    return {
+      ok: false,
+      error: 'cost',
+      pominiete: costSkipped,
+      technical: approveCostTechnical_(costSkipped),
+    };
   }
   approveApplyOps_(ops);
   return { ok: true, zapisane: saved, pominiete: skipped };

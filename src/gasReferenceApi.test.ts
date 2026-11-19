@@ -492,12 +492,14 @@ describe('doGet reference and list actions', () => {
     expect(data.podwykoLista.map((e) => e.nazwa)).toEqual(['Alpha']);
   });
 
-  it('test_listReferenceData_when_last_row_is_past_the_cap_should_read_at_most_5000_rows', () => {
+  it('test_listReferenceData_when_getLastRow_throws_internal_should_return_sheet_entries', () => {
     reset();
     const podwyko = ensureSheet('Lista podwykonawców', ['Nazwa', 'Dane do Worda']);
     podwyko.put(2, 1, 'Alpha');
     podwyko.put(2, 2, 'Alpha Dane');
-    podwyko.getLastRow = () => 8002;
+    podwyko.getLastRow = () => {
+      throw new Error('Podczas odczytywania danych wystąpił błąd serwera. Kod błędu: INTERNAL.');
+    };
     const heights: number[] = [];
     const heightsOrig = podwyko.getRange.bind(podwyko);
     podwyko.getRange = (row: number, col: number, numRows?: number, numCols?: number) => {
@@ -506,7 +508,35 @@ describe('doGet reference and list actions', () => {
     };
     const result = get('listReferenceData');
     expect(result.ok).toBe(true);
-    expect(heights).toEqual([5000]);
+    const data = result.data as { podwykoLista: { nazwa: string }[] };
+    expect(data.podwykoLista.map((e) => e.nazwa)).toEqual(['Alpha']);
+    expect(Math.max(...heights)).toBeLessThanOrEqual(100);
+  });
+
+  it('test_listReferenceData_when_grid_is_past_the_cap_should_read_short_chunks', () => {
+    reset();
+    const podwyko = ensureSheet('Lista podwykonawców', ['Nazwa', 'Dane do Worda']);
+    podwyko.put(2, 1, 'Alpha');
+    podwyko.put(2, 2, 'Alpha Dane');
+    podwyko.put(150, 1, 'Nowy');
+    podwyko.put(150, 2, 'Nowy Dane');
+    podwyko.getMaxRows = () => 8002;
+    podwyko.getLastRow = () => {
+      throw new Error('INTERNAL');
+    };
+    let readRows = 0;
+    const heightsOrig = podwyko.getRange.bind(podwyko);
+    podwyko.getRange = (row: number, col: number, numRows?: number, numCols?: number) => {
+      const n = numRows ?? 1;
+      readRows += n;
+      expect(n).toBeLessThanOrEqual(100);
+      return heightsOrig(row, col, numRows, numCols);
+    };
+    const result = get('listReferenceData');
+    expect(result.ok).toBe(true);
+    const data = result.data as { podwykoLista: { nazwa: string }[] };
+    expect(data.podwykoLista.map((e) => e.nazwa)).toEqual(['Alpha', 'Nowy']);
+    expect(readRows).toBe(300);
   });
 
   it('test_listContractors_matches_merged_podwyko_lista', () => {

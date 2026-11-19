@@ -3498,6 +3498,7 @@ __api = {
         routeRateBaselineName: string;
       };
       pendingFetches: Array<(resp: LookupResp) => void>;
+      rejectFetches: Array<(err: Error) => void>;
       errorCards: Array<{ code?: string }>;
     };
 
@@ -3533,6 +3534,7 @@ __api = {
         'doc-inp-stawka-trasy': { value: '' },
       };
       const pendingFetches: Array<(resp: LookupResp) => void> = [];
+      const rejectFetches: Array<(err: Error) => void> = [];
       const errorCards: Array<{ code?: string }> = [];
 
       const sandbox: Record<string, unknown> = {
@@ -3543,8 +3545,9 @@ __api = {
           },
         },
         fetchTransportGet() {
-          return new Promise<LookupResp>((resolve) => {
+          return new Promise<LookupResp>((resolve, reject) => {
             pendingFetches.push(resolve);
+            rejectFetches.push(reject);
           });
         },
         mapApiErrorCard_(report: { code?: string }) {
@@ -3583,7 +3586,7 @@ __api = {
       if (!api) {
         throw new Error('Harness nie wystawił API lookupRouteRateNow');
       }
-      return { api: { ...api, pendingFetches, errorCards }, els };
+      return { api: { ...api, pendingFetches, rejectFetches, errorCards }, els };
     }
 
     const deadlineHtml: LookupResp = {
@@ -3620,6 +3623,46 @@ __api = {
 
       expect(api.pendingFetches).toHaveLength(2);
       expect(api.errorCards.map((card) => card.code)).toEqual(['MAP-E-ROUTE-RATE']);
+    });
+
+    it('test_lookupRouteRateNow_when_fetch_fails_then_ok_should_retry_once_and_fill_rate', async () => {
+      const { api, els } = loadLookupRouteRate();
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+
+      api.rejectFetches[0](new Error('Failed to fetch'));
+      await flushMicrotasks();
+      expect(api.pendingFetches).toHaveLength(2);
+
+      api.pendingFetches[1]({ ok: true, stawka: '750' });
+      await flushMicrotasks();
+
+      expect(els['doc-inp-stawka-trasy'].value).toBe('750');
+      expect(api.errorCards).toHaveLength(0);
+    });
+
+    it('test_lookupRouteRateNow_when_fetch_fails_twice_should_show_one_card', async () => {
+      const { api } = loadLookupRouteRate();
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+
+      api.rejectFetches[0](new Error('Failed to fetch'));
+      await flushMicrotasks();
+      api.rejectFetches[1](new Error('Failed to fetch'));
+      await flushMicrotasks();
+
+      expect(api.pendingFetches).toHaveLength(2);
+      expect(api.errorCards.map((card) => card.code)).toEqual(['MAP-E-ROUTE-RATE']);
+    });
+
+    it('test_lookupRouteRateNow_when_fetch_fails_and_stale_before_retry_should_not_fetch_again', async () => {
+      const { api } = loadLookupRouteRate();
+      api.lookupRouteRateNow('GPW-23.09.26-01');
+      api.bumpRequest();
+
+      api.rejectFetches[0](new Error('Failed to fetch'));
+      await flushMicrotasks();
+
+      expect(api.pendingFetches).toHaveLength(1);
+      expect(api.errorCards).toHaveLength(0);
     });
 
     it('test_lookupRouteRateNow_when_ok_false_json_should_not_retry', async () => {
@@ -3693,6 +3736,176 @@ __api = {
       pending[0]({ ok: false, error: 'busy' });
       await flushMicrotasks();
       expect(pending).toHaveLength(1);
+      expect(await result).toEqual({ ok: false, error: 'busy' });
+    });
+
+    it('test_fetchTransportGetRetry_when_fetch_fails_then_ok_should_retry_once', async () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const src = html.slice(
+        html.indexOf('function fetchTransportGetRetry_('),
+        html.indexOf('function appendTransportRow('),
+      );
+      const calls: Array<{
+        resolve: (resp: { ok: boolean; numer: string }) => void;
+        reject: (err: Error) => void;
+      }> = [];
+      const sandbox = {
+        Promise,
+        fetchTransportGet() {
+          return new Promise((resolve, reject) => {
+            calls.push({ resolve, reject });
+          });
+        },
+        delayMs() {
+          return Promise.resolve();
+        },
+      };
+      const retry = runInNewContext(`${src}\nfetchTransportGetRetry_;`, sandbox) as (params: {
+        action: string;
+      }) => Promise<{ ok: boolean; numer: string }>;
+      const result = retry({ action: 'previewNumber' });
+      calls[0].reject(new Error('Failed to fetch'));
+      await flushMicrotasks();
+      expect(calls).toHaveLength(2);
+      calls[1].resolve({ ok: true, numer: '8' });
+      await flushMicrotasks();
+      expect(await result).toEqual({ ok: true, numer: '8' });
+    });
+
+    it('test_fetchTransportGetRetry_when_fetch_fails_twice_should_reject', async () => {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const src = html.slice(
+        html.indexOf('function fetchTransportGetRetry_('),
+        html.indexOf('function appendTransportRow('),
+      );
+      const calls: Array<{ reject: (err: Error) => void }> = [];
+      const sandbox = {
+        Promise,
+        fetchTransportGet() {
+          return new Promise((_resolve, reject) => {
+            calls.push({ reject });
+          });
+        },
+        delayMs() {
+          return Promise.resolve();
+        },
+      };
+      const retry = runInNewContext(`${src}\nfetchTransportGetRetry_;`, sandbox) as (params: {
+        action: string;
+      }) => Promise<unknown>;
+      const result = retry({ action: 'previewNumber' });
+      const settled = expect(result).rejects.toThrow('Failed to fetch');
+      calls[0].reject(new Error('Failed to fetch'));
+      await flushMicrotasks();
+      expect(calls).toHaveLength(2);
+      calls[1].reject(new Error('Failed to fetch'));
+      await settled;
+    });
+
+    function loadAppendTransportRow(): {
+      posts: Array<{
+        body: string;
+        resolve: (resp: Record<string, unknown>) => void;
+        reject: (err: Error) => void;
+      }>;
+      lookups: Array<(resp: Record<string, unknown>) => void>;
+      append: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    } {
+      const html = buildMapHtml(sampleGeocoded(), [], 'https://example.com/woj.json', [], [], {
+        templateBase64: 'UEsDBA==',
+        podwykoOptions: [{ label: 'GPW', dane: 'GPW' }],
+      }, 'https://script.google.com/macros/s/test/exec');
+      const src = html.slice(
+        html.indexOf('function newProtocolWriteId_('),
+        html.indexOf('function setDocModalMode('),
+      );
+      const posts: Array<{
+        body: string;
+        resolve: (resp: Record<string, unknown>) => void;
+        reject: (err: Error) => void;
+      }> = [];
+      const lookups: Array<(resp: Record<string, unknown>) => void> = [];
+      const sandbox = {
+        Promise,
+        Date,
+        Math,
+        JSON,
+        TRANSPORT_WEBAPP_URL: 'https://script.google.com/macros/s/test/exec',
+        delayMs() {
+          return Promise.resolve();
+        },
+        readMapJson_(res: Record<string, unknown>) {
+          return res;
+        },
+        fetch(_url: string, init: { body: string }) {
+          return new Promise((resolve, reject) => {
+            posts.push({ body: init.body, resolve, reject });
+          });
+        },
+        fetchTransportGet() {
+          return new Promise((resolve) => {
+            lookups.push(resolve);
+          });
+        },
+      };
+      const append = runInNewContext(`${src}\nappendTransportRow;`, sandbox) as (
+        payload: Record<string, unknown>,
+      ) => Promise<Record<string, unknown>>;
+      return { posts, lookups, append };
+    }
+
+    it('test_appendTransportRow_when_fetch_fails_and_write_unknown_should_post_once_more', async () => {
+      const api = loadAppendTransportRow();
+      const result = api.append({ adresSklepu: '34-236 SIDZINA SIDZINA 1230' });
+      api.posts[0].reject(new Error('Failed to fetch'));
+      await flushMicrotasks();
+      expect(api.lookups).toHaveLength(1);
+      expect(api.posts).toHaveLength(1);
+      api.lookups[0]({ ok: true, found: false });
+      await flushMicrotasks();
+      expect(api.posts).toHaveLength(2);
+      const firstId = JSON.parse(api.posts[0].body).writeId as string;
+      expect(JSON.parse(api.posts[1].body).writeId).toBe(firstId);
+      api.posts[1].resolve({ ok: true, numer: '41' });
+      await flushMicrotasks();
+      expect(await result).toEqual({ ok: true, numer: '41' });
+    });
+
+    it('test_appendTransportRow_when_fetch_fails_and_write_found_should_not_post_again', async () => {
+      const api = loadAppendTransportRow();
+      const result = api.append({ adresSklepu: '34-236 SIDZINA SIDZINA 1230' });
+      api.posts[0].reject(new Error('Failed to fetch'));
+      await flushMicrotasks();
+      api.lookups[0]({ ok: true, found: true, done: true, numer: '41' });
+      await flushMicrotasks();
+      expect(api.posts).toHaveLength(1);
+      expect(await result).toEqual({ ok: true, numer: '41', replay: true });
+    });
+
+    it('test_appendTransportRow_when_confirm_is_unknown_action_should_not_post_again', async () => {
+      const api = loadAppendTransportRow();
+      const result = api.append({ adresSklepu: '34-236 SIDZINA SIDZINA 1230' });
+      const settled = expect(result).rejects.toThrow('Failed to fetch');
+      api.posts[0].reject(new Error('Failed to fetch'));
+      await flushMicrotasks();
+      api.lookups[0]({ ok: false, error: 'unknown action' });
+      await settled;
+      expect(api.posts).toHaveLength(1);
+    });
+
+    it('test_appendTransportRow_when_json_ok_false_should_not_retry', async () => {
+      const api = loadAppendTransportRow();
+      const result = api.append({ adresSklepu: '34-236 SIDZINA SIDZINA 1230' });
+      api.posts[0].resolve({ ok: false, error: 'busy' });
+      await flushMicrotasks();
+      expect(api.lookups).toHaveLength(0);
+      expect(api.posts).toHaveLength(1);
       expect(await result).toEqual({ ok: false, error: 'busy' });
     });
 

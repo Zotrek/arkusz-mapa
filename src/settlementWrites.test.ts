@@ -971,6 +971,31 @@ describe("approve", () => {
     expect(register.cell(4, 18)).toBe(10);
   });
 
+  it("test_approve_negative_cost_writes_zloty_and_per_bag", () => {
+    const { register } = fresh();
+    seedRegister(register, 2, { 9: 3 });
+    seedRegister(register, 3, { 1: 16 });
+
+    const result = postToSheet({
+      action: "approve",
+      numerFaktury: "FV/uj",
+      wiersze: [
+        { sheetRow: 2, transportNumber: "15", koszt: -1550 },
+        { sheetRow: 3, transportNumber: "16", koszt: "-1500" },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.pominiete).toEqual([]);
+    expect(register.cell(2, 15)).toBe("tak");
+    expect(register.cell(2, 16)).toBe("FV/uj");
+    expect(register.cell(2, 17)).toBe(-15.5);
+    expect(register.cell(2, 18)).toBe(-5.17);
+    expect(register.cell(3, 15)).toBe("tak");
+    expect(register.cell(3, 17)).toBe(-15);
+    expect(register.cell(3, 18)).toBe(-7.5);
+  });
+
   it("test_approve_per_bag_rounds_half_up", () => {
     const { register } = fresh();
     seedRegister(register, 2, { 9: 3 });
@@ -1221,7 +1246,7 @@ describe("approve", () => {
     expect(register.cell(2, 17)).toBe(30);
   });
 
-  it("test_approve_bad_cost_skips_row_and_missing_rate_sheet_still_writes", () => {
+  it("test_approve_bad_cost_writes_nothing", () => {
     const { register } = fresh();
     seedRegister(register, 2);
     seedRegister(register, 3, { 1: 16 });
@@ -1236,11 +1261,31 @@ describe("approve", () => {
       ],
     });
 
-    expect(result.zapisane).toEqual([{ sheetName: "Arkusz1", sheetRow: 3, transportNumber: "16" }]);
-    expect(result.pominiete).toEqual([{ sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15", reason: "cost" }]);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("cost");
+    expect(result.zapisane).toBeUndefined();
+    expect(result.pominiete).toEqual([
+      { sheetName: "Arkusz1", sheetRow: 2, transportNumber: "15", reason: "cost", koszt: 30.5 },
+    ]);
     expect(register.cell(2, 15)).toBe("");
-    expect(register.cell(3, 17)).toBe(20);
-    expect(register.cell(3, 18)).toBe(10);
+    expect(register.cell(3, 15)).toBe("");
+    expect(register.cell(3, 17)).toBe("999");
+  });
+
+  it("test_approve_cost_within_grosz_rounds_and_writes", () => {
+    const { register } = fresh();
+    seedRegister(register, 2);
+
+    const result = postToSheet({
+      action: "approve",
+      numerFaktury: "FV/7b",
+      wiersze: [{ sheetRow: 2, transportNumber: "15", koszt: 3000.0000001 }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.pominiete).toEqual([]);
+    expect(register.cell(2, 15)).toBe("tak");
+    expect(register.cell(2, 17)).toBe(30);
   });
 
   it("test_approve_schedule_tryb_writes_zestawienie_not_arkusz1", () => {
